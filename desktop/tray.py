@@ -2,20 +2,39 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from desktop.i18n import tr
+
+
+def _fallback_app_icon() -> QIcon:
+    """Simple generated icon so tray never shows without an icon on Windows."""
+    pix = QPixmap(64, 64)
+    pix.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor("#1F6FEB"))
+    painter.setPen(QColor("#0B3D91"))
+    painter.drawRoundedRect(4, 4, 56, 56, 12, 12)
+    painter.setPen(QColor("#FFFFFF"))
+    painter.drawText(pix.rect(), int(Qt.AlignmentFlag.AlignCenter), "J")
+    painter.end()
+    return QIcon(pix)
 
 
 class AppTray(QSystemTrayIcon):
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent)
         self.window = window
-        # Use a simple theme icon if available
         icon = QIcon.fromTheme("applications-office")
         if icon.isNull():
             icon = window.windowIcon()
+        if icon.isNull():
+            icon = _fallback_app_icon()
+            if window.windowIcon().isNull():
+                window.setWindowIcon(icon)
         self.setIcon(icon)
 
         menu = QMenu()

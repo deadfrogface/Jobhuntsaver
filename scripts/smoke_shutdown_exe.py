@@ -17,26 +17,65 @@ TIMEOUT_S = 90.0
 EXIT_TIMEOUT_S = 20.0
 
 
+def _process_tree_pids(root_pid: int) -> list[int]:
+    """Onefile bootloader keeps a parent; GUI runs in a child process."""
+    pids = [root_pid]
+    try:
+        out = subprocess.check_output(
+            ["wmic", "process", "where", f"ParentProcessId={root_pid}", "get", "ProcessId"],
+            text=True,
+            errors="ignore",
+        )
+        for line in out.splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pids.append(int(line))
+    except Exception:
+        pass
+    try:
+        out = subprocess.check_output(
+            ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe", "/FO", "CSV", "/NH"],
+            text=True,
+            errors="ignore",
+        )
+        for line in out.splitlines():
+            parts = [p.strip().strip('"') for p in line.split(",")]
+            if len(parts) >= 2 and parts[1].isdigit():
+                pids.append(int(parts[1]))
+    except Exception:
+        pass
+    return list(dict.fromkeys(pids))
+
+
 def _find_main_hwnd(pid: int) -> int:
     user32 = ctypes.windll.user32
-    titled = []
-    any_visible = []
+    targets = set(_process_tree_pids(pid))
+    titled: list[int] = []
+    any_visible: list[int] = []
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
     def enum_proc(hwnd, _lparam):
         proc_id = ctypes.c_ulong()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
-        if proc_id.value == pid and user32.IsWindowVisible(hwnd):
-            any_visible.append(hwnd)
+        if proc_id.value in targets and user32.IsWindowVisible(hwnd):
+            any_visible.append(int(hwnd))
             length = user32.GetWindowTextLengthW(hwnd)
             if length > 0:
-                titled.append(hwnd)
+                titled.append(int(hwnd))
         return True
 
     user32.EnumWindows(enum_proc, 0)
     if titled:
-        return int(titled[0])
-    return int(any_visible[0]) if any_visible else 0
+        return titled[0]
+    return any_visible[0] if any_visible else 0
+
+
+def _jobhuntsaver_still_running() -> bool:
+    listing = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe"],
+        capture_output=True,
+    ).stdout or b""
+    return b"Jobhuntsaver.exe" in listing
 
 
 def main() -> int:
@@ -77,13 +116,13 @@ def main() -> int:
             hwnd = _find_main_hwnd(proc.pid)
             if hwnd:
                 break
-            if proc.poll() is not None:
+            if proc.poll() is not None and not _jobhuntsaver_still_running():
                 print("FAIL: process exited before window appeared", proc.returncode)
                 return 1
             time.sleep(0.25)
         if not hwnd:
             print("FAIL: main window not found")
-            proc.kill()
+            subprocess.run(["taskkill", "/F", "/IM", "Jobhuntsaver.exe"], capture_output=True)
             return 1
 
         print(f"Sending WM_CLOSE to hwnd={hwnd}")
@@ -91,9 +130,9 @@ def main() -> int:
 
         end = time.time() + EXIT_TIMEOUT_S
         while time.time() < end:
-            if proc.poll() is not None:
+            if not _jobhuntsaver_still_running():
                 elapsed = EXIT_TIMEOUT_S - (end - time.time())
-                print(f"OK: process exited code={proc.returncode} after {elapsed:.1f}s")
+                print(f"OK: process exited after {elapsed:.1f}s")
                 try:
                     EXE.rename(EXE.with_suffix(".exe.rename_test"))
                     EXE.with_suffix(".exe.rename_test").rename(EXE)
@@ -105,9 +144,8 @@ def main() -> int:
             time.sleep(0.2)
 
         print("FAIL: process still running after timeout")
-        # Diagnostics: still visible?
         print("hwnd still?", _find_main_hwnd(proc.pid))
-        subprocess.run(["taskkill", "/F", "/PID", str(proc.pid)], capture_output=True)
+        subprocess.run(["taskkill", "/F", "/IM", "Jobhuntsaver.exe"], capture_output=True)
         return 1
 
 
