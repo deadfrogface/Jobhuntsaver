@@ -73,9 +73,16 @@ Pre-cleanup: only `main` (local + `origin/main`). No other branches or tags.
 ## GitHub cache note
 
 Even after a successful force-push, GitHub may temporarily retain unreachable
-objects. If a direct object URL still serves sensitive content after refs are
-clean, contact **GitHub Support** for a cache purge. Rotate any credentials
-that may have been exposed (not applicable for CV text, but standard advice).
+objects. Direct checks of pre-rewrite commit SHAs still returned HTTP 200 from
+`github.com/.../commit/<old-sha>` immediately after the rewrite, while
+`git ls-remote` showed only the new `main` tip and retargeted tag `Vers.1.0`.
+
+**Action for the repository owner:** open a GitHub Support ticket requesting
+removal of cached/unreachable sensitive blobs for `deadfrogface/Jobhuntsaver`,
+and re-check code search + old commit URLs after their purge.
+
+Do not rely only on the new branch tip. If a direct object URL still serves
+sensitive content after refs are clean, Support must purge caches.
 
 ## Verification checklist
 
