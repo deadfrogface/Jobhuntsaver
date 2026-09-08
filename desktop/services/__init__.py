@@ -39,7 +39,11 @@ class ConfigService:
         return self.dirs["config"] / "settings.yaml"
 
     def _bootstrap_from_examples(self) -> None:
-        """Seed AppData YAML from repo examples or existing local config once."""
+        """Seed AppData YAML from repo *.example files once (never from personal YAML).
+
+        Only copies when the destination is missing. Existing empty AppData files
+        are left as-is so a reset to empty cannot be overwritten by examples.
+        """
         mapping = [
             (self.profile_path, "profile.yaml"),
             (self.application_path, "application_profile.yaml"),
@@ -48,11 +52,11 @@ class ConfigService:
         for dest, name in mapping:
             if dest.exists():
                 continue
-            local = CONFIG_DIR / name
+            # Prefer empty-safe examples; do not copy local non-example YAML
+            # (repo no longer ships personal profile.yaml).
             example = CONFIG_DIR / f"{name}.example"
-            src = local if local.exists() else example
-            if src.exists():
-                shutil.copy2(src, dest)
+            if example.exists():
+                shutil.copy2(example, dest)
 
     def load(self) -> AppConfig:
         config = load_config(
@@ -238,3 +242,52 @@ class ConfigService:
         cfg.application.cv_path = str(dest)
         self.save(cfg)
         return dest
+
+    def clear_cv_storage(self) -> None:
+        """Delete all files under AppData cvs/ and clear meta cv_variants."""
+        cvs_dir = self.dirs["cvs"]
+        if cvs_dir.exists():
+            for path in cvs_dir.iterdir():
+                try:
+                    if path.is_file():
+                        path.unlink()
+                    elif path.is_dir():
+                        shutil.rmtree(path)
+                except OSError:
+                    continue
+        meta = self.load_meta()
+        meta["cv_variants"] = []
+        self.save_meta(meta)
+
+    def reset_to_empty_profile(self, *, clear_search_prefs: bool = False) -> AppConfig:
+        """Persist an empty applicant + qualifications profile after clearing CV files."""
+        from core.config import empty_application_profile, empty_qualifications, empty_profile_config
+        from desktop.services.profile_merge import clear_complete_application
+
+        self.clear_cv_storage()
+        cfg = self.load()
+        cfg.application = clear_complete_application(cfg.application)
+        # Ensure identity equals empty helper
+        blank = empty_application_profile()
+        for name in blank.__dataclass_fields__:
+            setattr(cfg.application, name, getattr(blank, name))
+        cfg.application.answers = {}
+        cfg.application.field_origins = {}
+        cfg.profile.qualifications = empty_qualifications()
+        if clear_search_prefs:
+            loc = cfg.profile.location
+            jobs = cfg.profile.jobs
+            emp = cfg.profile.employment
+            filt = cfg.profile.filters
+            empty = empty_profile_config()
+            cfg.profile.location = empty.location
+            # preserve commute defaults that are not personal PII
+            cfg.profile.location.max_distance_km = loc.max_distance_km
+            cfg.profile.location.allow_remote_germany = loc.allow_remote_germany
+            cfg.profile.location.allow_hybrid = loc.allow_hybrid
+            cfg.profile.location.country = loc.country or "DE"
+            cfg.profile.jobs = empty.jobs
+            cfg.profile.employment = emp  # keep work-model toggles
+            cfg.profile.filters = empty.filters
+            _ = (jobs, filt)  # silence unused in clear path
+        return self.save(cfg)

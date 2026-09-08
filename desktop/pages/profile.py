@@ -202,6 +202,9 @@ class ProfilePage(QWidget):
             lbl = QLabel()
             self.app_field_labels.append((lbl, key))
             aform.addRow(lbl, widget)
+        self.sync_home_from_address = QCheckBox()
+        self.sync_home_from_address.setChecked(False)
+        aform.addRow(self.sync_home_from_address)
         layout.addWidget(self.app_box)
 
         # Lebenslauf
@@ -267,6 +270,7 @@ class ProfilePage(QWidget):
         self.app_box.setTitle(tr("profile.app_data"))
         for lbl, key in self.app_field_labels:
             lbl.setText(tr(key))
+        self.sync_home_from_address.setText(tr("profile.sync_home_address"))
         self.cv_box.setTitle(tr("profile.cv"))
         no_cv = {table.get("profile.no_cv", "") for table in TRANSLATIONS.values()}
         if not self.cv_label.text() or self.cv_label.text() in no_cv:
@@ -400,7 +404,6 @@ class ProfilePage(QWidget):
         clicked = msg.clickedButton()
         if clicked is None or clicked == msg.button(QMessageBox.StandardButton.Cancel):
             return
-        cfg = self.config_service.load()
         if clicked is all_btn:
             confirm = QMessageBox.question(
                 self,
@@ -409,9 +412,12 @@ class ProfilePage(QWidget):
             )
             if confirm != QMessageBox.StandardButton.Yes:
                 return
+            self.config_service.clear_cv_storage()
+            cfg = self.config_service.load()
             cfg.profile.qualifications = clear_all_qualifications()
             cfg.application = clear_complete_application(cfg.application)
-        else:
+            self.config_service.save(cfg)
+        elif clicked is cv_btn:
             confirm = QMessageBox.question(
                 self,
                 tr("profile.reset_title"),
@@ -419,9 +425,14 @@ class ProfilePage(QWidget):
             )
             if confirm != QMessageBox.StandardButton.Yes:
                 return
+            self.config_service.clear_cv_storage()
+            cfg = self.config_service.load()
             cfg.profile.qualifications = keep_manual_qualifications(cfg.profile.qualifications)
             cfg.application = clear_cv_personal(cfg.application)
-        self.config_service.save(cfg)
+            cfg.application.cv_path = ""
+            self.config_service.save(cfg)
+        else:
+            return
         self.load_from_config()
         QMessageBox.information(self, tr("profile.reset_title"), tr("profile.reset_done"))
 
@@ -497,6 +508,21 @@ class ProfilePage(QWidget):
         a.willingness_to_relocate = self.relocate.text().strip()
         a.remote_preference = self.remote_pref.text().strip()
         a.sync_address()
+
+        # Opt-in only (default unchecked): copy applicant address → search home_address
+        if self.sync_home_from_address.isChecked():
+            parts = [
+                p
+                for p in (
+                    a.street.strip(),
+                    f"{a.postal_code} {a.city}".strip(),
+                    (a.country or "").strip(),
+                )
+                if p
+            ]
+            if parts:
+                p.location.home_address = ", ".join(parts)
+                self.home_address.setText(p.location.home_address)
 
         errors = self.config_service.validate(cfg)
         if errors:

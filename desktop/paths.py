@@ -32,6 +32,7 @@ def ensure_app_dirs() -> dict[str, Path]:
         "data": root / "data",
         "logs": root / "logs",
         "browser_profile": root / "browser_profile",
+        "browsers": root / "browsers",
         "cvs": root / "cvs",
         "cache": root / "cache",
         "cover_letters": root / "cover_letters",

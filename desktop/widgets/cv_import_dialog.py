@@ -121,6 +121,24 @@ class CvImportDialog(QDialog):
                 lines.append(f"• {k}: {v}")
         else:
             lines.append(f"({tr('cv_import.none')})")
+        conf = (self.parsed or {}).get("confidence") or {}
+        if conf:
+            lines.append("")
+            lines.append(f"=== {tr('cv_import.confidence')} ===")
+            for key, label in [
+                ("personal", tr("cv_import.personal")),
+                ("languages", tr("profile.languages")),
+                ("driving_license", tr("profile.license")),
+                ("education", tr("profile.education")),
+                ("work_experience", tr("profile.experience")),
+                ("certificates", tr("profile.certificates")),
+                ("software", tr("profile.software")),
+                ("skills", tr("profile.skills")),
+            ]:
+                status = conf.get(key, "Nicht erkannt")
+                if status == "Nicht erkannt":
+                    status = tr("cv_import.not_detected")
+                lines.append(f"• {label}: {status}")
         lines.append("")
 
         for key, label in [
@@ -187,6 +205,7 @@ class CvImportDialog(QDialog):
         mode = self._current_mode()
         self.import_mode = mode
         if mode == "replace":
+            # True empty-then-fill for CV-derived data (manual quals still kept)
             self.result_quals = replace_qualifications(self.existing, self.incoming)
         else:
             self.result_quals = merge_qualifications(self.existing, self.incoming)
@@ -197,6 +216,12 @@ class CvImportDialog(QDialog):
         from copy import deepcopy
 
         app = deepcopy(self.application)
+        if mode == "replace":
+            # Clear previous CV personal fields before applying (true empty then fill)
+            from desktop.services.profile_merge import clear_cv_personal
+
+            clear_cv_personal(app)
+            self.plan = plan_personal_import(app, self.personal_incoming, mode=mode)
         apply_personal_updates(
             app,
             dict(self.plan.updates),

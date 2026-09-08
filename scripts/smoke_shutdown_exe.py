@@ -11,27 +11,32 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / "dist" / "Jobhuntsaver" / "Jobhuntsaver.exe"
+EXE = ROOT / "dist" / "Jobhuntsaver.exe"
 WM_CLOSE = 0x0010
-TIMEOUT_S = 10.0
+TIMEOUT_S = 90.0
+EXIT_TIMEOUT_S = 20.0
 
 
 def _find_main_hwnd(pid: int) -> int:
     user32 = ctypes.windll.user32
-    found = []
+    titled = []
+    any_visible = []
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
     def enum_proc(hwnd, _lparam):
         proc_id = ctypes.c_ulong()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
         if proc_id.value == pid and user32.IsWindowVisible(hwnd):
+            any_visible.append(hwnd)
             length = user32.GetWindowTextLengthW(hwnd)
             if length > 0:
-                found.append(hwnd)
+                titled.append(hwnd)
         return True
 
     user32.EnumWindows(enum_proc, 0)
-    return int(found[0]) if found else 0
+    if titled:
+        return int(titled[0])
+    return int(any_visible[0]) if any_visible else 0
 
 
 def main() -> int:
@@ -50,7 +55,7 @@ def main() -> int:
     time.sleep(0.5)
 
     # Isolated AppData so tray-minimize from a previous user setting cannot hide us.
-    with tempfile.TemporaryDirectory(prefix="jhs_shutdown_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="jhs_shutdown_", ignore_cleanup_errors=True) as tmp:
         env = os.environ.copy()
         env["LOCALAPPDATA"] = tmp
         # Pre-seed completed first-run so the wizard does not steal WM_CLOSE.
@@ -66,7 +71,7 @@ def main() -> int:
         )
         proc = subprocess.Popen([str(EXE)], env=env, cwd=str(EXE.parent))
         print(f"Started pid={proc.pid} LOCALAPPDATA={tmp}")
-        deadline = time.time() + 20
+        deadline = time.time() + TIMEOUT_S
         hwnd = 0
         while time.time() < deadline:
             hwnd = _find_main_hwnd(proc.pid)
@@ -84,15 +89,15 @@ def main() -> int:
         print(f"Sending WM_CLOSE to hwnd={hwnd}")
         ctypes.windll.user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
-        end = time.time() + TIMEOUT_S
+        end = time.time() + EXIT_TIMEOUT_S
         while time.time() < end:
             if proc.poll() is not None:
-                elapsed = TIMEOUT_S - (end - time.time())
+                elapsed = EXIT_TIMEOUT_S - (end - time.time())
                 print(f"OK: process exited code={proc.returncode} after {elapsed:.1f}s")
                 try:
                     EXE.rename(EXE.with_suffix(".exe.rename_test"))
                     EXE.with_suffix(".exe.rename_test").rename(EXE)
-                    print("OK: EXE folder is not locked")
+                    print("OK: EXE is not locked")
                 except OSError as exc:
                     print(f"FAIL: EXE still locked: {exc}")
                     return 1

@@ -56,11 +56,17 @@ _EQUIVALENCE: dict[str, str] = {
     "ms powerpoint": "microsoft powerpoint",
     "microsoft powerpoint": "microsoft powerpoint",
     "powerpoint": "microsoft powerpoint",
-    "klasse b": "klasse b",
-    "klasse b (pkw)": "klasse b",
-    "führerschein b": "klasse b",
-    "fuehrerschein b": "klasse b",
-    "b": "klasse b",
+    "klasse b": "b",
+    "klasse b (pkw)": "b",
+    "führerschein b": "b",
+    "fuehrerschein b": "b",
+    "b": "b",
+    "be": "be",
+    "klasse be": "be",
+    "klasse a": "a",
+    "a": "a",
+    "c1": "c1",
+    "klasse c1": "c1",
 }
 
 
@@ -225,9 +231,14 @@ def replace_qualifications(
     existing: QualificationsConfig,
     incoming: QualificationsConfig,
 ) -> QualificationsConfig:
-    """Remove previous CV-derived quals, keep manual, then add new CV data (no dups)."""
+    """True empty-then-fill: drop previous quals, keep only manual, then add CV data.
+
+    Manual entries survive; all CV/legacy/default entries are cleared before the
+    incoming CV profile is applied (no stale CV values remain).
+    """
     incoming = mark_qualifications_source(incoming, SOURCE_CV)
     kept = keep_manual_qualifications(existing)
+    # Start from empty + manual, then merge CV (no duplicates)
     return merge_qualifications(kept, incoming)
 
 
@@ -429,16 +440,18 @@ def clear_cv_personal(app: ApplicationProfile) -> ApplicationProfile:
     return app
 
 
-def clear_complete_application(app: ApplicationProfile) -> ApplicationProfile:
-    for f in fields(app):
-        if f.name == "answers":
-            app.answers = {}
-        elif f.name == "field_origins":
-            app.field_origins = {}
-        elif f.name == "country":
-            app.country = "DE"
-        elif isinstance(getattr(app, f.name), str):
-            setattr(app, f.name, "")
+def clear_complete_application(app: ApplicationProfile | None = None) -> ApplicationProfile:
+    """Reset every applicant field to empty (answers, origins, cv_path included)."""
+    from core.config import empty_application_profile
+
+    blank = empty_application_profile()
+    if app is None:
+        return blank
+    for f in fields(blank):
+        setattr(app, f.name, getattr(blank, f.name))
+    # Ensure mutable defaults are fresh instances
+    app.answers = {}
+    app.field_origins = {}
     return app
 
 

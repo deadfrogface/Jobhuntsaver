@@ -1,0 +1,9 @@
+# Development / CI / packaging tools (not needed by end users).
+
+-r requirements-runtime.txt
+pytest>=8.0
+pyinstaller>=6.3
+ruff>=0.6
+radon>=6.0
+vulture>=2.11
+# Streamlit UI removed (ui/app.py deleted) — do not re-add for desktop builds

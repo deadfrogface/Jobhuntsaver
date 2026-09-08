@@ -25,7 +25,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-runtime.txt
+          pip install -r requirements-dev.txt
 
       - name: Run tests
         run: python -m pytest -q
@@ -33,44 +34,20 @@ jobs:
       - name: Privacy scan
         run: python scripts/privacy_scan.py
 
-      - name: Prepare bundled Chromium
-        run: python packaging/prepare_browsers.py
-
-      - name: Build EXE
+      - name: Build onefile EXE (no bundled Chromium)
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
-          if (!(Test-Path "dist\Jobhuntsaver\config")) { New-Item -ItemType Directory -Path "dist\Jobhuntsaver\config" | Out-Null }
-          Copy-Item "config\*.example" "dist\Jobhuntsaver\config\" -Force
-          if (!(Test-Path "dist\Jobhuntsaver\templates")) { New-Item -ItemType Directory -Path "dist\Jobhuntsaver\templates" | Out-Null }
-          Copy-Item "templates\cover_letter.txt" "dist\Jobhuntsaver\templates\" -Force
-          if (Test-Path "dist\Jobhuntsaver\ms-playwright") { Remove-Item "dist\Jobhuntsaver\ms-playwright" -Recurse -Force }
-          Copy-Item "packaging\ms-playwright" "dist\Jobhuntsaver\ms-playwright" -Recurse -Force
-        shell: pwsh
-
-      - name: Verify EXE
-        run: |
-          if (!(Test-Path "dist\Jobhuntsaver\Jobhuntsaver.exe")) {
-            Write-Error "EXE missing"
+          if (!(Test-Path "dist\Jobhuntsaver.exe")) {
+            Write-Error "Onefile EXE missing at dist\Jobhuntsaver.exe"
             exit 1
           }
-          $chrome = Get-ChildItem -Path "dist\Jobhuntsaver\ms-playwright" -Recurse -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $chrome) {
-            Write-Error "Bundled chrome.exe missing"
-            exit 1
-          }
-          Get-Item "dist\Jobhuntsaver\Jobhuntsaver.exe" | Format-List FullName, Length
-          Write-Host "Bundled Chromium:" $chrome.FullName
+          Get-Item "dist\Jobhuntsaver.exe" | Format-List FullName, Length
         shell: pwsh
 
-      - name: Zip release folder
-        run: |
-          Compress-Archive -Path "dist\Jobhuntsaver\*" -DestinationPath "Jobhuntsaver-windows.zip" -Force
-        shell: pwsh
-
-      - name: Upload build artifact
+      - name: Upload Jobhuntsaver.exe
         uses: actions/upload-artifact@v4
         with:
-          name: Jobhuntsaver-windows
-          path: Jobhuntsaver-windows.zip
+          name: Jobhuntsaver-Windows
+          path: dist/Jobhuntsaver.exe
           if-no-files-found: error
           retention-days: 14

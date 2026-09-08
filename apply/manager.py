@@ -119,8 +119,21 @@ class ApplicationManager:
         job.status = JobStatus.APPLYING.value
         self.db.upsert_job(job)
 
+        # Central safety: dry_run always forces submit=False on every applier.
+        effective_dry_run = bool(settings.dry_run) or not submit
+        effective_submit = bool(submit) and not effective_dry_run
+        if effective_dry_run:
+            logger.info(
+                "TEST MODE: ApplicationManager will not allow final submit "
+                "(settings.dry_run=%s, mode=%s, force_submit=%s)",
+                settings.dry_run,
+                mode,
+                force_submit,
+            )
         applier_cls = APPLIERS[ats]
-        applier = applier_cls(self.page, dry_run=settings.dry_run or not submit, submit=submit)
+        applier = applier_cls(
+            self.page, dry_run=effective_dry_run, submit=effective_submit
+        )
         result = applier.apply(job, cv_path if cv_path and cv_path.exists() else None, cover, self.config.application)
 
         status = JobStatus.NEEDS_REVIEW.value

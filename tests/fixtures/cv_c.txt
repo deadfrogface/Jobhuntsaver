@@ -1,0 +1,48 @@
+Curriculum Vitae
+
+Clara Gamma
+Am Stadtpark 3, 90402 Nürnberg
+clara.gamma@example.org
++49 911 3333333
+Geburtsdatum: 22.11.1992
+
+Berufliche Erfahrung
+01.06.2019 – 30.04.2024
+Projektkoordinatorin
+Gamma Consulting GmbH, Nürnberg
+• Stakeholder-Kommunikation
+• Budgetplanung
+• Jira-Reporting
+
+01.01.2017 – 31.05.2019
+Assistentin der Geschäftsführung
+Delta Büroservice UG, Erlangen
+• Terminorganisation
+• Reisekostenabrechnung
+
+Ausbildung
+Bachelor Soziale Arbeit
+Abschluss: 10.08.2016
+Beispiel-Hochschule Nürnberg
+
+Sprachkenntnisse
+• Deutsch – Muttersprache
+• Englisch – B2
+• Italienisch – A1
+
+IT-Kenntnisse
+• MS Office
+• Jira
+• Confluence
+
+Führerschein
+• Klasse B, BE
+
+Weiterbildungen
+• Scrum Master Foundation
+• Erste Hilfe am Arbeitsplatz
+
+Schlüsselkompetenzen
+• Organisation
+• Kommunikation
+• Projektmanagement

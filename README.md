@@ -13,9 +13,8 @@ Kein Cloud-Konto, keine Pflicht-KI-API, keine Docker-Installation.
 
 ## Start
 
-- **Desktop-App (empfohlen):** Doppelklick auf **`start_desktop.bat`** oder später `dist\Jobhuntsaver\Jobhuntsaver.exe`
+- **Desktop-App:** Doppelklick auf **`start.bat`** / **`start_desktop.bat`** oder `dist\Jobhuntsaver.exe`
 - **EXE bauen:** Doppelklick auf **`build.bat`**
-- **Legacy-Streamlit:** Doppelklick auf **`start.bat`**
 - **Nur Suche (CLI):** Doppelklick auf **`run_search.bat`**
 
 Die Desktop-Oberfläche speichert Profil und Einstellungen unter `%LOCALAPPDATA%\Jobhuntsaver` — YAML muss nicht manuell editiert werden.

@@ -80,6 +80,12 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_company_title ON jobs(company, title);
 CREATE INDEX IF NOT EXISTS idx_jobs_match ON jobs(match_score DESC);
 CREATE INDEX IF NOT EXISTS idx_apps_job ON applications(job_id);
+-- Query patterns: find_by_source, has_applied URL/status, dashboard date counts
+CREATE INDEX IF NOT EXISTS idx_jobs_source_job_id ON jobs(source, source_job_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
+CREATE INDEX IF NOT EXISTS idx_apps_date ON applications(application_date);
+CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
 """
 
 

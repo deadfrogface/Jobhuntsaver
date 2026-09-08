@@ -33,6 +33,8 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 @dataclass
 class LocationConfig:
+    # Search-only home for geocoding / commute filter (NOT applicant form address).
+    # See core/search_preferences.py — do not auto-sync from ApplicationProfile.
     home_address: str = ""
     max_distance_km: float = 20.0
     allow_remote_germany: bool = True
@@ -212,6 +214,12 @@ class FiltersConfig:
 
 @dataclass
 class ProfileConfig:
+    """Search preferences + qualifications (alias: SearchPreferences).
+
+    Distinct from ApplicationProfile: search location/titles/filters live here;
+    PII for form submit lives on ApplicationProfile.
+    """
+
     location: LocationConfig = field(default_factory=LocationConfig)
     jobs: JobsConfig = field(default_factory=JobsConfig)
     employment: EmploymentConfig = field(default_factory=EmploymentConfig)
@@ -221,6 +229,12 @@ class ProfileConfig:
 
 @dataclass
 class ApplicationProfile:
+    """Applicant / form-fill profile (PII). Not the jobs search location.
+
+    street/city/postal_code are for ATS forms. Search commute uses
+    ProfileConfig.location.home_address unless the user opts into sync in the UI.
+    """
+
     first_name: str = ""
     last_name: str = ""
     address: str = ""
@@ -273,6 +287,24 @@ class ApplicationProfile:
             self.address = ", ".join(parts)
 
 
+def empty_application_profile() -> ApplicationProfile:
+    """Return a blank applicant profile (country default DE only)."""
+    return ApplicationProfile()
+
+
+def empty_qualifications() -> QualificationsConfig:
+    return QualificationsConfig()
+
+
+def empty_profile_config() -> ProfileConfig:
+    """Blank search/qualification profile (no demo data)."""
+    return ProfileConfig()
+
+
+# Canonical empty personal profile (copy via empty_application_profile()).
+EMPTY_PROFILE = ApplicationProfile()
+
+
 @dataclass
 class SettingsConfig:
     mode: str = "search_only"
@@ -323,6 +355,16 @@ class AppConfig:
         if not path.is_absolute():
             path = self.root / path
         return path
+
+
+def empty_app_config(*, root: Path | None = None) -> AppConfig:
+    """Fully empty runtime config — never seeded with example personal data."""
+    return AppConfig(
+        profile=empty_profile_config(),
+        application=empty_application_profile(),
+        settings=SettingsConfig(),
+        root=root or ROOT,
+    )
 
 
 def _merge_dataclass(cls, data: dict[str, Any]):
@@ -612,6 +654,12 @@ def load_config(
     *,
     strip_placeholders: bool = True,
 ) -> AppConfig:
+    """Load YAML configs.
+
+    Example files are used **only** when the target path is missing.
+    An existing empty YAML (`{}` / blank) stays empty — never rehydrated
+    from ``*.example`` or in-repo demo data.
+    """
     root = root or ROOT
     load_dotenv(root / ".env")
     load_dotenv(ROOT / ".env")
@@ -620,6 +668,7 @@ def load_config(
     application_path = application_path or (root / "config" / "application_profile.yaml")
     settings_path = settings_path or (root / "config" / "settings.yaml")
 
+    # Fallbacks only when the file does not exist (not when it is empty).
     if not profile_path.exists():
         profile_path = example_dir / "profile.yaml.example"
     if not application_path.exists():

@@ -6,10 +6,11 @@ import threading
 
 from PySide6.QtCore import QObject, QThread, Signal
 
-from app.main import run_pipeline
 from core.config import AppConfig
 from desktop.services.browser_install import check_browser, repair_browser
 from desktop.services.shutdown import get_shutdown_manager
+
+# playwright / jobspy / app.main stay lazy — imported inside PipelineWorker.run only
 
 
 class PipelineWorker(QObject):
@@ -28,6 +29,9 @@ class PipelineWorker(QObject):
 
     def run(self) -> None:
         try:
+            # Lazy: avoids importing playwright/jobspy at desktop startup
+            from app.main import run_pipeline
+
             stats = run_pipeline(
                 self.config,
                 mode=self.mode,

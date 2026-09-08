@@ -38,33 +38,102 @@ _HEADINGS = {
     "experience": (
         "berufserfahrung",
         "berufliche erfahrung",
+        "beruflicher Werdegang",
         "experience",
+        "work experience",
         "tätigkeiten",
         "beschäftigung",
+        "karriere",
+        "berufliche stationen",
     ),
-    "education": ("ausbildung", "schulbildung", "schule", "studium", "education"),
+    "education": (
+        "ausbildung",
+        "ausbildungen",
+        "schulbildung",
+        "schule",
+        "studium",
+        "education",
+        "akademischer Werdegang",
+        "schulischer Werdegang",
+        "qualifikation",
+        "qualifikationen",
+    ),
     "certificates": (
         "weiterbildungen",
         "weiterbildung",
         "zertifikate",
         "zertifikat",
         "fortbildung",
+        "fortbildungen",
         "licenses",
         "zertifizierung",
+        "zertifizierungen",
+        "kurse",
+        "seminare",
     ),
-    "languages": ("sprachen", "languages", "sprachkenntnisse"),
+    "languages": (
+        "sprachen",
+        "languages",
+        "sprachkenntnisse",
+        "fremdsprachen",
+    ),
     "software": (
         "edv-kenntnisse",
+        "edv kenntnisse",
         "edv",
         "it-kenntnisse",
+        "it kenntnisse",
         "software",
         "kenntnisse",
         "it skills",
         "computerkenntnisse",
+        "anwenderkenntnisse",
+        "pc-kenntnisse",
+        "pc kenntnisse",
     ),
-    "license": ("führerschein", "fuehrerschein", "driving licence", "driving license"),
-    "skills": ("fähigkeiten", "kompetenzen", "skills", "stärken"),
+    "license": (
+        "führerschein",
+        "fuehrerschein",
+        "fahrerlaubnis",
+        "driving licence",
+        "driving license",
+        "führerscheinklassen",
+        "fuehrerscheinklassen",
+    ),
+    "skills": (
+        "fähigkeiten",
+        "kompetenzen",
+        "skills",
+        "stärken",
+        "soft skills",
+        "schlüsselkompetenzen",
+        "fachkenntnisse",
+    ),
+    "profile": (
+        "profil",
+        "über mich",
+        "ueber mich",
+        "zusammenfassung",
+        "summary",
+        "persönliche daten",
+        "persoenliche daten",
+        "kontakt",
+        "interessen",
+        "hobbys",
+        "hobby",
+    ),
 }
+
+# Section heading tokens must never become field values.
+_ALL_HEADING_ALIASES = {
+    alias.lower() for aliases in _HEADINGS.values() for alias in aliases
+}
+
+# EU driving licence class tokens (normalized uppercase).
+_LICENSE_CLASS = re.compile(
+    r"\b(AM|A1|A2|A|B1|B|BE|C1|C1E|C|CE|D1|D1E|D|DE|L|T)\b",
+    re.IGNORECASE,
+)
 
 
 def extract_text(file_path: Path) -> str:
@@ -113,9 +182,40 @@ def _is_heading(line: str) -> str | None:
     if not cleaned or len(cleaned) > 48:
         return None
     for key, aliases in _HEADINGS.items():
-        if cleaned in aliases:
+        if cleaned in {a.lower() for a in aliases}:
             return key
     return None
+
+
+def _is_heading_value(text: str) -> bool:
+    cleaned = text.strip().lower().rstrip(":")
+    return cleaned in _ALL_HEADING_ALIASES
+
+
+def normalize_driving_license(raw: str | list[str]) -> list[str]:
+    """Normalize German/EU licence text to class codes like ``B``, ``BE``, ``C1``."""
+    chunks = raw if isinstance(raw, list) else [raw]
+    found: list[str] = []
+    for chunk in chunks:
+        text = str(chunk or "").strip()
+        if not text or _is_heading_value(text):
+            continue
+        for m in _LICENSE_CLASS.finditer(text):
+            code = m.group(1).upper()
+            if code not in found:
+                found.append(code)
+    return found
+
+
+def field_confidence(value: Any) -> str:
+    """Return ``high`` / ``low`` / ``Nicht erkannt`` for empty values."""
+    if value is None:
+        return "Nicht erkannt"
+    if isinstance(value, (list, dict, str)) and not value:
+        return "Nicht erkannt"
+    if isinstance(value, list) and all(not str(v).strip() for v in value):
+        return "Nicht erkannt"
+    return "high"
 
 
 def _split_named_sections(text: str) -> dict[str, str]:
@@ -263,17 +363,17 @@ def _parse_certificates(body: str) -> list[CertificateEntry]:
 
 
 def _parse_driving(body: str) -> list[str]:
+    lines = [_normalize_bullet(raw) for raw in body.splitlines() if _normalize_bullet(raw)]
+    normalized = normalize_driving_license(lines)
+    if normalized:
+        return normalized
     result: list[str] = []
-    for raw in body.splitlines():
-        line = _normalize_bullet(raw)
-        if not line:
+    for line in lines:
+        if _is_heading_value(line):
             continue
-        if re.search(r"klasse\s*[A-Z0-9]+", line, re.I) or re.search(r"\b[ABE]\b", line):
-            result.append(line)
-        elif "führerschein" not in line.lower():
-            result.append(line)
-    if not result and body.strip():
-        result.append(_normalize_bullet(body.splitlines()[0]))
+        if "führerschein" in line.lower() or "fuehrerschein" in line.lower():
+            continue
+        result.append(line)
     return list(dict.fromkeys(result))
 
 
@@ -436,8 +536,22 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         "phones": [],
         "personal": {},
         "uncertain": [],
+        "confidence": {},
     }
     if not text.strip():
+        empty["confidence"] = {
+            k: "Nicht erkannt"
+            for k in (
+                "skills",
+                "software",
+                "languages",
+                "education",
+                "work_experience",
+                "certificates",
+                "driving_license",
+                "personal",
+            )
+        }
         return empty
 
     emails = re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
@@ -446,23 +560,45 @@ def parse_cv_text(text: str) -> dict[str, Any]:
     personal = _parse_personal_header(text, sections)
 
     languages = _parse_languages(sections.get("languages", ""))
-    software = _parse_software(sections.get("software", ""))
-    # If "kenntnisse" caught soft skills separately
+    software = [
+        s for s in _parse_software(sections.get("software", "")) if not _is_heading_value(s)
+    ]
     skills = []
     if "skills" in sections:
         for raw in sections["skills"].splitlines():
             line = _normalize_bullet(raw)
-            if line:
+            if line and not _is_heading_value(line):
                 skills.extend([p.strip() for p in re.split(r"[,|/]", line) if p.strip()])
-    certificates = _parse_certificates(sections.get("certificates", ""))
+    certificates = [
+        c for c in _parse_certificates(sections.get("certificates", "")) if not _is_heading_value(c.name)
+    ]
     driving = _parse_driving(sections.get("license", ""))
     education = _parse_education(sections.get("education", ""))
     experience = _parse_experience(sections.get("experience", ""))
 
-    # Fallback: scan whole text for Führerschein if section missing
+    # Fallback: scan whole text for Führerschein classes if section missing
     if not driving:
-        for m in re.finditer(r"Klasse\s+[A-Z0-9]+(?:\s*\([^)]+\))?", text, re.I):
-            driving.append(m.group(0))
+        driving = normalize_driving_license(
+            [m.group(0) for m in re.finditer(r"Klasse\s+[A-Z0-9]+(?:\s*\([^)]+\))?", text, re.I)]
+        ) or normalize_driving_license(text)
+
+    uncertain: list[str] = []
+    if driving and not all(re.fullmatch(r"[A-Z0-9]{1,3}", d) for d in driving):
+        uncertain.append("driving_license")
+
+    confidence = {
+        "skills": field_confidence(skills),
+        "software": field_confidence(software),
+        "languages": field_confidence(languages),
+        "education": field_confidence(education),
+        "work_experience": field_confidence(experience),
+        "certificates": field_confidence(certificates),
+        "driving_license": field_confidence(driving),
+        "personal": field_confidence(personal),
+    }
+    for key in uncertain:
+        if confidence.get(key) == "high":
+            confidence[key] = "low"
 
     result = {
         "raw_text_preview": text[:2000],
@@ -505,14 +641,17 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         "emails": list(dict.fromkeys(emails)),
         "phones": list(dict.fromkeys(p.strip() for p in phones)),
         "personal": personal,
-        "uncertain": [],
+        "uncertain": uncertain,
+        "confidence": confidence,
     }
     return result
 
 
 _HEADING_LINE = re.compile(
-    r"^(Berufserfahrung|Ausbildung|Weiterbildungen|Sprachen|EDV|Führerschein|"
-    r"Fähigkeiten|Kompetenzen|Kenntnisse|Experience|Education|Skills)\b",
+    r"^(Berufserfahrung|Berufliche Erfahrung|Beruflicher Werdegang|Ausbildung|"
+    r"Weiterbildungen|Sprachen|Sprachkenntnisse|EDV|EDV-Kenntnisse|Führerschein|"
+    r"Fähigkeiten|Kompetenzen|Kenntnisse|Experience|Education|Skills|"
+    r"Persönliche Daten|Über mich|Profil|Zusammenfassung|Kontakt)\b",
     re.I,
 )
 _POSTAL_CITY = re.compile(
@@ -528,16 +667,22 @@ _DOB = re.compile(
 def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str]:
     """Extract name/address from the CV header (before first known section)."""
     personal: dict[str, str] = {}
+    title_re = re.compile(
+        r"(tabellarischer\s+)?lebenslauf|curriculum\s+vitae|cv|résumé|resume",
+        re.I,
+    )
     header_lines: list[str] = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
-            if header_lines:
+            # Blank lines after a document title should not end the header early.
+            if header_lines and not all(title_re.fullmatch(x) for x in header_lines):
                 break
             continue
         if _HEADING_LINE.match(line):
             break
-        # Skip obvious non-name contact-only lines later
+        if title_re.fullmatch(line):
+            continue
         header_lines.append(line)
         if len(header_lines) >= 12:
             break
@@ -547,6 +692,8 @@ def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str
         if "@" in line or re.search(r"\d{5}", line) or re.search(r"\+?\d[\d\s\-()]{7,}\d", line):
             continue
         if _DOB.search(line):
+            continue
+        if _is_heading_value(line) or _is_heading(line):
             continue
         if re.fullmatch(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-]+(?:\s+[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-]+)+", line):
             parts = line.split()
@@ -607,6 +754,8 @@ def parsed_to_qualifications(parsed: dict[str, Any]) -> QualificationsConfig:
 
 def import_cv(path: Path) -> dict[str, Any]:
     text = extract_text(path)
+    # Privacy: never log CV body at INFO — only path + length.
+    logger.info("CV import: path=%s chars=%d", path.name, len(text or ""))
     parsed = parse_cv_text(text)
     parsed["source_path"] = str(path)
     return parsed

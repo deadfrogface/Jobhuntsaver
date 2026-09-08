@@ -162,7 +162,15 @@ class BaseApplier(ABC):
         return False
 
     def _maybe_submit(self, submit_selector: str) -> ApplyResult:
+        """Central hard guard: never click final submit in dry_run / non-submit mode."""
         if self.dry_run or not self.submit:
+            logger.info(
+                "TEST MODE: skipped final submit "
+                "(dry_run=%s, submit=%s, selector=%s)",
+                self.dry_run,
+                self.submit,
+                submit_selector,
+            )
             return ApplyResult(
                 success=True,
                 dry_run_stopped=True,
