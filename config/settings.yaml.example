@@ -26,4 +26,4 @@ exclude_on_missing_mandatory: false
 theme: system          # system | light | dark
 language: de           # de | en
 start_with_windows: false
-minimize_to_tray: true
+minimize_to_tray: false

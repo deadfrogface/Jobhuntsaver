@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import QObject, QThread, Signal
 
 from app.main import run_pipeline
 from core.config import AppConfig
 from desktop.services.browser_install import check_browser, repair_browser
+from desktop.services.shutdown import get_shutdown_manager
 
 
 class PipelineWorker(QObject):
@@ -18,6 +21,10 @@ class PipelineWorker(QObject):
         super().__init__()
         self.config = config
         self.mode = mode
+        self._cancel = threading.Event()
+
+    def request_cancel(self) -> None:
+        self._cancel.set()
 
     def run(self) -> None:
         try:
@@ -25,7 +32,10 @@ class PipelineWorker(QObject):
                 self.config,
                 mode=self.mode,
                 progress_callback=self.progress.emit,
+                should_stop=self._cancel.is_set,
             )
+            if self._cancel.is_set():
+                self.progress.emit("Abgebrochen.")
             self.finished.emit(stats or {})
         except Exception as exc:  # noqa: BLE001 — surface user-friendly via failed
             self.failed.emit(str(exc))
@@ -34,7 +44,17 @@ class PipelineWorker(QObject):
 class BrowserCheckWorker(QObject):
     finished = Signal(bool, str)
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._cancel = threading.Event()
+
+    def request_cancel(self) -> None:
+        self._cancel.set()
+
     def run(self) -> None:
+        if self._cancel.is_set():
+            self.finished.emit(False, "Abgebrochen.")
+            return
         ok, msg = check_browser()
         self.finished.emit(ok, msg)
 
@@ -42,7 +62,17 @@ class BrowserCheckWorker(QObject):
 class BrowserRepairWorker(QObject):
     finished = Signal(bool, str)
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._cancel = threading.Event()
+
+    def request_cancel(self) -> None:
+        self._cancel.set()
+
     def run(self) -> None:
+        if self._cancel.is_set():
+            self.finished.emit(False, "Abgebrochen.")
+            return
         ok, msg = repair_browser()
         self.finished.emit(ok, msg)
 
@@ -58,5 +88,10 @@ def start_worker(worker: QObject, slot_name: str = "run") -> QThread:
     worker.finished.connect(thread.quit)
     if hasattr(worker, "failed"):
         worker.failed.connect(thread.quit)
+    # Ensure thread/worker objects are deleted after finish
+    thread.finished.connect(thread.deleteLater)
+    mgr = get_shutdown_manager()
+    mgr.register_thread(thread)
+    mgr.register_worker(worker)
     thread.start()
     return thread

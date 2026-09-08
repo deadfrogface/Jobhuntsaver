@@ -307,7 +307,7 @@ class SettingsConfig:
     theme: str = "system"  # system | light | dark
     language: str = "de"  # de | en
     start_with_windows: bool = False
-    minimize_to_tray: bool = True
+    minimize_to_tray: bool = False
 
 
 @dataclass

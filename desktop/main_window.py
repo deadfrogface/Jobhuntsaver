@@ -30,6 +30,7 @@ from desktop.pages.profile import ProfilePage
 from desktop.pages.settings import SettingsPage
 from desktop.services import ConfigService
 from desktop.services.schedule_service import ScheduleService
+from desktop.services.shutdown import get_shutdown_manager
 from desktop.theme import stylesheet_for
 from desktop.tray import AppTray
 from desktop.workers import PipelineWorker, start_worker
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config_service = config_service
         self._force_quit = False
+        self._shutting_down = False
         self._worker = None
         self._thread = None
         self.setMinimumSize(900, 650)
@@ -116,6 +118,7 @@ class MainWindow(QMainWindow):
 
         self.tray = AppTray(self)
         self.tray.show()
+        get_shutdown_manager().set_tray(self.tray)
 
         i18n.register(self.retranslate_ui)
         self._restore_geometry()
@@ -271,24 +274,56 @@ class MainWindow(QMainWindow):
         )
 
     def force_quit(self) -> None:
+        """Explicit exit (tray menu). Always terminates the process."""
         self._force_quit = True
         self.close()
+
+    def _pipeline_running(self) -> bool:
+        return bool(self._thread and self._thread.isRunning())
+
+    def _confirm_exit_while_busy(self) -> bool:
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("app.name"))
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(tr("shutdown.busy_title"))
+        box.setInformativeText(tr("shutdown.busy_body"))
+        cancel_btn = box.addButton(tr("shutdown.cancel"), QMessageBox.ButtonRole.RejectRole)
+        quit_btn = box.addButton(tr("shutdown.quit_anyway"), QMessageBox.ButtonRole.AcceptRole)
+        box.setDefaultButton(cancel_btn)
+        box.exec()
+        return box.clickedButton() is quit_btn
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._save_geometry()
         cfg = self.config_service.load()
-        minimize = bool(getattr(cfg.settings, "minimize_to_tray", True))
-        if self._force_quit or not self.tray.isVisible() or not minimize:
-            event.accept()
+        minimize = bool(getattr(cfg.settings, "minimize_to_tray", False))
+
+        # Optional: hide to tray only when explicitly enabled and not forcing exit.
+        if (
+            not self._force_quit
+            and not self._shutting_down
+            and minimize
+            and self.tray.isVisible()
+        ):
+            self.hide()
+            self.tray.showMessage(
+                tr("app.name"),
+                tr("tray.running"),
+                self.tray.MessageIcon.Information,
+                2500,
+            )
+            event.ignore()
             return
-        self.hide()
-        self.tray.showMessage(
-            tr("app.name"),
-            tr("tray.running"),
-            self.tray.MessageIcon.Information,
-            2500,
-        )
-        event.ignore()
+
+        if self._pipeline_running() and not self._shutting_down:
+            if not self._confirm_exit_while_busy():
+                event.ignore()
+                self._force_quit = False
+                return
+
+        self._shutting_down = True
+        event.accept()
+        get_shutdown_manager().shutdown(reason="window_close")
 
     def maybe_run_wizard(self) -> None:
         if not self.config_service.is_first_run():

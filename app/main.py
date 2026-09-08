@@ -95,6 +95,7 @@ def run_pipeline(
     config: AppConfig | None = None,
     mode: str | None = None,
     progress_callback=None,
+    should_stop=None,
 ) -> dict:
     def progress(message: str) -> None:
         if progress_callback:
@@ -102,6 +103,12 @@ def run_pipeline(
                 progress_callback(message)
             except Exception:
                 pass
+
+    def stopped() -> bool:
+        try:
+            return bool(should_stop and should_stop())
+        except Exception:
+            return False
 
     config = config or load_config()
     if mode:
@@ -118,6 +125,21 @@ def run_pipeline(
     sources = build_sources(config.settings.enabled_sources)
     all_jobs = []
     for source in sources:
+        if stopped():
+            run.info("Pipeline cancelled during search")
+            progress("Abgebrochen.")
+            return {
+                "total": 0,
+                "duplicates": 0,
+                "outside": 0,
+                "new": 0,
+                "matches": 0,
+                "applied": 0,
+                "needs_review": 0,
+                "captcha": 0,
+                "failed": 0,
+                "cancelled": True,
+            }
         progress(f"Suche {source.source_id}…")
         jobs, err, detail = source.safe_search(queries)
         if err:
@@ -215,6 +237,10 @@ def run_pipeline(
         page = browser.get_page()
         manager = ApplicationManager(config, db, page=page)
         for job in matches:
+            if stopped():
+                run.info("Pipeline cancelled during applications")
+                progress("Abgebrochen.")
+                break
             if manager.failed_this_run >= config.settings.max_failed_applications_per_run:
                 run.info("Failure limit reached — stopping AutoApply (search already done)")
                 break

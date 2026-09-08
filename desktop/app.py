@@ -49,7 +49,14 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Jobhuntsaver")
     app.setOrganizationName("Jobhuntsaver")
-    app.setQuitOnLastWindowClosed(False)
+    # Quit when the last window closes unless the user opted into tray-minimize.
+    # Tray exit / red-X exit always call ApplicationShutdownManager → app.quit().
+    app.setQuitOnLastWindowClosed(True)
+
+    from desktop.services.shutdown import get_shutdown_manager
+
+    shutdown = get_shutdown_manager()
+    app.aboutToQuit.connect(lambda: shutdown.shutdown(reason="aboutToQuit"))
 
     config_service = ConfigService()
     apply_appearance(app, config_service)

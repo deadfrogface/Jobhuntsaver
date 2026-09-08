@@ -59,10 +59,13 @@ class BrowserManager:
         self._playwright: Any = None
         self._context: Any = None
         self._page: Any = None
+        self._chrome_pid: int | None = None
         try:
             from desktop.services.browser_install import configure_playwright_browsers_path
+            from desktop.services.shutdown import get_shutdown_manager
 
             configure_playwright_browsers_path()
+            get_shutdown_manager().register_browser(self)
         except Exception:
             pass
 
@@ -120,6 +123,13 @@ class BrowserManager:
             else:
                 raise
         self._page = self._context.new_page()
+        try:
+            # Best-effort: remember Chromium PID for shutdown diagnostics
+            browser = getattr(self._context, "browser", None)
+            if browser is not None and getattr(browser, "process", None):
+                self._chrome_pid = getattr(browser.process, "pid", None)
+        except Exception:
+            pass
         return self._page
 
     def close(self) -> None:

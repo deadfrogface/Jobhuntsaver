@@ -315,7 +315,7 @@ class SettingsPage(QWidget):
         theme_idx = self.theme_combo.findData((s.theme or "system").lower())
         self.theme_combo.setCurrentIndex(theme_idx if theme_idx >= 0 else 0)
         self.start_windows.setChecked(bool(getattr(s, "start_with_windows", False)))
-        self.minimize_tray.setChecked(bool(getattr(s, "minimize_to_tray", True)))
+        self.minimize_tray.setChecked(bool(getattr(s, "minimize_to_tray", False)))
         {
             "search_only": self.mode_search,
             "review_before_submit": self.mode_review,

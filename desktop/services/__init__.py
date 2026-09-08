@@ -72,6 +72,7 @@ class ConfigService:
             if bundled.exists():
                 config.settings.cover_letter_template = str(bundled)
         self._config = config
+        self._apply_shutdown_fix_migration(config)
         # Persist cleaned profile if demo placeholders were stripped
         try:
             from core.config import strip_example_application, strip_example_placeholders
@@ -93,6 +94,19 @@ class ConfigService:
         except Exception:
             pass
         return config
+
+    def _apply_shutdown_fix_migration(self, config: AppConfig) -> None:
+        """One-time: red X must quit by default (disable accidental tray-keep-alive)."""
+        meta = self.load_meta()
+        if meta.get("shutdown_fix_v1"):
+            return
+        config.settings.minimize_to_tray = False
+        meta["shutdown_fix_v1"] = True
+        try:
+            self.save(config)
+            self.save_meta(meta)
+        except Exception:
+            pass
 
     @property
     def config(self) -> AppConfig:
