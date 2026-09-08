@@ -118,24 +118,24 @@ def test_matcher_uses_experience_responsibilities():
     cfg = _config(
         work_experience=[
             ExperienceEntry(
-                title="On-Site Support",
+                title="Disponentin",
                 company="Nordhafen Logistik",
                 responsibilities=[
-                    "Beschwerdemanagement und professionelle Reklamationsbearbeitung",
-                    "Betreuung von B2B- und B2C-Kunden",
+                    "Tourenplanung und Disposition",
+                    "Reklamationsbearbeitung im Versand",
                 ],
             )
         ]
     )
     job = Job(
-        title="Kundenberater",
+        title="Disponent",
         company="Shop",
         remote_type="remote",
-        description="Reklamationsbearbeitung B2B B2C Kundenberatung Excel Deutsch",
+        description="Reklamationsbearbeitung Disposition Tourenplanung Excel Deutsch",
         employment_type="Vollzeit",
     )
     result = score_job(job, cfg)
-    assert any("experience" in r.lower() or "reklamation" in r.lower() for r in result.match_reasons)
+    assert any("experience" in r.lower() or "reklamation" in r.lower() or "touren" in r.lower() for r in result.match_reasons)
 
 
 def test_empty_default_profile_has_no_fake_skills():

@@ -30,6 +30,9 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Privacy scan
+        run: python scripts/privacy_scan.py
+
       - name: Prepare bundled Chromium
         run: python packaging/prepare_browsers.py
 

@@ -132,8 +132,8 @@ def _split_named_sections(text: str) -> dict[str, str]:
             current = heading
             sections.setdefault(current, [])
             continue
-        # Also catch titles like "Tabellarischer Lebenslauf"
-        if re.fullmatch(r"tabellarischer lebenslauf", line, re.I):
+        # Skip document title lines such as "Lebenslauf" / "Curriculum Vitae"
+        if re.fullmatch(r"(tabellarischer\s+)?lebenslauf|curriculum\s+vitae", line, re.I):
             continue
         sections.setdefault(current, []).append(raw.rstrip())
     return {k: "\n".join(v).strip() for k, v in sections.items() if "".join(v).strip()}
@@ -145,7 +145,7 @@ def _parse_languages(body: str) -> list[LanguageEntry]:
         line = _normalize_bullet(raw)
         if not line:
             continue
-        # "Dänisch – A2"
+        # "Dänisch & Schwedisch – A2" (multiple languages, one level)
         amp = re.match(
             r"^(?P<langs>.+?)\s*[–\-—|]\s*(?P<level>[ABC][12]|Muttersprache|native)\s*$",
             line,
@@ -224,14 +224,14 @@ def _parse_software(body: str) -> list[str]:
                     items.append(chunk)
             # If fortgeschritten applies to Excel specifically already handled
             continue
-        # "Power BI, Microsoft Teams"
+        # Comma-separated tools on one line, e.g. "Power BI, Microsoft Teams"
         if "," in line and not re.search(r"\(.+,.+\)", line):
             for part in line.split(","):
                 part = part.strip()
                 if part:
                     items.append(part)
             continue
-        # "Individuell entwickeltes … (Versand Office)"
+        # "Long description (ShortName)"
         paren = re.match(r"^(?P<desc>.+?)\s*\((?P<name>[^)]+)\)\s*$", line)
         if paren and len(paren.group("name")) < 40:
             items.append(f"{paren.group('name').strip()} / {paren.group('desc').strip()}")

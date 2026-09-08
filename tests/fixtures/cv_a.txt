@@ -14,7 +14,7 @@ Alpha GmbH, Berlin
 Ausbildung
 Bachelor Betriebswirtschaft
 Abschluss: 15.07.2017
-HU Berlin
+Beispiel-Hochschule Berlin
 
 Sprachen
 • Deutsch – C2
@@ -23,7 +23,7 @@ Sprachen
 EDV-Kenntnisse
 • DATEV
 • SAP FI
-• MS Office
+• Microsoft Office
 
 Führerschein
 • Klasse B (PKW)

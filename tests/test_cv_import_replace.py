@@ -78,7 +78,7 @@ def test_replace_mode_clears_previous_cv_profile():
     assert not any("Betriebswirtschaft" in e.qualification for e in profile_quals.education)
     assert any("Informatik" in e.qualification for e in profile_quals.education)
     assert not any("Bilanzbuchhalter" in c.name for c in profile_quals.certificates)
-    assert any("AWS" in c.name for c in profile_quals.certificates)
+    assert any("Cloud Fundamentals" in c.name for c in profile_quals.certificates)
 
 
 def test_replace_preserves_manual_fields_with_conflict():

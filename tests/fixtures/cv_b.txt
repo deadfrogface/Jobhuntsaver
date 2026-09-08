@@ -14,7 +14,7 @@ Beta AG, München
 Ausbildung
 Master Informatik
 Abschluss: 20.09.2019
-TU München
+Beispiel-Technische Hochschule München
 
 Sprachen
 • Deutsch – C1
@@ -31,7 +31,7 @@ Führerschein
 • Klasse A
 
 Weiterbildungen
-• AWS Solutions Architect
+• Cloud Fundamentals
 
 Skills
 • Backend

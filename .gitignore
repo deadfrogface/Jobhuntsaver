@@ -1,14 +1,22 @@
-# Secrets & personal data
+# Secrets & personal / local config (never commit real profiles)
 .env
+.env.*
+!.env.example
 config/profile.yaml
 config/application_profile.yaml
 config/settings.yaml
 private/
+private/**
+
+# Personal documents (allow fictional fixtures under tests/fixtures/)
 *.pdf
 *.docx
-!docs/**
+!tests/fixtures/**
+!tests/fixtures/**/*.pdf
+!tests/fixtures/**/*.docx
+!tests/fixtures/**/*.txt
 
-# Runtime
+# Runtime / local state
 data/*.db
 data/*.db-*
 logs/
@@ -21,11 +29,14 @@ __pycache__/
 venv/
 env/
 agent-tools/
+exports/
+*.xlsx
 
 # Browser / cookies / sessions
 **/browser_profile/
 **/cookies*
 *.session
+smoke_browser_result.txt
 
 # Cover letters generated for real applications
 private/cover_letters/
@@ -35,11 +46,6 @@ private/cover_letters/
 Thumbs.db
 .idea/
 .vscode/
-
-# Exports that may contain personal info
-exports/
-*.xlsx
-!tests/fixtures/**
 
 # Desktop build / analysis clones
 _analysis/
