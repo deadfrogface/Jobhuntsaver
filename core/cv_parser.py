@@ -1,6 +1,6 @@
-"""CV / document text extraction without inventing qualifications.
+"""CV / document text extraction and structured profile parsing.
 
-Adapted from AutoApply core/document_parser.py (MIT).
+No paid AI. Never invents qualifications that are not present in the text.
 """
 
 from __future__ import annotations
@@ -10,9 +10,61 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.config import (
+    CertificateEntry,
+    EducationEntry,
+    ExperienceEntry,
+    LanguageEntry,
+    QualificationsConfig,
+    parse_qualifications,
+)
+
 logger = logging.getLogger("jobhuntsaver")
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
+
+_DATE = r"(?:\d{1,2}\.\d{1,2}\.\d{2,4}|\d{2}\.\d{4}|\d{4})"
+_PERIOD = re.compile(
+    rf"(?P<start>Seit\s+{_DATE}|{_DATE})\s*[–\-—]\s*(?P<end>{_DATE}|heute|aktuell|present)",
+    re.IGNORECASE,
+)
+_SINCE = re.compile(rf"^Seit\s+(?P<start>{_DATE})\s*$", re.IGNORECASE)
+_ABSCHLUSS = re.compile(
+    rf"Abschluss\s*:\s*(?P<date>{_DATE})",
+    re.IGNORECASE,
+)
+_LEVEL = re.compile(r"\b([ABC][12]|Muttersprache|native)\b", re.IGNORECASE)
+_HEADINGS = {
+    "experience": (
+        "berufserfahrung",
+        "berufliche erfahrung",
+        "experience",
+        "tätigkeiten",
+        "beschäftigung",
+    ),
+    "education": ("ausbildung", "schulbildung", "schule", "studium", "education"),
+    "certificates": (
+        "weiterbildungen",
+        "weiterbildung",
+        "zertifikate",
+        "zertifikat",
+        "fortbildung",
+        "licenses",
+        "zertifizierung",
+    ),
+    "languages": ("sprachen", "languages", "sprachkenntnisse"),
+    "software": (
+        "edv-kenntnisse",
+        "edv",
+        "it-kenntnisse",
+        "software",
+        "kenntnisse",
+        "it skills",
+        "computerkenntnisse",
+    ),
+    "license": ("führerschein", "fuehrerschein", "driving licence", "driving license"),
+    "skills": ("fähigkeiten", "kompetenzen", "skills", "stärken"),
+}
 
 
 def extract_text(file_path: Path) -> str:
@@ -52,66 +104,415 @@ def _extract_from_docx(file_path: Path) -> str:
     return "\n\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
 
 
-def parse_cv_text(text: str) -> dict[str, Any]:
-    """Heuristic extraction — never invents values not present in text."""
-    result: dict[str, Any] = {
-        "raw_text_preview": text[:2000],
-        "skills": [],
-        "languages": [],
-        "education": [],
-        "experience_lines": [],
-        "emails": [],
-        "phones": [],
-    }
-    if not text.strip():
-        return result
+def _normalize_bullet(line: str) -> str:
+    return re.sub(r"^[\s•\-–—*·]+", "", line).strip()
 
-    emails = re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
-    phones = re.findall(r"(?:\+?\d[\d\s\-()]{7,}\d)", text)
-    result["emails"] = list(dict.fromkeys(emails))
-    result["phones"] = list(dict.fromkeys(p.strip() for p in phones))
 
-    # Simple section scrape
-    sections = _split_sections(text)
-    for heading, body in sections:
-        h = heading.lower()
-        lines = [ln.strip(" -•\t") for ln in body.splitlines() if ln.strip()]
-        if any(k in h for k in ("skill", "kenntnis", "kompetenz", "software")):
-            tokens = []
-            for line in lines:
-                tokens.extend([t.strip() for t in re.split(r"[,|/]", line) if t.strip()])
-            result["skills"].extend(tokens)
-        elif any(k in h for k in ("language", "sprach")):
-            result["languages"].extend(lines)
-        elif any(k in h for k in ("education", "ausbildung", "studium", "schule")):
-            result["education"].extend(lines)
-        elif any(k in h for k in ("experience", "beruf", "tätigkeit", "employment", "arbeit")):
-            result["experience_lines"].extend(lines)
+def _is_heading(line: str) -> str | None:
+    cleaned = line.strip().lower().rstrip(":")
+    if not cleaned or len(cleaned) > 48:
+        return None
+    for key, aliases in _HEADINGS.items():
+        if cleaned in aliases:
+            return key
+    return None
 
-    # Deduplicate while preserving order
-    for key in ("skills", "languages", "education", "experience_lines"):
-        result[key] = list(dict.fromkeys(result[key]))
+
+def _split_named_sections(text: str) -> dict[str, str]:
+    lines = text.splitlines()
+    sections: dict[str, list[str]] = {"general": []}
+    current = "general"
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            sections.setdefault(current, []).append("")
+            continue
+        heading = _is_heading(line)
+        if heading:
+            current = heading
+            sections.setdefault(current, [])
+            continue
+        # Also catch titles like "Tabellarischer Lebenslauf"
+        if re.fullmatch(r"tabellarischer lebenslauf", line, re.I):
+            continue
+        sections.setdefault(current, []).append(raw.rstrip())
+    return {k: "\n".join(v).strip() for k, v in sections.items() if "".join(v).strip()}
+
+
+def _parse_languages(body: str) -> list[LanguageEntry]:
+    results: list[LanguageEntry] = []
+    for raw in body.splitlines():
+        line = _normalize_bullet(raw)
+        if not line:
+            continue
+        # "Dänisch – A2"
+        amp = re.match(
+            r"^(?P<langs>.+?)\s*[–\-—|]\s*(?P<level>[ABC][12]|Muttersprache|native)\s*$",
+            line,
+            re.I,
+        )
+        if amp and ("&" in amp.group("langs") or " und " in amp.group("langs").lower()):
+            level = amp.group("level")
+            parts = re.split(r"\s*(?:&| und )\s*", amp.group("langs"), flags=re.I)
+            for part in parts:
+                name = re.sub(r"\(.*?\)", "", part).strip(" -–—|")
+                if name:
+                    results.append(LanguageEntry(language=name, level=level.upper() if len(level) == 2 else level))
+            continue
+        # "Deutsch (Muttersprache) – C2" / "Englisch – C1"
+        m = re.match(
+            r"^(?P<lang>[A-Za-zÄÖÜäöüß /]+?)(?:\s*\((?P<meta>[^)]+)\))?\s*[–\-—|]?\s*(?P<level>[ABC][12]|Muttersprache|native)?\s*$",
+            line,
+            re.I,
+        )
+        if m:
+            lang = m.group("lang").strip()
+            level = (m.group("level") or "").strip()
+            meta = (m.group("meta") or "").strip()
+            if not level and meta and _LEVEL.search(meta):
+                level = _LEVEL.search(meta).group(1)
+            elif not level and meta.lower() in {"muttersprache", "native"}:
+                level = "C2"
+            if lang:
+                results.append(
+                    LanguageEntry(
+                        language=lang,
+                        level=level.upper() if re.fullmatch(r"[ABC][12]", level, re.I) else level,
+                    )
+                )
+            continue
+        level_m = _LEVEL.search(line)
+        if level_m:
+            lang = line[: level_m.start()].strip(" -–—|()")
+            if lang:
+                results.append(LanguageEntry(language=lang, level=level_m.group(1).upper()))
+    # Deduplicate by language
+    seen: set[str] = set()
+    unique: list[LanguageEntry] = []
+    for item in results:
+        key = item.normalized_key()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+def _parse_software(body: str) -> list[str]:
+    items: list[str] = []
+    for raw in body.splitlines():
+        line = _normalize_bullet(raw)
+        if not line:
+            continue
+        # Expand "MS Office (Word, Excel – fortgeschritten)"
+        m = re.match(r"^(?P<head>MS Office)\s*\((?P<inner>.+)\)$", line, re.I)
+        if m:
+            items.append(m.group("head"))
+            inner = m.group("inner")
+            # Word, Excel – fortgeschritten
+            chunks = re.split(r",|/", inner)
+            for chunk in chunks:
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                if "excel" in chunk.lower():
+                    items.append("Excel – fortgeschritten" if "fortgeschritten" in chunk.lower() or "fortgeschritten" in inner.lower() else "Excel")
+                    if "fortgeschritten" in inner.lower() and "excel" in chunk.lower():
+                        pass
+                elif "word" in chunk.lower():
+                    items.append("Word")
+                else:
+                    items.append(chunk)
+            # If fortgeschritten applies to Excel specifically already handled
+            continue
+        # "Power BI, Microsoft Teams"
+        if "," in line and not re.search(r"\(.+,.+\)", line):
+            for part in line.split(","):
+                part = part.strip()
+                if part:
+                    items.append(part)
+            continue
+        # "Individuell entwickeltes … (Versand Office)"
+        paren = re.match(r"^(?P<desc>.+?)\s*\((?P<name>[^)]+)\)\s*$", line)
+        if paren and len(paren.group("name")) < 40:
+            items.append(f"{paren.group('name').strip()} / {paren.group('desc').strip()}")
+            items.append(paren.group("name").strip())
+            continue
+        items.append(line)
+    # Cleanup duplicates preserving order; keep richer excel entry
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        key = item.lower()
+        if key in seen:
+            continue
+        # Prefer "Excel – fortgeschritten" over "Excel"
+        if item.lower() == "excel" and any("excel" in c.lower() and "fortgeschritten" in c.lower() for c in items):
+            continue
+        seen.add(key)
+        cleaned.append(item)
+    return cleaned
+
+
+def _parse_certificates(body: str) -> list[CertificateEntry]:
+    result: list[CertificateEntry] = []
+    for raw in body.splitlines():
+        line = _normalize_bullet(raw)
+        if line:
+            result.append(CertificateEntry(name=line))
     return result
 
 
-def _split_sections(text: str) -> list[tuple[str, str]]:
-    lines = text.splitlines()
-    sections: list[tuple[str, str]] = []
-    current_h = "general"
-    buf: list[str] = []
-    heading_re = re.compile(r"^(?:#{1,3}\s*)?([A-ZÄÖÜ][A-Za-zÄÖÜäöüß /&]{2,40})\s*:?\s*$")
-    for line in lines:
-        m = heading_re.match(line.strip())
-        if m and len(line.strip()) < 48:
-            if buf:
-                sections.append((current_h, "\n".join(buf)))
-            current_h = m.group(1)
-            buf = []
+def _parse_driving(body: str) -> list[str]:
+    result: list[str] = []
+    for raw in body.splitlines():
+        line = _normalize_bullet(raw)
+        if not line:
+            continue
+        if re.search(r"klasse\s*[A-Z0-9]+", line, re.I) or re.search(r"\b[ABE]\b", line):
+            result.append(line)
+        elif "führerschein" not in line.lower():
+            result.append(line)
+    if not result and body.strip():
+        result.append(_normalize_bullet(body.splitlines()[0]))
+    return list(dict.fromkeys(result))
+
+
+_QUAL_START = re.compile(
+    r"^(Berufsausbildung|Mittlere Reife|Fachhochschulreife|Abitur|Bachelor|Master|"
+    r"Studium|Fachabitur|Realschulabschluss|Hauptschulabschluss|Promotion)",
+    re.IGNORECASE,
+)
+
+
+def _parse_education(body: str) -> list[EducationEntry]:
+    lines = [ln.rstrip() for ln in body.splitlines()]
+    entries: list[EducationEntry] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line or line.startswith(("•", "-", "–")):
+            i += 1
+            continue
+        if line.lower().startswith("abschluss"):
+            i += 1
+            continue
+        if not _QUAL_START.match(line):
+            i += 1
+            continue
+        qualification = line
+        completion = ""
+        institution_parts: list[str] = []
+        locations: list[str] = []
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j].strip()
+            if not nxt:
+                j += 1
+                continue
+            if _is_heading(nxt) or _QUAL_START.match(nxt):
+                break
+            am = _ABSCHLUSS.search(nxt)
+            if am:
+                completion = am.group("date")
+                j += 1
+                continue
+            if nxt.startswith(("•", "-", "–")):
+                j += 1
+                continue
+            if "," in nxt:
+                left, right = nxt.rsplit(",", 1)
+                institution_parts.append(left.strip())
+                if right.strip():
+                    locations.append(right.strip())
+            else:
+                institution_parts.append(nxt)
+            j += 1
+        entries.append(
+            EducationEntry(
+                qualification=qualification,
+                institution=" / ".join(institution_parts) if institution_parts else "",
+                location=", ".join(dict.fromkeys(locations)),
+                completion_date=completion,
+                end_date=completion,
+            )
+        )
+        i = max(j, i + 1)
+    return [e for e in entries if e.qualification]
+
+
+def _parse_experience(body: str) -> list[ExperienceEntry]:
+    lines = [ln.rstrip() for ln in body.splitlines()]
+    entries: list[ExperienceEntry] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        start = end = ""
+        pm = _PERIOD.search(line)
+        sm = _SINCE.match(line)
+        if pm:
+            start = pm.group("start").replace("Seit ", "").replace("seit ", "").strip()
+            end = pm.group("end").strip()
+            i += 1
+        elif sm:
+            start = sm.group("start")
+            end = "aktuell"
+            i += 1
         else:
-            buf.append(line)
-    if buf:
-        sections.append((current_h, "\n".join(buf)))
-    return sections
+            # date on its own previous style already handled; skip orphan bullets
+            if line.startswith(("•", "-", "–", "*")):
+                i += 1
+                continue
+            # Maybe title without date — uncertain, skip inventing
+            i += 1
+            continue
+
+        # Skip blanks
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        title = lines[i].strip() if i < len(lines) else ""
+        i += 1
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        company_line = lines[i].strip() if i < len(lines) else ""
+        company = company_line
+        location = ""
+        if company_line and not company_line.startswith(("•", "-", "–", "*")):
+            i += 1
+            if "," in company_line:
+                company, location = [p.strip() for p in company_line.rsplit(",", 1)]
+        responsibilities: list[str] = []
+        while i < len(lines):
+            nxt = lines[i].strip()
+            if not nxt:
+                i += 1
+                # blank: peek if next is a new period
+                if i < len(lines) and (_PERIOD.search(lines[i].strip()) or _SINCE.match(lines[i].strip())):
+                    break
+                continue
+            if _PERIOD.search(nxt) or _SINCE.match(nxt):
+                break
+            if _is_heading(nxt):
+                break
+            if nxt.startswith(("•", "-", "–", "*", "·")) or True:
+                # Responsibilities are typically bullets; also accept plain lines under a job
+                if _PERIOD.search(nxt) or _SINCE.match(nxt):
+                    break
+                # Stop if this looks like a new job title+company without date (rare)
+                cleaned = _normalize_bullet(nxt)
+                if cleaned:
+                    responsibilities.append(cleaned)
+                i += 1
+                continue
+        if title or company:
+            entries.append(
+                ExperienceEntry(
+                    title=title,
+                    company=company,
+                    location=location,
+                    start_date=start,
+                    end_date=end,
+                    responsibilities=responsibilities,
+                )
+            )
+    return entries
+
+
+def parse_cv_text(text: str) -> dict[str, Any]:
+    """Heuristic extraction — never invents values not present in text."""
+    empty = {
+        "raw_text_preview": text[:2000],
+        "skills": [],
+        "software": [],
+        "languages": [],
+        "education": [],
+        "work_experience": [],
+        "certificates": [],
+        "driving_license": [],
+        "experience_lines": [],
+        "emails": [],
+        "phones": [],
+        "uncertain": [],
+    }
+    if not text.strip():
+        return empty
+
+    emails = re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+    phones = re.findall(r"(?:\+?\d[\d\s\-()]{7,}\d)", text)
+    sections = _split_named_sections(text)
+
+    languages = _parse_languages(sections.get("languages", ""))
+    software = _parse_software(sections.get("software", ""))
+    # If "kenntnisse" caught soft skills separately
+    skills = []
+    if "skills" in sections:
+        for raw in sections["skills"].splitlines():
+            line = _normalize_bullet(raw)
+            if line:
+                skills.extend([p.strip() for p in re.split(r"[,|/]", line) if p.strip()])
+    certificates = _parse_certificates(sections.get("certificates", ""))
+    driving = _parse_driving(sections.get("license", ""))
+    education = _parse_education(sections.get("education", ""))
+    experience = _parse_experience(sections.get("experience", ""))
+
+    # Fallback: scan whole text for Führerschein if section missing
+    if not driving:
+        for m in re.finditer(r"Klasse\s+[A-Z0-9]+(?:\s*\([^)]+\))?", text, re.I):
+            driving.append(m.group(0))
+
+    result = {
+        "raw_text_preview": text[:2000],
+        "skills": list(dict.fromkeys(skills)),
+        "software": software,
+        "languages": [
+            {"language": lang.language, "level": lang.level} for lang in languages
+        ],
+        "education": [
+            {
+                "qualification": e.qualification,
+                "institution": e.institution,
+                "location": e.location,
+                "start_date": e.start_date,
+                "end_date": e.end_date,
+                "completion_date": e.completion_date,
+            }
+            for e in education
+        ],
+        "work_experience": [
+            {
+                "title": e.title,
+                "company": e.company,
+                "location": e.location,
+                "start_date": e.start_date,
+                "end_date": e.end_date,
+                "responsibilities": e.responsibilities,
+            }
+            for e in experience
+        ],
+        "certificates": [{"name": c.name, "issuer": c.issuer, "date": c.date} for c in certificates],
+        "driving_license": list(dict.fromkeys(driving)),
+        "experience_lines": [e.label() for e in experience],
+        "emails": list(dict.fromkeys(emails)),
+        "phones": list(dict.fromkeys(p.strip() for p in phones)),
+        "uncertain": [],
+    }
+    return result
+
+
+def parsed_to_qualifications(parsed: dict[str, Any]) -> QualificationsConfig:
+    return parse_qualifications(
+        {
+            "skills": parsed.get("skills") or [],
+            "software": parsed.get("software") or [],
+            "driving_license": parsed.get("driving_license") or [],
+            "languages": parsed.get("languages") or [],
+            "education": parsed.get("education") or [],
+            "work_experience": parsed.get("work_experience") or [],
+            "certificates": parsed.get("certificates") or [],
+        }
+    )
 
 
 def import_cv(path: Path) -> dict[str, Any]:

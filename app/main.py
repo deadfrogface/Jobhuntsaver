@@ -119,10 +119,19 @@ def run_pipeline(
     all_jobs = []
     for source in sources:
         progress(f"Suche {source.source_id}…")
-        jobs, err = source.safe_search(queries)
+        jobs, err, detail = source.safe_search(queries)
         if err:
             run.error(f"{source.source_id}: {err}")
-            db.set_source_status(source.source_id, "error", err, 0)
+            if detail:
+                run.error(detail.detail())
+                db.set_source_status(
+                    source.source_id,
+                    "error",
+                    detail.short_message(),
+                    0,
+                )
+            else:
+                db.set_source_status(source.source_id, "error", err, 0)
             progress(f"{source.source_id}-Suche fehlgeschlagen. Andere Quellen laufen weiter.")
             continue
         run.info(f"{source.source_id}: {len(jobs)} jobs")

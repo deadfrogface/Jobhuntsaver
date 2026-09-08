@@ -177,7 +177,20 @@ class FirstRunWizard(QWizard):
             cfg.profile.qualifications.skills = skills
         langs = self.skills.languages.get_items()
         if langs:
-            cfg.profile.qualifications.languages = langs
+            from core.config import LanguageEntry
+
+            entries = []
+            for item in langs:
+                if isinstance(item, LanguageEntry):
+                    entries.append(item)
+                else:
+                    # "Englisch C1" / plain name
+                    parts = str(item).rsplit(" ", 1)
+                    if len(parts) == 2 and len(parts[1]) <= 3:
+                        entries.append(LanguageEntry(language=parts[0], level=parts[1]))
+                    else:
+                        entries.append(LanguageEntry(language=str(item), level=""))
+            cfg.profile.qualifications.languages = entries
         if self.mode.review.isChecked():
             cfg.settings.mode = "review_before_submit"
         elif self.mode.auto.isChecked():

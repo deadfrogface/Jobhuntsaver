@@ -60,18 +60,34 @@ class ConfigService:
             application_path=self.application_path,
             settings_path=self.settings_path,
             root=self.dirs["root"],
+            strip_placeholders=True,
         )
         # Force absolute runtime paths under AppData
         config.settings.database_path = str(self.dirs["data"] / "jobs.db")
         config.settings.logs_dir = str(self.dirs["logs"])
         config.settings.browser_profile_dir = str(self.dirs["browser_profile"])
-        # Cover letter template stays in install/source tree
         tpl = Path(config.settings.cover_letter_template)
         if not tpl.is_absolute():
             bundled = project_root() / tpl
             if bundled.exists():
                 config.settings.cover_letter_template = str(bundled)
         self._config = config
+        # Persist cleaned profile if demo placeholders were stripped
+        try:
+            from core.config import strip_example_placeholders
+            from copy import deepcopy
+
+            before = deepcopy(config.profile.qualifications)
+            strip_example_placeholders(config.profile)
+            after = config.profile.qualifications
+            if (
+                before.skills != after.skills
+                or before.software != after.software
+                or before.languages != after.languages
+            ):
+                self.save(config)
+        except Exception:
+            pass
         return config
 
     @property

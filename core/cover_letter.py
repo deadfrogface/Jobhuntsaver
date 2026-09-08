@@ -32,10 +32,14 @@ def render_cover_letter(job: Job, config: AppConfig) -> str:
     else:
         template = DEFAULT_TEMPLATE
 
-    skills = ", ".join(config.profile.qualifications.skills[:6]) or "meine bisherigen beruflichen Erfahrungen"
+    skills = ", ".join(
+        (config.profile.qualifications.skills + config.profile.qualifications.software)[:6]
+    ) or "meine bisherigen beruflichen Erfahrungen"
     exp = config.profile.qualifications.work_experience
     if exp:
-        experience_sentence = f"In meiner bisherigen Tätigkeit ({exp[0]}) habe ich relevante Erfahrungen gesammelt."
+        first = exp[0]
+        label = first.label() if hasattr(first, "label") else str(first)
+        experience_sentence = f"In meiner bisherigen Tätigkeit ({label}) habe ich relevante Erfahrungen gesammelt."
     else:
         experience_sentence = "Gern bringe ich meine bisherigen beruflichen Erfahrungen in Ihr Team ein."
 

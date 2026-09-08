@@ -33,25 +33,48 @@ class IndeedSource(JobSource):
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         try:
+            # tls_client ships native DLLs required by python-jobspy on Windows.
+            import tls_client  # noqa: F401
             from jobspy import scrape_jobs
         except ImportError as exc:
-            raise RuntimeError("python-jobspy not installed") from exc
+            raise RuntimeError(
+                f"Indeed dependency missing (python-jobspy/tls_client): {exc}"
+            ) from exc
+        except OSError as exc:
+            raise RuntimeError(
+                f"Indeed native library failed to load (tls_client DLL): {exc}"
+            ) from exc
 
         all_jobs: list[Job] = []
         seen: set[str] = set()
+        hard_errors: list[str] = []
         for query in queries:
             try:
-                df = scrape_jobs(
+                kwargs = dict(
                     site_name=[self.board],
                     search_term=query.keyword,
                     location=query.location if query.location.lower() != "remote" else "Germany",
                     country_indeed="germany",
                     results_wanted=query.max_results,
-                    hours_old=max(24, query.published_within_days * 24),
                     is_remote=query.location.lower() == "remote",
+                    distance=int(query.radius_km) if query.radius_km else None,
                 )
+                try:
+                    df = scrape_jobs(**kwargs)
+                except TypeError:
+                    # Older/newer jobspy builds differ slightly in kwargs
+                    kwargs.pop("distance", None)
+                    df = scrape_jobs(**kwargs)
             except Exception as exc:
                 logger.error("Indeed JobSpy error for '%s': %s", query.keyword, exc)
+                msg = str(exc)
+                if any(
+                    x in msg.lower()
+                    for x in ("dynlib", "dll", "unexpected keyword", "missing")
+                ):
+                    hard_errors.append(msg)
+                    continue
+                hard_errors.append(msg)
                 continue
             if df is None or getattr(df, "empty", True):
                 continue
@@ -60,6 +83,8 @@ class IndeedSource(JobSource):
                 if job and job.id not in seen:
                     seen.add(job.id)
                     all_jobs.append(job)
+        if not all_jobs and hard_errors:
+            raise RuntimeError(hard_errors[0])
         return all_jobs
 
     def _map_row(self, row) -> Job | None:

@@ -1,16 +1,18 @@
 """Local job matching (0-100) without LLM APIs.
 
-Adapted from AutoApply core/filter.py scoring ideas, extended with
-distance bands, remote/hybrid, skills, languages, and reason strings.
+Uses the full structured profile: titles, experience, education,
+certificates, software, skills, languages+levels, driving license.
 """
 
 from __future__ import annotations
 
 import re
 
-from core.config import AppConfig
+from core.config import AppConfig, LanguageEntry
 from core.hard_filter import hard_exclude
 from core.models import Job, MatchResult, RemoteType
+
+_CEFR_ORDER = {"a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "muttersprache": 6, "native": 6}
 
 
 def _extract_salary_number(salary_str: str) -> int | None:
@@ -24,7 +26,6 @@ def _extract_salary_number(salary_str: str) -> int | None:
         return None
     if "k" in cleaned and value < 1000:
         value *= 1000
-    # Monthly heuristic for DE ads under 10k
     if value < 10000:
         value *= 12
     return int(value)
@@ -46,6 +47,59 @@ def _distance_points(distance_km: float | None, remote_type: str) -> tuple[int, 
     return 0, None, f"{distance_km} km exceeds commute limit"
 
 
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+
+def _token_in_text(token: str, haystack: str) -> bool:
+    t = _norm(token)
+    if not t or len(t) < 2:
+        return False
+    if t in haystack:
+        return True
+    # Word-boundary-ish for short tokens
+    return bool(re.search(rf"(?<!\w){re.escape(t)}(?!\w)", haystack))
+
+
+def _required_language_levels(text: str) -> list[tuple[str, str]]:
+    """Detect language requirements like 'Englisch C1' in a job ad."""
+    found: list[tuple[str, str]] = []
+    patterns = [
+        r"(deutsch|german|englisch|english|französisch|franzoesisch|french|italienisch|italian|spanisch|spanish|ungarisch|hungarian)\s*(?:kenntnisse)?\s*[\(:]?\s*([abc][12]|muttersprache|native)",
+        r"([abc][12])\s+(deutsch|german|englisch|english)",
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, text, re.I):
+            g1, g2 = m.group(1), m.group(2)
+            if re.fullmatch(r"[abc][12]", g1, re.I):
+                found.append((_norm(g2), g1.upper()))
+            else:
+                found.append((_norm(g1), g2.upper() if len(g2) == 2 else g2))
+    return found
+
+
+def _profile_lang_level(languages: list[LanguageEntry], name: str) -> int:
+    aliases = {
+        "deutsch": {"deutsch", "german"},
+        "german": {"deutsch", "german"},
+        "englisch": {"englisch", "english"},
+        "english": {"englisch", "english"},
+        "italienisch": {"italienisch", "italian"},
+        "ungarisch": {"ungarisch", "hungarian"},
+    }
+    wanted = aliases.get(name, {name})
+    best = 0
+    for lang in languages:
+        if _norm(lang.language) in wanted or any(a in _norm(lang.language) for a in wanted):
+            best = max(best, _CEFR_ORDER.get(_norm(lang.level), 0))
+    return best
+
+
+def _has_driving_class_b(licenses: list[str], text: str) -> bool:
+    joined = " ".join(licenses).lower()
+    return bool(re.search(r"klasse\s*b|\b[b]\b.*pkw|führerschein\s*b", joined))
+
+
 def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> MatchResult:
     exclude = hard_exclude(job, config, already_applied=already_applied)
     if exclude:
@@ -58,19 +112,22 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
         )
 
     profile = config.profile
+    quals = profile.qualifications
     reasons: list[str] = []
     issues: list[str] = []
     score = 0
 
-    title_l = job.title.lower()
-    desc_l = (job.description or "").lower()
+    title_l = _norm(job.title)
+    desc_l = _norm(job.description or "")
     combined = f"{title_l} {desc_l}"
 
     # Title match (0-30)
     title_score = 0
     all_titles = profile.jobs.desired_titles + profile.jobs.alternative_titles
+    # Also consider past job titles from experience
+    past_titles = [e.title for e in quals.work_experience if e.title]
     for target in all_titles:
-        t = target.lower().strip()
+        t = _norm(target)
         if not t:
             continue
         if t in title_l:
@@ -81,63 +138,120 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
         title_words = set(title_l.split())
         if target_words and len(target_words & title_words) >= max(1, len(target_words) * 0.5):
             title_score = max(title_score, 18)
-    if title_score == 0 and all_titles:
+    if title_score < 30:
+        for past in past_titles:
+            if _norm(past) and _norm(past) in title_l:
+                title_score = max(title_score, 22)
+                reasons.append(f"Title matches prior role: {past}")
+                break
+            past_words = set(_norm(past).split())
+            if past_words and len(past_words & set(title_l.split())) >= max(1, len(past_words) * 0.5):
+                title_score = max(title_score, 16)
+    if title_score == 0 and (all_titles or past_titles):
         issues.append("Title only weakly related to desired roles")
     score += title_score
 
-    # Skills / keywords (0-25)
-    skill_hits = []
-    for skill in profile.qualifications.skills + profile.qualifications.software + profile.filters.desired_keywords:
-        s = skill.lower().strip()
-        if s and s in combined:
+    # Skills / software / certificates / keywords (0-25)
+    skill_hits: list[str] = []
+    candidates = (
+        list(quals.skills)
+        + list(quals.software)
+        + list(profile.filters.desired_keywords)
+        + [c.name for c in quals.certificates if c.name]
+    )
+    for skill in candidates:
+        if _token_in_text(skill, combined) or any(
+            _token_in_text(part, combined)
+            for part in re.split(r"[,/|]", skill)
+            if len(part.strip()) >= 3
+        ):
             skill_hits.append(skill)
-    skill_points = min(25, len(skill_hits) * 5)
+    skill_points = min(25, len(dict.fromkeys(skill_hits)) * 5)
     score += skill_points
     if skill_hits:
-        reasons.append(f"Skills match: {', '.join(skill_hits[:5])}")
+        reasons.append(f"Skills/software match: {', '.join(list(dict.fromkeys(skill_hits))[:5])}")
     else:
         issues.append("Few listed skills found in the job text")
 
-    # Experience / education hints (0-10)
-    exp_hits = [e for e in profile.qualifications.work_experience if e.lower() in combined]
-    edu_hits = [e for e in profile.qualifications.education if e.lower() in combined]
+    # Experience responsibilities / education (0-15)
+    exp_hits: list[str] = []
+    for exp in quals.work_experience:
+        for token in exp.search_tokens():
+            # Prefer meaningful phrases (>= 4 chars)
+            if len(token.strip()) < 4:
+                continue
+            if _token_in_text(token, combined):
+                exp_hits.append(token)
+                break
+            # Partial: key nouns from responsibilities
+            for word in re.findall(r"[A-Za-zÄÖÜäöüß]{5,}", token):
+                if _token_in_text(word, combined):
+                    exp_hits.append(word)
+                    break
+    edu_hits: list[str] = []
+    for edu in quals.education:
+        for token in edu.search_tokens():
+            if len(token.strip()) >= 4 and _token_in_text(token, combined):
+                edu_hits.append(token)
     if exp_hits:
-        score += 6
-        reasons.append(f"Relevant experience mentioned: {exp_hits[0]}")
+        score += min(10, 4 + len(exp_hits))
+        reasons.append(f"Relevant experience: {', '.join(list(dict.fromkeys(exp_hits))[:3])}")
     if edu_hits:
         score += 4
         reasons.append(f"Education match: {edu_hits[0]}")
 
-    # Languages (0-10)
-    lang_hits = []
-    for lang in profile.qualifications.languages:
-        token = lang.split("(")[0].strip().lower()
-        if token and (token in combined or token in ["deutsch", "german", "englisch", "english"]):
-            # positive if job asks for a language the user has
-            if any(x in combined for x in (token, "deutsch", "german", "englisch", "english")):
-                lang_hits.append(lang)
-    if "deutsch" in combined or "german" in combined:
-        if any("deutsch" in l.lower() or "german" in l.lower() for l in profile.qualifications.languages):
-            score += 8
-            reasons.append("Required German language skills available")
-        else:
-            issues.append("German language may be required")
-            if config.settings.exclude_on_missing_mandatory:
+    # Languages + proficiency (0-10)
+    lang_req = _required_language_levels(combined)
+    if lang_req:
+        satisfied = []
+        missing = []
+        for name, level in lang_req:
+            have = _profile_lang_level(quals.languages, name)
+            need = _CEFR_ORDER.get(level.lower(), 0)
+            if have and have >= need:
+                satisfied.append(f"{name} {level}")
+            elif have:
+                missing.append(f"{name} {level} (profile lower)")
+            else:
+                missing.append(f"{name} {level}")
+        if satisfied:
+            score += min(10, 5 + 2 * len(satisfied))
+            reasons.append(f"Language requirement met: {', '.join(satisfied[:3])}")
+        if missing:
+            issues.append(f"Language may be missing: {', '.join(missing[:2])}")
+            if config.settings.exclude_on_missing_mandatory and any(
+                "deutsch" in m or "german" in m for m in missing
+            ):
                 return MatchResult(
                     score=0,
                     rejection_reasons=["Mandatory German language missing"],
                     excluded=True,
                     exclude_reason="Mandatory German language missing",
                 )
-    elif lang_hits:
-        score += 5
-        reasons.append(f"Language fit: {', '.join(lang_hits[:2])}")
+    else:
+        # Soft language presence
+        if any("deutsch" in _norm(l.language) or "german" in _norm(l.language) for l in quals.languages):
+            if "deutsch" in combined or "german" in combined:
+                score += 6
+                reasons.append("German language skills available")
 
     # Driving license (0-5)
-    if any(x in combined for x in ("führerschein", "fuehrerschein", "driving licence", "driving license")):
-        if profile.qualifications.driving_license:
-            score += 5
-            reasons.append("Driving license available")
+    needs_license = any(
+        x in combined
+        for x in ("führerschein", "fuehrerschein", "driving licence", "driving license", "klasse b")
+    )
+    if needs_license:
+        if quals.driving_license:
+            if "klasse b" in combined or re.search(r"führerschein\s*b|\bklasse\s*b\b", combined):
+                if _has_driving_class_b(quals.driving_license, combined):
+                    score += 5
+                    reasons.append("Driving license Klasse B available")
+                elif quals.driving_license:
+                    score += 3
+                    reasons.append("Driving license available")
+            else:
+                score += 5
+                reasons.append("Driving license available")
         else:
             issues.append("Driving license may be required")
             if config.settings.exclude_on_missing_mandatory:
@@ -172,7 +286,6 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     elif job.remote_type == RemoteType.ONSITE.value and emp.onsite:
         score += 3
 
-    # Distance (0-20) — already hard-excluded above 20 km when required
     d_pts, d_reason, d_issue = _distance_points(job.distance_km, job.remote_type)
     score += d_pts
     if d_reason:
@@ -180,7 +293,6 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     if d_issue:
         issues.append(d_issue)
 
-    # Salary (0-10)
     min_sal = emp.minimum_salary
     if min_sal is None:
         score += 5
@@ -199,7 +311,6 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
         else:
             issues.append(f"Salary below minimum ({salary_num} < {min_sal})")
 
-    # Preferred company bonus
     for preferred in profile.filters.preferred_companies:
         if preferred.lower() in job.company.lower():
             score = min(100, score + 5)

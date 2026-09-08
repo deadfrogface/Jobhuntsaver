@@ -1,24 +1,15 @@
 location:
-  # Replace with your real address in the local config/profile.yaml (not committed).
-  home_address: "Musterstraße 1, 12345 Musterstadt, Germany"
+  # Set your address in the app (Profil) or here for local use — not committed as secrets.
+  home_address: ""
   max_distance_km: 20
   allow_remote_germany: true
   allow_hybrid: true
   country: "DE"
-  # Optional: set coordinates to skip geocoding
-  # home_latitude: 51.22
-  # home_longitude: 6.91
 
 jobs:
-  desired_titles:
-    - "Kundenberater"
-    - "Sachbearbeiter"
-  alternative_titles:
-    - "Assistent"
-    - "Office Manager"
-  unwanted_titles:
-    - "Praktikant"
-    - "Werkstudent"
+  desired_titles: []
+  alternative_titles: []
+  unwanted_titles: []
   desired_industries: []
   excluded_industries: []
 
@@ -30,25 +21,19 @@ employment:
   onsite: true
   minimum_salary: null
 
+# Leave qualifications empty until the user enters them or imports a CV.
+# Never ship fake demo skills/languages here — they affect matching.
 qualifications:
   education: []
   work_experience: []
-  skills:
-    - "MS Office"
-    - "Kommunikation"
-  software:
-    - "Excel"
-    - "Outlook"
+  skills: []
+  software: []
   driving_license: []
-  languages:
-    - "Deutsch (C1)"
-    - "Englisch (B1)"
+  languages: []
+  certificates: []
 
 filters:
-  desired_keywords:
-    - "Kunden"
-    - "Verwaltung"
-  exclusion_keywords:
-    - "Provisionsbasis exclusively"
+  desired_keywords: []
+  exclusion_keywords: []
   preferred_companies: []
   excluded_companies: []

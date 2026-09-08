@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,12 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
+
+# Exact placeholder sets from older example configs — never treat as real data.
+EXAMPLE_SKILL_SET = {"ms office", "kommunikation"}
+EXAMPLE_SOFTWARE_SET = {"excel", "outlook"}
+EXAMPLE_LANGUAGE_SET = {"deutsch (c1)", "englisch (b1)"}
+EXAMPLE_KEYWORD_SET = {"kunden", "verwaltung"}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -26,7 +33,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 @dataclass
 class LocationConfig:
-    home_address: str = "Musterstraße 1, 12345 Musterstadt, Germany"
+    home_address: str = ""
     max_distance_km: float = 20.0
     allow_remote_germany: bool = True
     allow_hybrid: bool = True
@@ -55,13 +62,113 @@ class EmploymentConfig:
 
 
 @dataclass
+class LanguageEntry:
+    language: str = ""
+    level: str = ""
+
+    def label(self) -> str:
+        if self.language and self.level:
+            return f"{self.language} | {self.level}"
+        return self.language or self.level
+
+    def normalized_key(self) -> str:
+        return self.language.strip().lower()
+
+
+@dataclass
+class EducationEntry:
+    qualification: str = ""
+    institution: str = ""
+    location: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    completion_date: str = ""
+
+    def label(self) -> str:
+        parts = [self.qualification, self.institution, self.completion_date or self.end_date]
+        return " – ".join(p for p in parts if p)
+
+    def normalized_key(self) -> str:
+        return f"{self.qualification}|{self.institution}".strip().lower()
+
+    def search_tokens(self) -> list[str]:
+        return [t for t in (self.qualification, self.institution, self.location) if t]
+
+
+@dataclass
+class ExperienceEntry:
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    responsibilities: list[str] = field(default_factory=list)
+
+    def label(self) -> str:
+        period = " – ".join(p for p in (self.start_date, self.end_date) if p)
+        head = " @ ".join(p for p in (self.title, self.company) if p)
+        return f"{head} ({period})" if period else head
+
+    def normalized_key(self) -> str:
+        return f"{self.title}|{self.company}|{self.start_date}".strip().lower()
+
+    def search_tokens(self) -> list[str]:
+        tokens = [self.title, self.company, self.location]
+        tokens.extend(self.responsibilities)
+        return [t for t in tokens if t]
+
+
+@dataclass
+class CertificateEntry:
+    name: str = ""
+    issuer: str = ""
+    date: str = ""
+
+    def label(self) -> str:
+        parts = [self.name, self.issuer, self.date]
+        return " – ".join(p for p in parts if p)
+
+    def normalized_key(self) -> str:
+        return self.name.strip().lower()
+
+
+@dataclass
 class QualificationsConfig:
-    education: list[str] = field(default_factory=list)
-    work_experience: list[str] = field(default_factory=list)
+    education: list[EducationEntry] = field(default_factory=list)
+    work_experience: list[ExperienceEntry] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
     software: list[str] = field(default_factory=list)
     driving_license: list[str] = field(default_factory=list)
-    languages: list[str] = field(default_factory=list)
+    languages: list[LanguageEntry] = field(default_factory=list)
+    certificates: list[CertificateEntry] = field(default_factory=list)
+
+    def language_labels(self) -> list[str]:
+        return [lang.label() for lang in self.languages if lang.language]
+
+    def education_labels(self) -> list[str]:
+        return [e.label() for e in self.education if e.qualification or e.institution]
+
+    def experience_labels(self) -> list[str]:
+        return [e.label() for e in self.work_experience if e.title or e.company]
+
+    def certificate_labels(self) -> list[str]:
+        return [c.label() for c in self.certificates if c.name]
+
+    def all_match_tokens(self) -> list[str]:
+        """Flattened tokens for job matching (no invented values)."""
+        tokens: list[str] = []
+        tokens.extend(self.skills)
+        tokens.extend(self.software)
+        tokens.extend(self.driving_license)
+        tokens.extend(self.language_labels())
+        for edu in self.education:
+            tokens.extend(edu.search_tokens())
+        for exp in self.work_experience:
+            tokens.extend(exp.search_tokens())
+        for cert in self.certificates:
+            if cert.name:
+                tokens.append(cert.name)
+        return [t for t in tokens if t and str(t).strip()]
 
 
 @dataclass
@@ -160,7 +267,7 @@ class SettingsConfig:
     automatic_submission: bool = False
     automation_paused: bool = False
     run_automatically: bool = False
-    schedule_mode: str = "every_x_hours"  # on_login | every_x_hours | once_daily | twice_daily | custom
+    schedule_mode: str = "every_x_hours"
     schedule_interval_hours: int = 6
     schedule_times: list[str] = field(default_factory=lambda: ["08:00"])
 
@@ -183,13 +290,12 @@ class AppConfig:
 def _merge_dataclass(cls, data: dict[str, Any]):
     if not data:
         return cls()
-    fields = getattr(cls, "__dataclass_fields__", {})
+    field_map = getattr(cls, "__dataclass_fields__", {})
     kwargs = {}
-    for name, f in fields.items():
+    for name, f in field_map.items():
         if name not in data:
             continue
         value = data[name]
-        # With from __future__ import annotations, f.type may be a string.
         nested = f.type
         if isinstance(nested, str):
             nested = globals().get(nested, nested)
@@ -200,12 +306,149 @@ def _merge_dataclass(cls, data: dict[str, Any]):
     return cls(**kwargs)
 
 
+def _parse_language(value: Any) -> LanguageEntry | None:
+    if isinstance(value, LanguageEntry):
+        return value
+    if isinstance(value, dict):
+        lang = str(value.get("language") or "").strip()
+        level = str(value.get("level") or "").strip()
+        if not lang and not level:
+            return None
+        return LanguageEntry(language=lang, level=level)
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        m = re.match(
+            r"^(?P<lang>.+?)\s*(?:\||–|-|—)?\s*\(?(?P<level>[ABC][12]|Muttersprache|native)\)?\s*$",
+            text,
+            re.IGNORECASE,
+        )
+        if m:
+            return LanguageEntry(
+                language=m.group("lang").strip(" -–—|()"),
+                level=m.group("level").strip(),
+            )
+        parts = re.split(r"\s*[|–—-]\s*", text, maxsplit=1)
+        if len(parts) == 2 and re.fullmatch(
+            r"[ABC][12]|Muttersprache|native", parts[1], re.I
+        ):
+            return LanguageEntry(language=parts[0].strip(), level=parts[1].strip())
+        return LanguageEntry(language=text, level="")
+    return None
+
+
+def _parse_education(value: Any) -> EducationEntry | None:
+    if isinstance(value, EducationEntry):
+        return value
+    if isinstance(value, dict):
+        entry = EducationEntry(
+            qualification=str(value.get("qualification") or "").strip(),
+            institution=str(value.get("institution") or "").strip(),
+            location=str(value.get("location") or "").strip(),
+            start_date=str(value.get("start_date") or "").strip(),
+            end_date=str(value.get("end_date") or "").strip(),
+            completion_date=str(value.get("completion_date") or "").strip(),
+        )
+        return entry if entry.qualification or entry.institution else None
+    if isinstance(value, str) and value.strip():
+        return EducationEntry(qualification=value.strip())
+    return None
+
+
+def _parse_experience(value: Any) -> ExperienceEntry | None:
+    if isinstance(value, ExperienceEntry):
+        return value
+    if isinstance(value, dict):
+        responsibilities = value.get("responsibilities") or []
+        if isinstance(responsibilities, str):
+            responsibilities = [responsibilities]
+        entry = ExperienceEntry(
+            title=str(value.get("title") or "").strip(),
+            company=str(value.get("company") or "").strip(),
+            location=str(value.get("location") or "").strip(),
+            start_date=str(value.get("start_date") or "").strip(),
+            end_date=str(value.get("end_date") or "").strip(),
+            responsibilities=[str(r).strip() for r in responsibilities if str(r).strip()],
+        )
+        return entry if entry.title or entry.company else None
+    if isinstance(value, str) and value.strip():
+        return ExperienceEntry(title=value.strip())
+    return None
+
+
+def _parse_certificate(value: Any) -> CertificateEntry | None:
+    if isinstance(value, CertificateEntry):
+        return value
+    if isinstance(value, dict):
+        entry = CertificateEntry(
+            name=str(value.get("name") or "").strip(),
+            issuer=str(value.get("issuer") or "").strip(),
+            date=str(value.get("date") or "").strip(),
+        )
+        return entry if entry.name else None
+    if isinstance(value, str) and value.strip():
+        return CertificateEntry(name=value.strip())
+    return None
+
+
+def parse_qualifications(raw: dict[str, Any] | None) -> QualificationsConfig:
+    raw = raw or {}
+    languages = []
+    for item in raw.get("languages") or []:
+        parsed = _parse_language(item)
+        if parsed:
+            languages.append(parsed)
+    education = []
+    for item in raw.get("education") or []:
+        parsed = _parse_education(item)
+        if parsed:
+            education.append(parsed)
+    experience = []
+    for item in raw.get("work_experience") or []:
+        parsed = _parse_experience(item)
+        if parsed:
+            experience.append(parsed)
+    certificates = []
+    for item in raw.get("certificates") or []:
+        parsed = _parse_certificate(item)
+        if parsed:
+            certificates.append(parsed)
+    return QualificationsConfig(
+        education=education,
+        work_experience=experience,
+        skills=[str(s).strip() for s in (raw.get("skills") or []) if str(s).strip()],
+        software=[str(s).strip() for s in (raw.get("software") or []) if str(s).strip()],
+        driving_license=[
+            str(s).strip() for s in (raw.get("driving_license") or []) if str(s).strip()
+        ],
+        languages=languages,
+        certificates=certificates,
+    )
+
+
+def strip_example_placeholders(profile: ProfileConfig) -> ProfileConfig:
+    """Remove known demo qualification sets so they never influence matching."""
+    q = profile.qualifications
+    skill_set = {s.lower() for s in q.skills}
+    software_set = {s.lower() for s in q.software}
+    lang_set = {lang.label().lower() for lang in q.languages} | {
+        f"{lang.language} ({lang.level})".lower() for lang in q.languages if lang.level
+    }
+    keyword_set = {k.lower() for k in profile.filters.desired_keywords}
+
+    if skill_set and skill_set <= EXAMPLE_SKILL_SET:
+        q.skills = []
+    if software_set and software_set <= EXAMPLE_SOFTWARE_SET:
+        q.software = []
+    if lang_set and lang_set <= EXAMPLE_LANGUAGE_SET | {"deutsch | c1", "englisch | b1"}:
+        q.languages = []
+    if keyword_set and keyword_set <= EXAMPLE_KEYWORD_SET:
+        profile.filters.desired_keywords = []
+    return profile
+
+
 def _dataclass_to_dict(obj: Any) -> Any:
-    if hasattr(obj, "__dataclass_fields__"):
-        return {
-            name: _dataclass_to_dict(getattr(obj, name))
-            for name in obj.__dataclass_fields__
-        }
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {f.name: _dataclass_to_dict(getattr(obj, f.name)) for f in fields(obj)}
     if isinstance(obj, list):
         return [_dataclass_to_dict(v) for v in obj]
     if isinstance(obj, dict):
@@ -251,6 +494,8 @@ def load_config(
     application_path: Path | None = None,
     settings_path: Path | None = None,
     root: Path | None = None,
+    *,
+    strip_placeholders: bool = True,
 ) -> AppConfig:
     root = root or ROOT
     load_dotenv(root / ".env")
@@ -260,7 +505,6 @@ def load_config(
     application_path = application_path or (root / "config" / "application_profile.yaml")
     settings_path = settings_path or (root / "config" / "settings.yaml")
 
-    # Prefer real files; fall back to examples for first run
     if not profile_path.exists():
         profile_path = example_dir / "profile.yaml.example"
     if not application_path.exists():
@@ -275,9 +519,7 @@ def load_config(
     location = _merge_dataclass(LocationConfig, profile_raw.get("location", {}))
     jobs = _merge_dataclass(JobsConfig, profile_raw.get("jobs", {}))
     employment = _merge_dataclass(EmploymentConfig, profile_raw.get("employment", {}))
-    qualifications = _merge_dataclass(
-        QualificationsConfig, profile_raw.get("qualifications", {})
-    )
+    qualifications = parse_qualifications(profile_raw.get("qualifications", {}))
     filters = _merge_dataclass(FiltersConfig, profile_raw.get("filters", {}))
     profile = ProfileConfig(
         location=location,
@@ -286,10 +528,11 @@ def load_config(
         qualifications=qualifications,
         filters=filters,
     )
+    if strip_placeholders:
+        profile = strip_example_placeholders(profile)
     application = _merge_dataclass(ApplicationProfile, application_raw)
     settings = _merge_dataclass(SettingsConfig, settings_raw)
 
-    # Env overrides for secrets only — never required for search_only
     if os.getenv("CV_PATH"):
         application.cv_path = os.environ["CV_PATH"]
 

@@ -185,10 +185,16 @@ class SettingsPage(QWidget):
                 "ok": "Aktiv",
                 "error": "Fehler",
                 "login_required": "Login erforderlich",
+                "unavailable": "Nicht verfügbar",
             }.get(st, st)
-            msg = row.get("message") or ""
-            lines.append(f"{row.get('source')}: {label}" + (f" – {msg[:80]}" if msg else ""))
+            msg = (row.get("message") or "").strip()
+            if st == "error" and msg:
+                lines.append(f"{row.get('source')}: {label}")
+                lines.append(f"  Details: {msg[:240]}")
+            else:
+                lines.append(f"{row.get('source')}: {label}" + (f" – {msg[:80]}" if msg else ""))
         self.source_status.setText("\n".join(lines) if lines else "Noch kein Quellenstatus.")
+        self.source_status.setWordWrap(True)
         self.browser_status.setText(
             "Browser-Komponente: installiert" if playwright_available() else "Browser-Komponente: fehlt"
         )

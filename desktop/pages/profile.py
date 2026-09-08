@@ -1,4 +1,4 @@
-"""Profile and application data editing."""
+"""Profile page — human-friendly sections and CV import."""
 
 from __future__ import annotations
 
@@ -20,8 +20,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config import LanguageEntry
 from desktop.services import ConfigService
 from desktop.widgets import ListEditor
+from desktop.widgets.cv_import_dialog import CvImportDialog
+from desktop.widgets.structured_editors import (
+    CertificateEditor,
+    EducationEditor,
+    ExperienceEditor,
+    LanguageEditor,
+)
 
 
 class ProfilePage(QWidget):
@@ -37,38 +45,63 @@ class ProfilePage(QWidget):
         root.addWidget(scroll)
         layout = QVBoxLayout(inner)
 
-        # Personal search profile
-        self.desired_titles = ListEditor("Gewünschter Titel…")
-        self.alt_titles = ListEditor("Alternativer Titel…")
-        self.unwanted_titles = ListEditor("Ausgeschlossener Titel…")
+        # Berufswünsche
+        self.desired_titles = ListEditor("Gewünschter Beruf…")
+        self.alt_titles = ListEditor("Alternativer Beruf…")
+        self.unwanted_titles = ListEditor("Ausschluss…")
         self.desired_industries = ListEditor("Branche…")
-        self.excluded_industries = ListEditor("Ausgeschlossene Branche…")
-
-        jobs_box = QGroupBox("Suchprofil – Jobs")
+        self.excluded_industries = ListEditor("Branche ausschließen…")
+        jobs_box = QGroupBox("Berufswünsche")
         jobs_form = QFormLayout(jobs_box)
-        jobs_form.addRow("Gewünschte Titel", self.desired_titles)
-        jobs_form.addRow("Alternative Titel", self.alt_titles)
-        jobs_form.addRow("Ausgeschlossen", self.unwanted_titles)
+        jobs_form.addRow("Gewünschte Berufe", self.desired_titles)
+        jobs_form.addRow("Alternative Berufe", self.alt_titles)
+        jobs_form.addRow("Ausschlüsse", self.unwanted_titles)
         jobs_form.addRow("Branchen", self.desired_industries)
-        jobs_form.addRow("Branchen aus", self.excluded_industries)
+        jobs_form.addRow("Branchen ausschließen", self.excluded_industries)
         layout.addWidget(jobs_box)
 
+        # Berufserfahrung
+        self.experience = ExperienceEditor()
+        exp_box = QGroupBox("Berufserfahrung")
+        exp_layout = QVBoxLayout(exp_box)
+        exp_layout.addWidget(self.experience)
+        layout.addWidget(exp_box)
+
+        # Ausbildung
+        self.education = EducationEditor()
+        edu_box = QGroupBox("Ausbildung")
+        edu_layout = QVBoxLayout(edu_box)
+        edu_layout.addWidget(self.education)
+        layout.addWidget(edu_box)
+
+        # Qualifikationen
         self.skills = ListEditor("Skill…")
         self.software = ListEditor("Software…")
-        self.languages = ListEditor("Sprache…")
-        self.driving = ListEditor("Führerschein…")
-        self.education = ListEditor("Ausbildung…")
-        self.experience = ListEditor("Erfahrung…")
+        self.certificates = CertificateEditor()
+        self.driving = ListEditor("z. B. Klasse B (PKW)")
         quals = QGroupBox("Qualifikationen")
         qform = QFormLayout(quals)
         qform.addRow("Skills", self.skills)
         qform.addRow("Software", self.software)
-        qform.addRow("Sprachen", self.languages)
+        qform.addRow("Zertifikate / Weiterbildungen", self.certificates)
         qform.addRow("Führerschein", self.driving)
-        qform.addRow("Ausbildung", self.education)
-        qform.addRow("Berufserfahrung", self.experience)
         layout.addWidget(quals)
 
+        # Sprachen
+        self.languages = LanguageEditor()
+        lang_box = QGroupBox("Sprachen")
+        lang_layout = QVBoxLayout(lang_box)
+        lang_layout.addWidget(self.languages)
+        layout.addWidget(lang_box)
+
+        # Standort & Arbeitsmodell
+        self.home_address = QLineEdit()
+        self.max_distance = QDoubleSpinBox()
+        self.max_distance.setRange(1, 300)
+        self.max_distance.setSuffix(" km")
+        self.allow_remote = QCheckBox("Voll remote (DE) erlauben")
+        self.allow_hybrid = QCheckBox("Hybrid erlauben")
+        self.country = QLineEdit()
         self.full_time = QCheckBox("Vollzeit")
         self.part_time = QCheckBox("Teilzeit")
         self.remote = QCheckBox("Remote")
@@ -79,35 +112,23 @@ class ProfilePage(QWidget):
         self.min_salary.setSuffix(" €")
         self.preferred_companies = ListEditor("Bevorzugte Firma…")
         self.excluded_companies = ListEditor("Ausgeschlossene Firma…")
-        emp = QGroupBox("Job-Präferenzen")
-        eform = QFormLayout(emp)
+        pref = QGroupBox("Standort & Arbeitsmodell")
+        pform = QFormLayout(pref)
+        pform.addRow("Heimatadresse", self.home_address)
+        pform.addRow("Max. Pendelweg", self.max_distance)
+        pform.addRow(self.allow_remote)
+        pform.addRow(self.allow_hybrid)
+        pform.addRow("Land", self.country)
         row = QHBoxLayout()
         for w in (self.full_time, self.part_time, self.remote, self.hybrid, self.onsite):
             row.addWidget(w)
-        eform.addRow("Arbeitsmodell", row)
-        eform.addRow("Mindestgehalt", self.min_salary)
-        eform.addRow("Bevorzugte Firmen", self.preferred_companies)
-        eform.addRow("Ausgeschlossene Firmen", self.excluded_companies)
-        layout.addWidget(emp)
+        pform.addRow("Arbeitsmodell", row)
+        pform.addRow("Mindestgehalt", self.min_salary)
+        pform.addRow("Bevorzugte Firmen", self.preferred_companies)
+        pform.addRow("Ausgeschlossene Firmen", self.excluded_companies)
+        layout.addWidget(pref)
 
-        # Location
-        self.home_address = QLineEdit()
-        self.max_distance = QDoubleSpinBox()
-        self.max_distance.setRange(1, 300)
-        self.max_distance.setSuffix(" km")
-        self.allow_remote = QCheckBox("Voll remote (DE) erlauben")
-        self.allow_hybrid = QCheckBox("Hybrid erlauben")
-        self.country = QLineEdit()
-        loc = QGroupBox("Standort")
-        lform = QFormLayout(loc)
-        lform.addRow("Heimatadresse", self.home_address)
-        lform.addRow("Max. Pendelweg", self.max_distance)
-        lform.addRow(self.allow_remote)
-        lform.addRow(self.allow_hybrid)
-        lform.addRow("Land", self.country)
-        layout.addWidget(loc)
-
-        # Application data
+        # Bewerbungsdaten
         self.first_name = QLineEdit()
         self.last_name = QLineEdit()
         self.street = QLineEdit()
@@ -128,7 +149,6 @@ class ProfilePage(QWidget):
         self.travel = QLineEdit()
         self.relocate = QLineEdit()
         self.remote_pref = QLineEdit()
-
         app = QGroupBox("Bewerbungsdaten")
         aform = QFormLayout(app)
         for label, widget in [
@@ -141,14 +161,14 @@ class ProfilePage(QWidget):
             ("E-Mail", self.email),
             ("Telefon", self.phone),
             ("Geburtsdatum", self.dob),
-            ("Führerschein", self.drv),
+            ("Führerschein (Formular)", self.drv),
             ("Arbeitserlaubnis", self.work_auth),
             ("Kündigungsfrist", self.notice),
             ("Frühester Start", self.start),
             ("Gehaltsvorstellung", self.salary_exp),
             ("Aktuelle Position", self.current_job),
-            ("Ausbildung", self.edu_text),
-            ("Sprachen", self.lang_text),
+            ("Ausbildung (Kurztext)", self.edu_text),
+            ("Sprachen (Kurztext)", self.lang_text),
             ("Reisebereitschaft", self.travel),
             ("Umzugsbereitschaft", self.relocate),
             ("Remote-Präferenz", self.remote_pref),
@@ -156,15 +176,26 @@ class ProfilePage(QWidget):
             aform.addRow(label, widget)
         layout.addWidget(app)
 
-        # CV
+        # Lebenslauf
         self.cv_label = QLabel("Kein CV ausgewählt")
-        cv_btn = QPushButton("CV auswählen")
-        cv_btn.setObjectName("PrimaryButton")
-        cv_btn.clicked.connect(self.select_cv)
+        cv_select = QPushButton("Lebenslauf auswählen")
+        cv_select.setObjectName("SecondaryButton")
+        cv_select.clicked.connect(self.select_cv)
+        cv_import = QPushButton("Profil aus Lebenslauf einlesen")
+        cv_import.setObjectName("PrimaryButton")
+        cv_import.clicked.connect(lambda: self.import_from_cv(update=False))
+        cv_update = QPushButton("Profil aus Lebenslauf aktualisieren")
+        cv_update.setObjectName("SecondaryButton")
+        cv_update.clicked.connect(lambda: self.import_from_cv(update=True))
         cv_box = QGroupBox("Lebenslauf")
-        cv_layout = QHBoxLayout(cv_box)
-        cv_layout.addWidget(self.cv_label, 1)
-        cv_layout.addWidget(cv_btn)
+        cv_layout = QVBoxLayout(cv_box)
+        cv_layout.addWidget(self.cv_label)
+        cv_row = QHBoxLayout()
+        cv_row.addWidget(cv_select)
+        cv_row.addWidget(cv_import)
+        cv_row.addWidget(cv_update)
+        cv_row.addStretch()
+        cv_layout.addLayout(cv_row)
         layout.addWidget(cv_box)
 
         save_btn = QPushButton("Profil speichern")
@@ -187,6 +218,7 @@ class ProfilePage(QWidget):
         self.driving.set_items(p.qualifications.driving_license)
         self.education.set_items(p.qualifications.education)
         self.experience.set_items(p.qualifications.work_experience)
+        self.certificates.set_items(p.qualifications.certificates)
         self.full_time.setChecked(p.employment.full_time)
         self.part_time.setChecked(p.employment.part_time)
         self.remote.setChecked(p.employment.remote)
@@ -227,7 +259,7 @@ class ProfilePage(QWidget):
     def select_cv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "CV auswählen",
+            "Lebenslauf auswählen",
             "",
             "Dokumente (*.pdf *.docx);;Alle Dateien (*.*)",
         )
@@ -235,7 +267,49 @@ class ProfilePage(QWidget):
             return
         dest = self.config_service.copy_cv_into_storage(Path(path), label="Default CV")
         self.cv_label.setText(str(dest))
-        QMessageBox.information(self, "CV", "CV gespeichert.")
+        QMessageBox.information(
+            self,
+            "Lebenslauf",
+            "Lebenslauf gespeichert.\nSie können jetzt „Profil aus Lebenslauf einlesen“ nutzen.",
+        )
+
+    def import_from_cv(self, update: bool = False) -> None:
+        cfg = self.config_service.load()
+        cv_path = Path(cfg.application.cv_path) if cfg.application.cv_path else None
+        if not cv_path or not cv_path.exists():
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Lebenslauf für Import",
+                "",
+                "Dokumente (*.pdf *.docx)",
+            )
+            if not path:
+                return
+            cv_path = self.config_service.copy_cv_into_storage(Path(path))
+            self.cv_label.setText(str(cv_path))
+            cfg = self.config_service.load()
+
+        dlg = CvImportDialog(cv_path, cfg.profile.qualifications, self)
+        if update:
+            for key, combo in dlg.actions.items():
+                idx = combo.findData("update")
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+        if dlg.exec() != dlg.DialogCode.Accepted or dlg.result_quals is None:
+            return
+        cfg.profile.qualifications = dlg.result_quals
+        # Sync short application fields when empty
+        if dlg.result_quals.driving_license and not cfg.application.driving_license:
+            cfg.application.driving_license = dlg.result_quals.driving_license[0]
+        if dlg.result_quals.languages and not cfg.application.languages:
+            cfg.application.languages = ", ".join(dlg.result_quals.language_labels())
+        if dlg.result_quals.education and not cfg.application.education:
+            cfg.application.education = dlg.result_quals.education[0].qualification
+        if dlg.result_quals.work_experience and not cfg.application.current_employment:
+            cfg.application.current_employment = dlg.result_quals.work_experience[0].title
+        self.config_service.save(cfg)
+        self.load_from_config()
+        QMessageBox.information(self, "Lebenslauf", "Profil aktualisiert.")
 
     def save(self) -> None:
         cfg = self.config_service.load()
@@ -251,6 +325,7 @@ class ProfilePage(QWidget):
         p.qualifications.driving_license = self.driving.get_items()
         p.qualifications.education = self.education.get_items()
         p.qualifications.work_experience = self.experience.get_items()
+        p.qualifications.certificates = self.certificates.get_items()
         p.employment.full_time = self.full_time.isChecked()
         p.employment.part_time = self.part_time.isChecked()
         p.employment.remote = self.remote.isChecked()
@@ -282,7 +357,6 @@ class ProfilePage(QWidget):
         a.salary_expectation = self.salary_exp.text().strip()
         a.current_employment = self.current_job.text().strip()
         a.education = self.edu_text.text().strip()
-        a.work_experience = ""
         a.languages = self.lang_text.text().strip()
         a.willingness_to_travel = self.travel.text().strip()
         a.willingness_to_relocate = self.relocate.text().strip()

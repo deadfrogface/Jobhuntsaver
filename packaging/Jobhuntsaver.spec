@@ -2,7 +2,7 @@
 """PyInstaller spec for Jobhuntsaver desktop app (one-folder)."""
 
 import os
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
@@ -14,26 +14,47 @@ hidden = (
     + collect_submodules("desktop")
 )
 
+datas = [
+    (os.path.join(ROOT, "templates"), "templates"),
+    (os.path.join(ROOT, "config", "profile.yaml.example"), "config"),
+    (os.path.join(ROOT, "config", "application_profile.yaml.example"), "config"),
+    (os.path.join(ROOT, "config", "settings.yaml.example"), "config"),
+    (os.path.join(ROOT, "NOTICE"), "."),
+    (os.path.join(ROOT, "LICENSE"), "."),
+]
+binaries = []
+# python-jobspy -> tls_client ships Windows DLLs under dependencies/
+for pkg in ("tls_client", "jobspy", "playwright"):
+    try:
+        pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
+        datas += pkg_datas
+        binaries += pkg_binaries
+        hidden += pkg_hidden
+    except Exception:
+        pass
+
+hidden += [
+    "app.main",
+    "browser.browser_manager",
+    "playwright",
+    "yaml",
+    "PySide6",
+    "tls_client",
+    "tls_client.cffi",
+    "tls_client.dependencies",
+    "jobspy",
+    "numpy",
+    "pandas",
+    "lxml",
+    "bs4",
+]
+
 a = Analysis(
     [os.path.join(ROOT, "desktop", "app.py")],
     pathex=[ROOT],
-    binaries=[],
-    datas=[
-        (os.path.join(ROOT, "templates"), "templates"),
-        (os.path.join(ROOT, "config", "profile.yaml.example"), "config"),
-        (os.path.join(ROOT, "config", "application_profile.yaml.example"), "config"),
-        (os.path.join(ROOT, "config", "settings.yaml.example"), "config"),
-        (os.path.join(ROOT, "NOTICE"), "."),
-        (os.path.join(ROOT, "LICENSE"), "."),
-    ],
-    hiddenimports=hidden
-    + [
-        "app.main",
-        "browser.browser_manager",
-        "playwright",
-        "yaml",
-        "PySide6",
-    ],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
