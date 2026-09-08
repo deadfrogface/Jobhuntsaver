@@ -55,7 +55,9 @@ Repo: https://github.com/deadfrogface/Jobhuntsaver
 
 **Major refactors:** EMPTY_PROFILE + real Reset; CV German normalize + A→B→C tests; onefile CI artifact; AppData browsers; ConfigService `clear_cv_storage` / `reset_to_empty_profile`; SearchPreferences aliases; central TEST MODE submit guard; single-instance QSharedMemory; rotating logs; DB indexes; lazy pipeline import.
 
-**Remaining debt:** Further split of huge `cv_parser` / `profile.py`; SearchAdapter interface polish; more ATS shared form helpers; Qt icon for tray warning; full SearchPreferences dataclass migration (aliases for now).
+**Remaining debt:** Further split of huge `cv_parser` / `profile.py`; SearchAdapter mapper rename (`_map_*` → `normalize`) still optional; more ATS shared form helpers; full SearchPreferences dataclass migration (aliases for now).
+
+Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapter` alias + `health_check` on BA/Indeed; GitHub artifact verified as single `Jobhuntsaver.exe`.
 
 ## PRIVACY
 

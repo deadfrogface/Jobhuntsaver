@@ -32,7 +32,7 @@ from desktop.services import ConfigService
 from desktop.services.schedule_service import ScheduleService
 from desktop.services.shutdown import get_shutdown_manager
 from desktop.theme import stylesheet_for
-from desktop.tray import AppTray, _fallback_app_icon
+from desktop.tray import AppTray, app_icon
 from desktop.workers import PipelineWorker, start_worker
 from desktop.wizard import FirstRunWizard
 
@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 650)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setWindowTitle(tr("app.name"))
-        self.setWindowIcon(_fallback_app_icon())
+        self.setWindowIcon(app_icon())
 
         central = QWidget()
         self.setCentralWidget(central)

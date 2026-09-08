@@ -67,7 +67,8 @@ See `core/database.py` SCHEMA. Added for existing query patterns:
 - `idx_jobs_url` — `has_applied` URL checks
 - `idx_apps_date` / `idx_apps_status` — application lists / counts
 
-## Logging privacy
+## Remaining technical debt (post follow-up)
 
-- `core/logging.py`: `RotatingFileHandler` (2 MB × 3).
-- CV import logs **path name + char length only**, never body text at INFO.
+- Search adapters: `SearchAdapter` alias + `normalize`/`health_check` hooks added on `JobSource`; BA/Indeed implement `health_check`. Full mapper rename (`_map_*` → `normalize`) still optional.
+- ATS: Indeed/LinkedIn/SuccessFactors now route final submit through `_maybe_submit`.
+- Further split of large `cv_parser` / profile page still open.

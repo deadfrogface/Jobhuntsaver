@@ -89,11 +89,25 @@ def _classify_exception(exc: BaseException) -> tuple[str, str]:
 
 
 class JobSource(ABC):
+    """Legacy name kept for imports; prefer ``SearchAdapter``."""
+
     source_id: str = "base"
 
     @abstractmethod
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         """Return normalized Job objects. Must not raise for empty results."""
+
+    def normalize(self, raw: Any) -> Job | None:
+        """Optional hook: map a source-specific row/payload to a Job.
+
+        Default returns ``None`` (adapters that already produce Jobs in
+        ``search`` need not override this).
+        """
+        return None
+
+    def health_check(self) -> tuple[bool, str]:
+        """Lightweight readiness probe. Override for source-specific checks."""
+        return True, "ok"
 
     def safe_search(
         self, queries: list[SearchQuery]
@@ -112,3 +126,7 @@ class JobSource(ABC):
             )
             logger.error("Source %s failed (%s):\n%s", self.source_id, stage, err.detail())
             return [], err.short_message(), err
+
+
+# Canonical name from the V1 architecture target.
+SearchAdapter = JobSource

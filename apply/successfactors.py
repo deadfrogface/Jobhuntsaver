@@ -44,12 +44,7 @@ class SuccessFactorsApplier(BaseApplier):
             )
 
         if self.dry_run or not self.submit:
-            return ApplyResult(
-                success=True,
-                dry_run_stopped=True,
-                needs_review=True,
-                error_message="SuccessFactors filled partially — review required",
-            )
+            return self._maybe_submit("button[type='submit'], button:has-text('Submit')")
         return ApplyResult(
             success=False,
             needs_review=True,

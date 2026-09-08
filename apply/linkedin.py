@@ -11,6 +11,14 @@ from core.models import Job
 
 logger = logging.getLogger("jobhuntsaver")
 
+_SUBMIT_SEL = (
+    "button[aria-label*='Submit application'], button[aria-label*='Submit']"
+)
+_NEXT_SEL = (
+    "button[aria-label*='Continue'], button[aria-label*='Next'], "
+    "button[aria-label*='Review']"
+)
+
 
 class LinkedInApplier(BaseApplier):
     def _do_apply(
@@ -48,20 +56,14 @@ class LinkedInApplier(BaseApplier):
                 ta = self.page.query_selector("textarea[name*='cover'], textarea[id*='cover']")
                 if ta and ta.is_visible():
                     ta.fill(cover_letter_text)
-            submit = self._wait_and_query(
-                "button[aria-label*='Submit application'], button[aria-label*='Submit']",
-                timeout=1500,
-            )
+            submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
             if submit:
-                if self.dry_run or not self.submit:
-                    return ApplyResult(success=True, dry_run_stopped=True, error_message="Stopped before LinkedIn submit")
-                submit.click()
-                self._random_pause(2, 4)
-                return ApplyResult(success=True, submitted=True)
-            if not self._safe_click(
-                "button[aria-label*='Continue'], button[aria-label*='Next'], button[aria-label*='Review']",
-                timeout=2000,
-            ):
+                return self._maybe_submit(_SUBMIT_SEL)
+            if not self._safe_click(_NEXT_SEL, timeout=2000):
                 break
             self._random_pause(1, 2)
-        return ApplyResult(success=False, needs_review=True, error_message="Could not complete Easy Apply")
+        return ApplyResult(
+            success=False,
+            needs_review=True,
+            error_message="Could not complete Easy Apply",
+        )

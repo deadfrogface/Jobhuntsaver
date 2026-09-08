@@ -31,6 +31,16 @@ class IndeedSource(JobSource):
     source_id = "indeed"
     board = "indeed"
 
+    def health_check(self) -> tuple[bool, str]:
+        try:
+            import tls_client  # noqa: F401
+            import jobspy  # noqa: F401
+        except ImportError as exc:
+            return False, f"missing dependency: {exc}"
+        except OSError as exc:
+            return False, f"native library error: {exc}"
+        return True, "ok"
+
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         try:
             # tls_client ships native DLLs required by python-jobspy on Windows.

@@ -11,6 +11,11 @@ from core.models import Job
 
 logger = logging.getLogger("jobhuntsaver")
 
+_SUBMIT_SEL = "button[aria-label*='Submit'], button[id*='submit']"
+_CONTINUE_SEL = (
+    "button.ia-continueButton, button[aria-label*='Continue'], button[id*='continue']"
+)
+
 
 class IndeedApplier(BaseApplier):
     def _do_apply(
@@ -40,7 +45,12 @@ class IndeedApplier(BaseApplier):
         apply_btn.click()
         self._random_pause(2, 3)
         if "indeed.com" not in page.url:
-            return ApplyResult(success=False, manual_required=True, needs_review=True, error_message="Redirected to external ATS")
+            return ApplyResult(
+                success=False,
+                manual_required=True,
+                needs_review=True,
+                error_message="Redirected to external ATS",
+            )
         for _ in range(8):
             if self._detect_captcha():
                 return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
@@ -49,23 +59,15 @@ class IndeedApplier(BaseApplier):
             self._safe_fill("input[name*='phone'], input[id*='phone']", profile.phone_full)
             if resume_pdf_path:
                 self._safe_upload(resume_pdf_path, ["input[type='file']"])
-            if self.dry_run or not self.submit:
-                # Stop before final submit in review/dry-run
-                submit = self._wait_and_query(
-                    "button[aria-label*='Submit'], button[id*='submit']",
-                    timeout=1500,
-                )
-                if submit:
-                    return ApplyResult(success=True, dry_run_stopped=True, error_message="Stopped before Indeed submit")
-            if self._safe_click("button[aria-label*='Submit'], button[id*='submit']", timeout=2000):
-                if self.dry_run or not self.submit:
-                    return ApplyResult(success=True, dry_run_stopped=True)
-                self._random_pause(2, 4)
-                return ApplyResult(success=True, submitted=True)
-            if not self._safe_click(
-                "button.ia-continueButton, button[aria-label*='Continue'], button[id*='continue']",
-                timeout=2000,
-            ):
+            submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
+            if submit:
+                # Central hard guard — never click submit outside _maybe_submit.
+                return self._maybe_submit(_SUBMIT_SEL)
+            if not self._safe_click(_CONTINUE_SEL, timeout=2000):
                 break
             self._random_pause(1, 2)
-        return ApplyResult(success=False, needs_review=True, error_message="Could not complete Indeed application")
+        return ApplyResult(
+            success=False,
+            needs_review=True,
+            error_message="Could not complete Indeed application",
+        )

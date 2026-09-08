@@ -63,6 +63,16 @@ def _employment_type(item: dict) -> str:
 class BundesagenturSource(JobSource):
     source_id = "bundesagentur"
 
+    def health_check(self) -> tuple[bool, str]:
+        try:
+            with httpx.Client(timeout=8.0, headers=_HEADERS) as client:
+                r = client.get(_LIST_URL, params={"page": 1, "size": 1, "was": "test"})
+                if r.status_code >= 500:
+                    return False, f"BA API HTTP {r.status_code}"
+                return True, f"ok (HTTP {r.status_code})"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         all_jobs: list[Job] = []
         seen: set[str] = set()

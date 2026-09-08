@@ -10,7 +10,12 @@ from desktop.i18n import tr
 
 
 def _fallback_app_icon() -> QIcon:
-    """Simple generated icon so tray never shows without an icon on Windows."""
+    """Backward-compatible alias for ``app_icon``."""
+    return app_icon()
+
+
+def app_icon() -> QIcon:
+    """Simple generated icon so tray/window never show without an icon on Windows."""
     pix = QPixmap(64, 64)
     pix.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pix)
@@ -32,7 +37,7 @@ class AppTray(QSystemTrayIcon):
         if icon.isNull():
             icon = window.windowIcon()
         if icon.isNull():
-            icon = _fallback_app_icon()
+            icon = app_icon()
             if window.windowIcon().isNull():
                 window.setWindowIcon(icon)
         self.setIcon(icon)
