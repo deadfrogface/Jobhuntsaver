@@ -80,8 +80,8 @@ that may have been exposed (not applicable for CV text, but standard advice).
 ## Verification checklist
 
 - [x] No real CV fingerprints in current tracked files (`scripts/privacy_scan.py`)
-- [x] No `Users\\…` developer paths in tests
+- [x] No `Users\\…` developer paths in tests (history rewritten to `tests/fixtures/…`)
 - [x] Example configs remain empty of personal data
 - [x] pytest passes with fictional fixtures
-- [x] History rewrite + force-push performed
+- [x] History rewrite (`git filter-repo` replace-text + blob-callback) + force-push performed
 - [ ] Owner confirms old commit URLs / GitHub code search are clean
