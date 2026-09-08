@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -13,96 +14,174 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
     QWizard,
     QWizardPage,
 )
 
+from desktop.i18n import tr
 from desktop.services import ConfigService
 from desktop.widgets import ListEditor
+from desktop.widgets.scroll_page import wrap_scrollable
+
+
+def _scroll_page_body(inner: QWidget) -> QScrollArea:
+    return wrap_scrollable(inner, min_content_width=480)
 
 
 class WelcomePage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Willkommen bei Jobhuntsaver")
-        layout = QVBoxLayout(self)
-        layout.addWidget(
-            QLabel(
-                "Diese App sucht Jobs in Deutschland, bewertet Matches und kann "
-                "optional Bewerbungen vorbereiten.\n\n"
-                "Standard: Nur Suche, Dry Run an, Automation aus."
-            )
-        )
+        self.body = QLabel()
+        self.body.setWordWrap(True)
+        self.body.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.addWidget(self.body)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.welcome_title"))
+        self.body.setText(tr("wizard.welcome_body"))
 
 
 class PersonalPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Persönliche Daten")
         self.first_name = QLineEdit()
         self.last_name = QLineEdit()
         self.email = QLineEdit()
         self.phone = QLineEdit()
-        form = QFormLayout(self)
-        form.addRow("Vorname", self.first_name)
-        form.addRow("Nachname", self.last_name)
-        form.addRow("E-Mail", self.email)
-        form.addRow("Telefon", self.phone)
+        self.lbl_first = QLabel()
+        self.lbl_last = QLabel()
+        self.lbl_email = QLabel()
+        self.lbl_phone = QLabel()
+        inner = QWidget()
+        form = QFormLayout(inner)
+        form.addRow(self.lbl_first, self.first_name)
+        form.addRow(self.lbl_last, self.last_name)
+        form.addRow(self.lbl_email, self.email)
+        form.addRow(self.lbl_phone, self.phone)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.personal"))
+        self.lbl_first.setText(tr("wizard.first_name"))
+        self.lbl_last.setText(tr("wizard.last_name"))
+        self.lbl_email.setText(tr("wizard.email"))
+        self.lbl_phone.setText(tr("wizard.phone"))
 
 
 class LocationPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Standort")
         self.address = QLineEdit()
         self.distance = QDoubleSpinBox()
         self.distance.setRange(1, 200)
         self.distance.setValue(20)
         self.distance.setSuffix(" km")
-        form = QFormLayout(self)
-        form.addRow("Heimatadresse", self.address)
-        form.addRow("Max. Pendelweg", self.distance)
+        self.lbl_address = QLabel()
+        self.lbl_distance = QLabel()
+        inner = QWidget()
+        form = QFormLayout(inner)
+        form.addRow(self.lbl_address, self.address)
+        form.addRow(self.lbl_distance, self.distance)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.location"))
+        self.lbl_address.setText(tr("wizard.address"))
+        self.lbl_distance.setText(tr("wizard.distance"))
 
 
 class JobsPageWizard(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Gewünschte Jobs")
-        self.titles = ListEditor("Jobtitel…")
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Tragen Sie gewünschte Jobtitel ein:"))
+        self.hint = QLabel()
+        self.hint.setWordWrap(True)
+        self.titles = ListEditor("placeholder.job_title", visible_rows=3)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.addWidget(self.hint)
         layout.addWidget(self.titles)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.jobs"))
+        self.hint.setText(tr("wizard.jobs_hint"))
+        self.titles.retranslate()
 
 
 class SkillsPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Skills & Erfahrung")
-        self.skills = ListEditor("Skill…")
-        self.languages = ListEditor("Sprache…")
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Skills"))
+        self.lbl_skills = QLabel()
+        self.lbl_languages = QLabel()
+        self.skills = ListEditor("placeholder.skill", visible_rows=3)
+        self.languages = ListEditor("placeholder.add_entry", visible_rows=3)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.addWidget(self.lbl_skills)
         layout.addWidget(self.skills)
-        layout.addWidget(QLabel("Sprachen"))
+        layout.addWidget(self.lbl_languages)
         layout.addWidget(self.languages)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.skills"))
+        self.lbl_skills.setText(tr("profile.skills"))
+        self.lbl_languages.setText(tr("profile.languages"))
+        self.skills.retranslate()
+        self.languages.retranslate()
 
 
 class CVPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Lebenslauf")
         self.cv_path = ""
-        self.label = QLabel("Noch kein CV gewählt (optional)")
-        pick = QPushButton("CV auswählen")
-        pick.clicked.connect(self._pick)
-        layout = QVBoxLayout(self)
+        self.label = QLabel()
+        self.label.setWordWrap(True)
+        self.pick = QPushButton()
+        self.pick.clicked.connect(self._pick)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
         layout.addWidget(self.label)
-        layout.addWidget(pick)
+        layout.addWidget(self.pick)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.cv"))
+        self.pick.setText(tr("btn.select_cv"))
+        if not self.cv_path:
+            self.label.setText(tr("wizard.cv_none"))
 
     def _pick(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "CV", "", "Dokumente (*.pdf *.docx)"
+            self, tr("wizard.cv"), "", "Dokumente (*.pdf *.docx)"
         )
         if path:
             self.cv_path = path
@@ -112,52 +191,89 @@ class CVPage(QWizardPage):
 class ModePage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Modus")
-        self.search_only = QRadioButton("Nur Suche (empfohlen)")
+        self.search_only = QRadioButton()
         self.search_only.setChecked(True)
-        self.review = QRadioButton("Vor Absenden prüfen")
-        self.auto = QRadioButton("Vollautomatisch")
-        self.dry = QCheckBox("Dry Run aktiv")
+        self.review = QRadioButton()
+        self.auto = QRadioButton()
+        self.dry = QCheckBox()
         self.dry.setChecked(True)
-        layout = QVBoxLayout(self)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
         layout.addWidget(self.search_only)
         layout.addWidget(self.review)
         layout.addWidget(self.auto)
         layout.addWidget(self.dry)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.mode"))
+        self.search_only.setText(tr("settings.mode.search"))
+        self.review.setText(tr("settings.mode.review"))
+        self.auto.setText(tr("settings.mode.auto"))
+        self.dry.setText(tr("settings.dry_run"))
 
 
 class FinishPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
-        self.setTitle("Fertig")
-        layout = QVBoxLayout(self)
-        layout.addWidget(
-            QLabel(
-                "Setup abgeschlossen.\n"
-                "Sie können später alles unter Profil und Einstellungen ändern."
-            )
-        )
+        self.body = QLabel()
+        self.body.setWordWrap(True)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.addWidget(self.body)
+        layout.addStretch()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(_scroll_page_body(inner))
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setTitle(tr("wizard.finish"))
+        self.body.setText(tr("wizard.finish_body"))
 
 
 class FirstRunWizard(QWizard):
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Jobhuntsaver – Ersteinrichtung")
         self.config_service = config_service
+        self.setMinimumSize(640, 480)
+        self.setSizeGripEnabled(True)
+        self.welcome = WelcomePage()
         self.personal = PersonalPage()
         self.location = LocationPage()
         self.jobs = JobsPageWizard()
         self.skills = SkillsPage()
         self.cv = CVPage()
         self.mode = ModePage()
-        self.addPage(WelcomePage())
+        self.finish = FinishPage()
+        self.addPage(self.welcome)
         self.addPage(self.personal)
         self.addPage(self.location)
         self.addPage(self.jobs)
         self.addPage(self.skills)
         self.addPage(self.cv)
         self.addPage(self.mode)
-        self.addPage(FinishPage())
+        self.addPage(self.finish)
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setWindowTitle(tr("app.name"))
+        for page in (
+            self.welcome,
+            self.personal,
+            self.location,
+            self.jobs,
+            self.skills,
+            self.cv,
+            self.mode,
+            self.finish,
+        ):
+            if hasattr(page, "retranslate_ui"):
+                page.retranslate_ui()
 
     def accept(self) -> None:
         cfg = self.config_service.load()

@@ -270,6 +270,11 @@ class SettingsConfig:
     schedule_mode: str = "every_x_hours"
     schedule_interval_hours: int = 6
     schedule_times: list[str] = field(default_factory=lambda: ["08:00"])
+    # Desktop UX
+    theme: str = "system"  # system | light | dark
+    language: str = "de"  # de | en
+    start_with_windows: bool = False
+    minimize_to_tray: bool = True
 
 
 @dataclass

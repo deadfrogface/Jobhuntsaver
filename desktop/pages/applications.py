@@ -6,7 +6,9 @@ import webbrowser
 
 from PySide6.QtWidgets import (
     QComboBox,
+    QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from core.database import Database
 from core.models import JobStatus
+from desktop.i18n import tr
 from desktop.services import ConfigService
 
 
@@ -40,48 +43,67 @@ class ApplicationsPage(QWidget):
         self._records = []
 
         self.status = QComboBox()
-        self.status.addItem("Alle", "")
+        self.status.addItem("", "")
         for s in STATUS_FILTERS:
             if s:
                 self.status.addItem(s, s)
 
-        refresh_btn = QPushButton("Aktualisieren")
-        refresh_btn.setObjectName("PrimaryButton")
-        refresh_btn.clicked.connect(self.refresh)
-        open_btn = QPushButton("Manuell öffnen")
-        open_btn.setObjectName("SecondaryButton")
-        open_btn.clicked.connect(self.open_selected)
-        review_btn = QPushButton("Nur Needs Review")
-        review_btn.setObjectName("SecondaryButton")
-        review_btn.clicked.connect(self.show_review_only)
+        self.lbl_status = QLabel()
+        self.refresh_btn = QPushButton()
+        self.refresh_btn.setObjectName("PrimaryButton")
+        self.refresh_btn.clicked.connect(self.refresh)
+        self.open_btn = QPushButton()
+        self.open_btn.setObjectName("SecondaryButton")
+        self.open_btn.clicked.connect(self.open_selected)
+        self.review_btn = QPushButton()
+        self.review_btn.setObjectName("SecondaryButton")
+        self.review_btn.clicked.connect(self.show_review_only)
 
-        bar = QHBoxLayout()
-        bar.addWidget(QLabel("Status"))
-        bar.addWidget(self.status)
-        bar.addWidget(refresh_btn)
-        bar.addWidget(open_btn)
-        bar.addWidget(review_btn)
-        bar.addStretch()
+        filter_form = QFormLayout()
+        filter_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        filter_form.addRow(self.lbl_status, self.status)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self.refresh_btn)
+        btn_row.addWidget(self.open_btn)
+        btn_row.addWidget(self.review_btn)
+        btn_row.addStretch()
+        filter_form.addRow(btn_row)
 
         self.table = QTableWidget(0, 9)
-        self.table.setHorizontalHeaderLabels(
-            [
-                "Datum",
-                "Firma",
-                "Titel",
-                "ATS",
-                "Match",
-                "Status",
-                "CV",
-                "Anschreiben",
-                "Fehler / Grund",
-            ]
-        )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(True)
+        for col in (0, 3, 4, 5, 6, 7):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(bar)
+        layout.addLayout(filter_form)
         layout.addWidget(self.table)
+
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.lbl_status.setText(tr("jobs.status"))
+        self.status.setItemText(0, tr("jobs.all"))
+        self.refresh_btn.setText(tr("btn.refresh"))
+        self.open_btn.setText(tr("btn.open_manual"))
+        self.review_btn.setText(tr("btn.review_only"))
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr("apps.date"),
+                tr("jobs.company"),
+                tr("jobs.title"),
+                tr("apps.ats"),
+                tr("apps.match"),
+                tr("jobs.status"),
+                tr("apps.cv"),
+                tr("apps.cover"),
+                tr("apps.error"),
+            ]
+        )
 
     def show_review_only(self) -> None:
         idx = self.status.findData(JobStatus.NEEDS_REVIEW.value)
@@ -118,7 +140,6 @@ class ApplicationsPage(QWidget):
             ]
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(value))
-        self.table.resizeColumnsToContents()
 
     def open_selected(self) -> None:
         row = self.table.currentRow()
@@ -134,4 +155,6 @@ class ApplicationsPage(QWidget):
         if url:
             webbrowser.open(url)
         else:
-            QMessageBox.information(self, "Bewerbung", "Keine Bewerbungs-URL vorhanden.")
+            QMessageBox.information(
+                self, tr("nav.applications"), "Keine Bewerbungs-URL vorhanden."
+            )

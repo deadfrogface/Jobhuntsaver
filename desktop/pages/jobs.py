@@ -8,7 +8,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from core.database import Database
 from core.models import JobStatus
+from desktop.i18n import tr
 from desktop.services import ConfigService
 
 
@@ -40,65 +43,97 @@ class JobsPage(QWidget):
         self.company = QLineEdit()
         self.source = QLineEdit()
         self.status = QComboBox()
-        self.status.addItem("Alle", "")
+        self.status.addItem("", "")
         for s in JobStatus:
             self.status.addItem(s.value, s.value)
-        self.chk_remote = QCheckBox("Remote")
-        self.chk_hybrid = QCheckBox("Hybrid")
-        self.chk_onsite = QCheckBox("On-site")
+        self.chk_remote = QCheckBox()
+        self.chk_hybrid = QCheckBox()
+        self.chk_onsite = QCheckBox()
         self.age_days = QSpinBox()
         self.age_days.setRange(0, 90)
-        self.age_days.setSpecialValueText("beliebig")
 
-        filters = QHBoxLayout()
-        for label, widget in [
-            ("Min. Match", self.min_match),
-            ("Max. km", self.max_dist),
-            ("Stadt", self.city),
-            ("Titel", self.title),
-            ("Firma", self.company),
-            ("Quelle", self.source),
-            ("Status", self.status),
-        ]:
-            box = QVBoxLayout()
-            box.addWidget(QLabel(label))
-            box.addWidget(widget)
-            filters.addLayout(box)
-        filters.addWidget(self.chk_remote)
-        filters.addWidget(self.chk_hybrid)
-        filters.addWidget(self.chk_onsite)
+        self.lbl_min_match = QLabel()
+        self.lbl_max_dist = QLabel()
+        self.lbl_city = QLabel()
+        self.lbl_title = QLabel()
+        self.lbl_company = QLabel()
+        self.lbl_source = QLabel()
+        self.lbl_status = QLabel()
 
-        apply_btn = QPushButton("Filtern")
-        apply_btn.setObjectName("PrimaryButton")
-        apply_btn.clicked.connect(self.refresh)
-        open_btn = QPushButton("Job öffnen")
-        open_btn.setObjectName("SecondaryButton")
-        open_btn.clicked.connect(self.open_selected)
-        filters.addWidget(apply_btn)
-        filters.addWidget(open_btn)
+        filter_form = QFormLayout()
+        filter_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        filter_form.addRow(self.lbl_min_match, self.min_match)
+        filter_form.addRow(self.lbl_max_dist, self.max_dist)
+        filter_form.addRow(self.lbl_city, self.city)
+        filter_form.addRow(self.lbl_title, self.title)
+        filter_form.addRow(self.lbl_company, self.company)
+        filter_form.addRow(self.lbl_source, self.source)
+        filter_form.addRow(self.lbl_status, self.status)
+
+        model_row = QHBoxLayout()
+        model_row.addWidget(self.chk_remote)
+        model_row.addWidget(self.chk_hybrid)
+        model_row.addWidget(self.chk_onsite)
+        model_row.addStretch()
+        filter_form.addRow(model_row)
+
+        self.apply_btn = QPushButton()
+        self.apply_btn.setObjectName("PrimaryButton")
+        self.apply_btn.clicked.connect(self.refresh)
+        self.open_btn = QPushButton()
+        self.open_btn.setObjectName("SecondaryButton")
+        self.open_btn.clicked.connect(self.open_selected)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self.apply_btn)
+        btn_row.addWidget(self.open_btn)
+        btn_row.addStretch()
+        filter_form.addRow(btn_row)
 
         self.table = QTableWidget(0, 10)
-        self.table.setHorizontalHeaderLabels(
-            [
-                "Match %",
-                "Titel",
-                "Firma",
-                "Stadt",
-                "Distanz",
-                "Modell",
-                "Gehalt",
-                "Quelle",
-                "Datum",
-                "Status",
-            ]
-        )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSortingEnabled(True)
         self.table.doubleClicked.connect(self.open_selected)
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(True)
+        for col in (0, 3, 4, 5, 6, 7, 8, 9):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(filters)
+        layout.addLayout(filter_form)
         layout.addWidget(self.table)
+
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.lbl_min_match.setText(tr("jobs.min_match"))
+        self.lbl_max_dist.setText(tr("jobs.max_km"))
+        self.lbl_city.setText(tr("jobs.city"))
+        self.lbl_title.setText(tr("jobs.title"))
+        self.lbl_company.setText(tr("jobs.company"))
+        self.lbl_source.setText(tr("jobs.source"))
+        self.lbl_status.setText(tr("jobs.status"))
+        self.chk_remote.setText(tr("remote"))
+        self.chk_hybrid.setText(tr("hybrid"))
+        self.chk_onsite.setText(tr("onsite"))
+        self.apply_btn.setText(tr("btn.filter"))
+        self.open_btn.setText(tr("btn.open_job"))
+        self.status.setItemText(0, tr("jobs.all"))
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr("col.match"),
+                tr("col.title"),
+                tr("col.company"),
+                tr("col.city"),
+                tr("col.distance"),
+                tr("col.model"),
+                tr("col.salary"),
+                tr("col.source"),
+                tr("col.date"),
+                tr("col.status"),
+            ]
+        )
 
     def refresh(self) -> None:
         cfg = self.config_service.load()
@@ -152,7 +187,6 @@ class JobsPage(QWidget):
                     item.setData(Qt.ItemDataRole.DisplayRole, int(job.match_score))
                 self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
-        self.table.resizeColumnsToContents()
 
     def open_selected(self) -> None:
         row = self.table.currentRow()
@@ -163,10 +197,10 @@ class JobsPage(QWidget):
         company = self.table.item(row, 2).text()
         job = next((j for j in self._jobs if j.title == title and j.company == company), None)
         if not job:
-            QMessageBox.information(self, "Job", "Eintrag nicht gefunden.")
+            QMessageBox.information(self, tr("nav.jobs"), "Eintrag nicht gefunden.")
             return
         url = job.application_url or job.url
         if url:
             webbrowser.open(url)
         else:
-            QMessageBox.information(self, "Job", "Keine URL vorhanden.")
+            QMessageBox.information(self, tr("nav.jobs"), "Keine URL vorhanden.")

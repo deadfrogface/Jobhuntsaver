@@ -22,3 +22,8 @@ enabled_sources:
 geocoder: nominatim
 cover_letter_template: templates/cover_letter.txt
 exclude_on_missing_mandatory: false
+# Desktop UI
+theme: system          # system | light | dark
+language: de           # de | en
+start_with_windows: false
+minimize_to_tray: true

@@ -4,20 +4,24 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
+from desktop.i18n import i18n, tr
 from desktop.pages.applications import ApplicationsPage
 from desktop.pages.dashboard import DashboardPage
 from desktop.pages.jobs import JobsPage
@@ -26,6 +30,7 @@ from desktop.pages.profile import ProfilePage
 from desktop.pages.settings import SettingsPage
 from desktop.services import ConfigService
 from desktop.services.schedule_service import ScheduleService
+from desktop.theme import stylesheet_for
 from desktop.tray import AppTray
 from desktop.workers import PipelineWorker, start_worker
 from desktop.wizard import FirstRunWizard
@@ -38,8 +43,9 @@ class MainWindow(QMainWindow):
         self._force_quit = False
         self._worker = None
         self._thread = None
-        self.setWindowTitle("Jobhuntsaver")
-        self.resize(1180, 760)
+        self.setMinimumSize(900, 650)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setWindowTitle(tr("app.name"))
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -47,63 +53,58 @@ class MainWindow(QMainWindow):
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
 
-        sidebar = QFrame()
-        sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(200)
-        side_layout = QVBoxLayout(sidebar)
-        brand = QLabel("Jobhuntsaver")
-        brand.setObjectName("Brand")
-        side_layout.addWidget(brand)
-        side_layout.addSpacing(12)
+        self.sidebar = QFrame()
+        self.sidebar.setObjectName("Sidebar")
+        self.sidebar.setMinimumWidth(160)
+        self.sidebar.setMaximumWidth(220)
+        side_layout = QVBoxLayout(self.sidebar)
+        side_layout.setContentsMargins(10, 14, 10, 14)
+        side_layout.setSpacing(6)
+        self.brand = QLabel(tr("app.name"))
+        self.brand.setObjectName("Brand")
+        side_layout.addWidget(self.brand)
+        side_layout.addSpacing(8)
 
         self.stack = QStackedWidget()
+        self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.dashboard = DashboardPage(config_service)
         self.jobs = JobsPage(config_service)
         self.applications = ApplicationsPage(config_service)
         self.profile = ProfilePage(config_service)
         self.settings = SettingsPage(config_service)
         self.logs = LogsPage(config_service)
-        pages = [
-            ("Dashboard", self.dashboard),
-            ("Jobs", self.jobs),
-            ("Bewerbungen", self.applications),
-            ("Profil", self.profile),
-            ("Einstellungen", self.settings),
-            ("Logs", self.logs),
+
+        self._nav_defs = [
+            ("nav.dashboard", self.dashboard),
+            ("nav.jobs", self.jobs),
+            ("nav.applications", self.applications),
+            ("nav.profile", self.profile),
+            ("nav.settings", self.settings),
+            ("nav.logs", self.logs),
         ]
         self.nav_buttons: list[QPushButton] = []
-        for i, (label, page) in enumerate(pages):
+        for i, (key, page) in enumerate(self._nav_defs):
             self.stack.addWidget(page)
-            btn = QPushButton(label)
-            btn.setProperty("class", "NavButton")
-            btn.setProperty("active", "false")
-            btn.setStyleSheet("")  # class via stylesheet selector
-            btn.setObjectName("Nav")
-            btn.setProperty("className", "NavButton")
+            btn = QPushButton(tr(key))
+            btn.setObjectName("NavButton")
             btn.setCheckable(True)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             btn.clicked.connect(lambda checked=False, idx=i: self._navigate(idx))
-            # Use dynamic property for stylesheet
-            btn.setProperty("active", "false")
-            btn.setStyleSheet(
-                "QPushButton { text-align:left; padding:10px 14px; border:none; "
-                "border-radius:6px; color:#d7e4ec; background:transparent; }"
-                "QPushButton:checked { background:rgba(61,139,120,0.35); color:white; font-weight:600; }"
-                "QPushButton:hover { background:rgba(255,255,255,0.08); }"
-            )
             self.nav_buttons.append(btn)
             side_layout.addWidget(btn)
-        side_layout.addStretch()
+        side_layout.addStretch(1)
 
-        shell.addWidget(sidebar)
+        shell.addWidget(self.sidebar, 0)
         content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(16, 16, 16, 16)
-        content_layout.addWidget(self.stack)
+        content_layout.setContentsMargins(12, 12, 12, 12)
+        content_layout.addWidget(self.stack, 1)
         shell.addWidget(content, 1)
 
         self.status = QStatusBar()
         self.setStatusBar(self.status)
-        self.progress_label = QLabel("Bereit")
+        self.progress_label = QLabel(tr("status.ready"))
         self.status.addPermanentWidget(self.progress_label)
 
         self.dashboard.search_requested.connect(self.start_search)
@@ -111,12 +112,71 @@ class MainWindow(QMainWindow):
         self.dashboard.test_requested.connect(self.run_application_test)
         self.dashboard.pause_requested.connect(lambda: self.set_automation_paused(True))
         self.dashboard.review_requested.connect(self.open_review_queue)
+        self.settings.appearance_changed.connect(self.apply_appearance_from_settings)
 
         self.tray = AppTray(self)
         self.tray.show()
 
+        i18n.register(self.retranslate_ui)
+        self._restore_geometry()
         self._navigate(0)
         self.refresh_all()
+
+    def _restore_geometry(self) -> None:
+        state = self.config_service.get_window_state()
+        width = int(state.get("width") or 1180)
+        height = int(state.get("height") or 760)
+        width = max(900, width)
+        height = max(650, height)
+        self.resize(width, height)
+        x = state.get("x")
+        y = state.get("y")
+        if isinstance(x, int) and isinstance(y, int):
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                geo: QRect = screen.availableGeometry()
+                if geo.contains(x + 40, y + 40):
+                    self.move(x, y)
+        if state.get("maximized"):
+            self.showMaximized()
+
+    def _save_geometry(self) -> None:
+        maximized = self.isMaximized()
+        # Use normal geometry when maximized so restore works
+        geo = self.normalGeometry() if maximized else self.geometry()
+        self.config_service.save_window_state(
+            width=geo.width(),
+            height=geo.height(),
+            x=geo.x(),
+            y=geo.y(),
+            maximized=maximized,
+        )
+
+    def retranslate_ui(self) -> None:
+        self.setWindowTitle(tr("app.name"))
+        self.brand.setText(tr("app.name"))
+        for btn, (key, _) in zip(self.nav_buttons, self._nav_defs):
+            btn.setText(tr(key))
+        self.progress_label.setText(tr("status.ready"))
+        for page in (
+            self.dashboard,
+            self.jobs,
+            self.applications,
+            self.profile,
+            self.settings,
+            self.logs,
+        ):
+            if hasattr(page, "retranslate_ui"):
+                page.retranslate_ui()
+        if hasattr(self.tray, "retranslate_ui"):
+            self.tray.retranslate_ui()
+
+    def apply_appearance_from_settings(self) -> None:
+        cfg = self.config_service.load()
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet_for(cfg.settings.theme or "system"))
+        i18n.set_language(cfg.settings.language or "de")
 
     def _navigate(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -147,18 +207,17 @@ class MainWindow(QMainWindow):
         self._start_pipeline(mode=mode)
 
     def run_application_test(self) -> None:
-        """Test workflow: force dry_run and review mode."""
         cfg = self.config_service.load()
         cfg.settings.dry_run = True
         self._start_pipeline(mode="review_before_submit", config_override=cfg)
 
     def _start_pipeline(self, mode: str, config_override=None) -> None:
         if self._thread and self._thread.isRunning():
-            QMessageBox.information(self, "Jobhuntsaver", "Es läuft bereits ein Auftrag.")
+            QMessageBox.information(self, tr("app.name"), tr("msg.pipeline_running"))
             return
         cfg = config_override or self.config_service.load()
-        self.progress_label.setText("Läuft…")
-        self.dashboard.set_status("Läuft…")
+        self.progress_label.setText(tr("status.running"))
+        self.dashboard.set_status(tr("status.running"))
         worker = PipelineWorker(cfg, mode=mode)
         thread = start_worker(worker)
 
@@ -167,27 +226,26 @@ class MainWindow(QMainWindow):
             self.dashboard.set_status(msg)
 
         def on_finished(stats: dict) -> None:
-            self.progress_label.setText("Fertig")
-            self.dashboard.set_status("Fertig")
+            self.progress_label.setText(tr("status.done"))
+            self.dashboard.set_status(tr("status.done"))
             self.config_service.set_last_search(
                 datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             )
             self.refresh_all()
             QMessageBox.information(
                 self,
-                "Lauf abgeschlossen",
-                f"Neu: {stats.get('new', 0)} | Matches: {stats.get('matches', 0)} | "
-                f"Beworben: {stats.get('applied', 0)} | Review: {stats.get('needs_review', 0)}",
+                tr("msg.run_done"),
+                f"{tr('msg.new')}: {stats.get('new', 0)} | {tr('msg.matches')}: {stats.get('matches', 0)} | "
+                f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}",
             )
 
         def on_failed(err: str) -> None:
-            self.progress_label.setText("Fehler")
-            self.dashboard.set_status("Fehler")
+            self.progress_label.setText(tr("status.error"))
+            self.dashboard.set_status(tr("status.error"))
             QMessageBox.warning(
                 self,
-                "Fehler",
-                "Ein Schritt ist fehlgeschlagen. Details stehen in den Logs.\n\n"
-                f"{err[:300]}",
+                tr("msg.error"),
+                tr("msg.error_body", err=err[:300]),
             )
             self.logs.refresh()
 
@@ -208,20 +266,25 @@ class MainWindow(QMainWindow):
         ScheduleService(cfg).sync_from_config()
         self.dashboard.refresh()
         self.settings.load_from_config()
-        self.progress_label.setText("Automation pausiert" if paused else "Automation fortgesetzt")
+        self.progress_label.setText(
+            tr("status.paused") if paused else tr("status.resumed")
+        )
 
     def force_quit(self) -> None:
         self._force_quit = True
         self.close()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._force_quit or not self.tray.isVisible():
+        self._save_geometry()
+        cfg = self.config_service.load()
+        minimize = bool(getattr(cfg.settings, "minimize_to_tray", True))
+        if self._force_quit or not self.tray.isVisible() or not minimize:
             event.accept()
             return
         self.hide()
         self.tray.showMessage(
-            "Jobhuntsaver",
-            "Läuft weiter im Infobereich.",
+            tr("app.name"),
+            tr("tray.running"),
             self.tray.MessageIcon.Information,
             2500,
         )

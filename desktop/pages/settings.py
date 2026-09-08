@@ -1,8 +1,10 @@
-"""Settings page – modes, sources, automation, browser."""
+"""Settings page with categorized tabs and scrolling."""
 
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -13,16 +15,18 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QButtonGroup,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from core.database import Database
+from desktop.i18n import tr
 from desktop.services import ConfigService
 from desktop.services.browser_install import playwright_available
 from desktop.services.schedule_service import ScheduleService
+from desktop.widgets.scroll_page import wrap_scrollable
 from desktop.workers import BrowserInstallWorker, start_worker
 
 
@@ -32,47 +36,88 @@ SOURCES = [
     ("linkedin", "LinkedIn"),
     ("stepstone", "StepStone"),
     ("xing", "XING"),
-    ("company_sites", "Unternehmensseiten"),
+    ("company_sites", "company_sites"),
 ]
 
 
+def _scroll_form() -> tuple[QWidget, QVBoxLayout]:
+    inner = QWidget()
+    layout = QVBoxLayout(inner)
+    layout.setContentsMargins(12, 12, 12, 12)
+    layout.setSpacing(14)
+    page = QWidget()
+    outer = QVBoxLayout(page)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.addWidget(wrap_scrollable(inner, min_content_width=560))
+    return page, layout
+
+
 class SettingsPage(QWidget):
+    appearance_changed = Signal()
+
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
         self.config_service = config_service
         self._install_thread = None
         self._install_worker = None
 
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        self.tabs = QTabWidget()
+        root.addWidget(self.tabs)
 
-        # Modes
-        mode_box = QGroupBox("Bewerbungsmodus")
-        mode_layout = QVBoxLayout(mode_box)
-        self.mode_group = QButtonGroup(self)
-        self.mode_search = QRadioButton("Nur Suche – nie bewerben")
-        self.mode_review = QRadioButton("Vor Absenden prüfen")
-        self.mode_auto = QRadioButton("Vollautomatisch (sichere Bewerbungen)")
-        for i, btn in enumerate((self.mode_search, self.mode_review, self.mode_auto)):
-            self.mode_group.addButton(btn, i)
-            mode_layout.addWidget(btn)
-        self.dry_run = QCheckBox("Dry Run (nie endgültig absenden)")
-        mode_layout.addWidget(self.dry_run)
-        layout.addWidget(mode_box)
+        # --- General ---
+        general_page, general_layout = _scroll_form()
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItem("", "de")
+        self.lang_combo.addItem("", "en")
+        self.start_windows = QCheckBox()
+        self.minimize_tray = QCheckBox()
+        self.general_form = QFormLayout()
+        self.lang_label = QLabel()
+        self.general_form.addRow(self.lang_label, self.lang_combo)
+        self.general_form.addRow(self.start_windows)
+        self.general_form.addRow(self.minimize_tray)
+        general_box = QGroupBox()
+        self.general_box = general_box
+        general_box.setLayout(self.general_form)
+        general_layout.addWidget(general_box)
+        general_layout.addStretch(1)
+        self.tabs.addTab(general_page, "")
 
-        # Sources
-        src_box = QGroupBox("Jobquellen")
-        src_layout = QVBoxLayout(src_box)
+        # --- Appearance ---
+        appear_page, appear_layout = _scroll_form()
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("", "system")
+        self.theme_combo.addItem("", "light")
+        self.theme_combo.addItem("", "dark")
+        self.appear_form = QFormLayout()
+        self.theme_label = QLabel()
+        self.appear_form.addRow(self.theme_label, self.theme_combo)
+        appear_box = QGroupBox()
+        self.appear_box = appear_box
+        appear_box.setLayout(self.appear_form)
+        appear_layout.addWidget(appear_box)
+        appear_layout.addStretch(1)
+        self.tabs.addTab(appear_page, "")
+
+        # --- Search ---
+        search_page, search_layout = _scroll_form()
         self.source_checks: dict[str, QCheckBox] = {}
         self.source_status = QLabel()
-        for key, label in SOURCES:
-            cb = QCheckBox(label)
+        self.source_status.setWordWrap(True)
+        src_box = QGroupBox()
+        self.src_box = src_box
+        src_layout = QVBoxLayout(src_box)
+        for key, _label in SOURCES:
+            cb = QCheckBox()
             self.source_checks[key] = cb
             src_layout.addWidget(cb)
         src_layout.addWidget(self.source_status)
-        layout.addWidget(src_box)
+        search_layout.addWidget(src_box)
 
-        # Search settings
-        search_box = QGroupBox("Suche")
+        search_box = QGroupBox()
+        self.search_box = search_box
         sform = QFormLayout(search_box)
         self.published_days = QSpinBox()
         self.published_days.setRange(1, 90)
@@ -80,13 +125,34 @@ class SettingsPage(QWidget):
         self.min_match_dash.setRange(0, 100)
         self.max_distance = QSpinBox()
         self.max_distance.setRange(1, 300)
-        sform.addRow("Veröffentlichungsalter (Tage)", self.published_days)
-        sform.addRow("Min. Match Anzeige", self.min_match_dash)
-        sform.addRow("Max. Distanz (km)", self.max_distance)
-        layout.addWidget(search_box)
+        self.lbl_published = QLabel()
+        self.lbl_min_match_dash = QLabel()
+        self.lbl_max_distance = QLabel()
+        sform.addRow(self.lbl_published, self.published_days)
+        sform.addRow(self.lbl_min_match_dash, self.min_match_dash)
+        sform.addRow(self.lbl_max_distance, self.max_distance)
+        search_layout.addWidget(search_box)
+        search_layout.addStretch(1)
+        self.tabs.addTab(search_page, "")
 
-        # Auto apply
-        apply_box = QGroupBox("Auto-Apply")
+        # --- Applications ---
+        apps_page, apps_layout = _scroll_form()
+        mode_box = QGroupBox()
+        self.mode_box = mode_box
+        mode_layout = QVBoxLayout(mode_box)
+        self.mode_group = QButtonGroup(self)
+        self.mode_search = QRadioButton()
+        self.mode_review = QRadioButton()
+        self.mode_auto = QRadioButton()
+        for i, btn in enumerate((self.mode_search, self.mode_review, self.mode_auto)):
+            self.mode_group.addButton(btn, i)
+            mode_layout.addWidget(btn)
+        self.dry_run = QCheckBox()
+        mode_layout.addWidget(self.dry_run)
+        apps_layout.addWidget(mode_box)
+
+        apply_box = QGroupBox()
+        self.apply_box = apply_box
         aform = QFormLayout(apply_box)
         self.min_match_apply = QSpinBox()
         self.min_match_apply.setRange(0, 100)
@@ -98,59 +164,149 @@ class SettingsPage(QWidget):
         self.max_fail.setRange(1, 50)
         self.delay = QSpinBox()
         self.delay.setRange(0, 600)
-        self.auto_cover = QCheckBox("Automatische Anschreiben")
-        self.auto_submit = QCheckBox("Automatisch absenden")
-        aform.addRow("Min. Match Auto-Apply", self.min_match_apply)
-        aform.addRow("Max. Bewerbungen / Lauf", self.max_per_run)
-        aform.addRow("Max. Bewerbungen / Tag", self.max_per_day)
-        aform.addRow("Max. Fehler / Lauf", self.max_fail)
-        aform.addRow("Pause zwischen Bewerbungen (s)", self.delay)
+        self.auto_cover = QCheckBox()
+        self.auto_submit = QCheckBox()
+        self.lbl_min_match_apply = QLabel()
+        self.lbl_max_per_run = QLabel()
+        self.lbl_max_per_day = QLabel()
+        self.lbl_max_fail = QLabel()
+        self.lbl_delay = QLabel()
+        aform.addRow(self.lbl_min_match_apply, self.min_match_apply)
+        aform.addRow(self.lbl_max_per_run, self.max_per_run)
+        aform.addRow(self.lbl_max_per_day, self.max_per_day)
+        aform.addRow(self.lbl_max_fail, self.max_fail)
+        aform.addRow(self.lbl_delay, self.delay)
         aform.addRow(self.auto_cover)
         aform.addRow(self.auto_submit)
-        layout.addWidget(apply_box)
+        apps_layout.addWidget(apply_box)
+        apps_layout.addStretch(1)
+        self.tabs.addTab(apps_page, "")
 
-        # Background
-        bg_box = QGroupBox("Hintergrund-Automation")
+        # --- Automation ---
+        auto_page, auto_layout = _scroll_form()
+        bg_box = QGroupBox()
+        self.bg_box = bg_box
         bform = QFormLayout(bg_box)
-        self.run_auto = QCheckBox("Automatisch ausführen")
+        self.run_auto = QCheckBox()
         self.schedule_mode = QComboBox()
-        self.schedule_mode.addItem("Bei Windows-Anmeldung", "on_login")
-        self.schedule_mode.addItem("Alle X Stunden", "every_x_hours")
-        self.schedule_mode.addItem("Einmal täglich", "once_daily")
-        self.schedule_mode.addItem("Zweimal täglich", "twice_daily")
-        self.schedule_mode.addItem("Benutzerdefinierte Zeiten", "custom")
         self.interval_hours = QSpinBox()
         self.interval_hours.setRange(1, 24)
         self.custom_times = QLineEdit()
-        self.custom_times.setPlaceholderText("08:00, 17:00")
-        self.paused = QCheckBox("Automation pausiert")
+        self.paused = QCheckBox()
+        self.lbl_schedule = QLabel()
+        self.lbl_interval = QLabel()
+        self.lbl_times = QLabel()
         bform.addRow(self.run_auto)
-        bform.addRow("Zeitplan", self.schedule_mode)
-        bform.addRow("Intervall (Stunden)", self.interval_hours)
-        bform.addRow("Zeiten", self.custom_times)
+        bform.addRow(self.lbl_schedule, self.schedule_mode)
+        bform.addRow(self.lbl_interval, self.interval_hours)
+        bform.addRow(self.lbl_times, self.custom_times)
         bform.addRow(self.paused)
-        layout.addWidget(bg_box)
+        auto_layout.addWidget(bg_box)
+        auto_layout.addStretch(1)
+        self.tabs.addTab(auto_page, "")
 
-        # Browser
-        br_box = QGroupBox("Browser")
+        # --- Browser ---
+        browser_page, browser_layout = _scroll_form()
+        br_box = QGroupBox()
+        self.br_box = br_box
         br_layout = QHBoxLayout(br_box)
         self.browser_status = QLabel()
-        install_btn = QPushButton("Browser-Komponente installieren")
-        install_btn.setObjectName("SecondaryButton")
-        install_btn.clicked.connect(self.install_browser)
+        self.browser_status.setWordWrap(True)
+        self.install_btn = QPushButton()
+        self.install_btn.setObjectName("SecondaryButton")
+        self.install_btn.clicked.connect(self.install_browser)
         br_layout.addWidget(self.browser_status, 1)
-        br_layout.addWidget(install_btn)
-        layout.addWidget(br_box)
+        br_layout.addWidget(self.install_btn)
+        browser_layout.addWidget(br_box)
+        browser_layout.addStretch(1)
+        self.tabs.addTab(browser_page, "")
 
-        save_btn = QPushButton("Einstellungen speichern")
-        save_btn.setObjectName("PrimaryButton")
-        save_btn.clicked.connect(self.save)
-        layout.addWidget(save_btn)
-        layout.addStretch()
+        self.save_btn = QPushButton()
+        self.save_btn.setObjectName("PrimaryButton")
+        self.save_btn.clicked.connect(self.save)
+        root.addWidget(self.save_btn)
+
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.tabs.setTabText(0, tr("settings.general"))
+        self.tabs.setTabText(1, tr("settings.appearance"))
+        self.tabs.setTabText(2, tr("settings.search"))
+        self.tabs.setTabText(3, tr("settings.applications"))
+        self.tabs.setTabText(4, tr("settings.automation"))
+        self.tabs.setTabText(5, tr("settings.browser"))
+        self.general_box.setTitle(tr("settings.general"))
+        self.appear_box.setTitle(tr("settings.appearance"))
+        self.src_box.setTitle(tr("settings.sources"))
+        self.search_box.setTitle(tr("settings.search"))
+        self.mode_box.setTitle(tr("settings.mode"))
+        self.apply_box.setTitle(tr("settings.auto_apply"))
+        self.bg_box.setTitle(tr("settings.automation"))
+        self.br_box.setTitle(tr("settings.browser"))
+        self.lang_label.setText(tr("settings.language"))
+        self.theme_label.setText(tr("settings.theme"))
+        self.start_windows.setText(tr("settings.start_windows"))
+        self.minimize_tray.setText(tr("settings.minimize_tray"))
+        self.lang_combo.setItemText(0, tr("lang.de"))
+        self.lang_combo.setItemText(1, tr("lang.en"))
+        self.theme_combo.setItemText(0, tr("settings.theme.system"))
+        self.theme_combo.setItemText(1, tr("settings.theme.light"))
+        self.theme_combo.setItemText(2, tr("settings.theme.dark"))
+        for key, label in SOURCES:
+            text = tr("settings.company_sites") if key == "company_sites" else label
+            self.source_checks[key].setText(text)
+        self.mode_search.setText(tr("settings.mode.search"))
+        self.mode_review.setText(tr("settings.mode.review"))
+        self.mode_auto.setText(tr("settings.mode.auto"))
+        self.dry_run.setText(tr("settings.dry_run"))
+        self.lbl_published.setText(tr("settings.published_days"))
+        self.lbl_min_match_dash.setText(tr("settings.min_match_dash"))
+        self.lbl_max_distance.setText(tr("settings.max_distance"))
+        self.lbl_min_match_apply.setText(tr("settings.min_match_apply"))
+        self.lbl_max_per_run.setText(tr("settings.max_per_run"))
+        self.lbl_max_per_day.setText(tr("settings.max_per_day"))
+        self.lbl_max_fail.setText(tr("settings.max_fail"))
+        self.lbl_delay.setText(tr("settings.delay"))
+        self.auto_cover.setText(tr("settings.auto_cover"))
+        self.auto_submit.setText(tr("settings.auto_submit"))
+        self.run_auto.setText(tr("settings.run_auto"))
+        self.lbl_schedule.setText(tr("settings.schedule"))
+        self.lbl_interval.setText(tr("settings.interval"))
+        self.lbl_times.setText(tr("settings.times"))
+        self.paused.setText(tr("settings.paused"))
+        # rebuild schedule items preserving data
+        current = self.schedule_mode.currentData()
+        self.schedule_mode.clear()
+        for key in (
+            "settings.schedule.on_login",
+            "settings.schedule.every",
+            "settings.schedule.once",
+            "settings.schedule.twice",
+            "settings.schedule.custom",
+        ):
+            data = {
+                "settings.schedule.on_login": "on_login",
+                "settings.schedule.every": "every_x_hours",
+                "settings.schedule.once": "once_daily",
+                "settings.schedule.twice": "twice_daily",
+                "settings.schedule.custom": "custom",
+            }[key]
+            self.schedule_mode.addItem(tr(key), data)
+        idx = self.schedule_mode.findData(current)
+        self.schedule_mode.setCurrentIndex(idx if idx >= 0 else 1)
+        self.custom_times.setPlaceholderText("08:00, 17:00")
+        self.install_btn.setText(tr("btn.install_browser"))
+        self.save_btn.setText(tr("btn.save_settings"))
 
     def load_from_config(self) -> None:
         cfg = self.config_service.load()
         s = cfg.settings
+        lang_idx = self.lang_combo.findData((s.language or "de").lower())
+        self.lang_combo.setCurrentIndex(lang_idx if lang_idx >= 0 else 0)
+        theme_idx = self.theme_combo.findData((s.theme or "system").lower())
+        self.theme_combo.setCurrentIndex(theme_idx if theme_idx >= 0 else 0)
+        self.start_windows.setChecked(bool(getattr(s, "start_with_windows", False)))
+        self.minimize_tray.setChecked(bool(getattr(s, "minimize_to_tray", True)))
         {
             "search_only": self.mode_search,
             "review_before_submit": self.mode_review,
@@ -182,25 +338,29 @@ class SettingsPage(QWidget):
         for row in db.list_source_status():
             st = row.get("status") or "unknown"
             label = {
-                "ok": "Aktiv",
-                "error": "Fehler",
-                "login_required": "Login erforderlich",
-                "unavailable": "Nicht verfügbar",
+                "ok": tr("settings.source_active"),
+                "error": tr("settings.source_error"),
+                "login_required": tr("settings.source_login"),
+                "unavailable": tr("settings.source_unavailable"),
             }.get(st, st)
             msg = (row.get("message") or "").strip()
             if st == "error" and msg:
                 lines.append(f"{row.get('source')}: {label}")
-                lines.append(f"  Details: {msg[:240]}")
+                lines.append(f"  {msg[:240]}")
             else:
                 lines.append(f"{row.get('source')}: {label}" + (f" – {msg[:80]}" if msg else ""))
-        self.source_status.setText("\n".join(lines) if lines else "Noch kein Quellenstatus.")
-        self.source_status.setWordWrap(True)
+        self.source_status.setText("\n".join(lines) if lines else tr("settings.no_source_status"))
         self.browser_status.setText(
-            "Browser-Komponente: installiert" if playwright_available() else "Browser-Komponente: fehlt"
+            tr("settings.browser_ok") if playwright_available() else tr("settings.browser_missing")
         )
 
     def save(self) -> None:
         cfg = self.config_service.load()
+        old_lang = (cfg.settings.language or "de").lower()
+        cfg.settings.language = self.lang_combo.currentData() or "de"
+        cfg.settings.theme = self.theme_combo.currentData() or "system"
+        cfg.settings.start_with_windows = self.start_windows.isChecked()
+        cfg.settings.minimize_to_tray = self.minimize_tray.isChecked()
         if self.mode_search.isChecked():
             cfg.settings.mode = "search_only"
         elif self.mode_review.isChecked():
@@ -230,23 +390,32 @@ class SettingsPage(QWidget):
 
         errors = self.config_service.validate(cfg)
         if errors:
-            QMessageBox.warning(self, "Einstellungen", "\n".join(errors))
+            QMessageBox.warning(self, tr("nav.settings"), "\n".join(errors))
             return
         self.config_service.save(cfg)
         ok, msg = ScheduleService(cfg).sync_from_config()
-        QMessageBox.information(self, "Einstellungen", f"Gespeichert.\n{msg}" if ok else f"Gespeichert, Zeitplan: {msg}")
+        self.appearance_changed.emit()
+        note = tr("settings.saved")
+        if (cfg.settings.language or "de").lower() != old_lang:
+            note = f"{note}\n{tr('settings.lang_restart')}"
+        QMessageBox.information(
+            self,
+            tr("nav.settings"),
+            f"{note}\n{msg}" if ok else f"{note}\n{msg}",
+        )
+        self.load_from_config()
 
     def install_browser(self) -> None:
-        self.browser_status.setText("Installation läuft…")
+        self.browser_status.setText(tr("settings.browser_installing"))
         worker = BrowserInstallWorker()
         thread = start_worker(worker)
 
         def done(ok: bool, msg: str) -> None:
             self.browser_status.setText(msg)
             if ok:
-                QMessageBox.information(self, "Browser", msg)
+                QMessageBox.information(self, tr("settings.browser"), msg)
             else:
-                QMessageBox.warning(self, "Browser", msg)
+                QMessageBox.warning(self, tr("settings.browser"), msg)
 
         worker.finished.connect(done)
         self._install_worker = worker

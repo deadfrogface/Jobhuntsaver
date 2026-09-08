@@ -171,6 +171,29 @@ class ConfigService:
         meta["last_search_run"] = iso_ts
         self.save_meta(meta)
 
+    def get_window_state(self) -> dict[str, Any]:
+        meta = self.load_meta()
+        return dict(meta.get("window") or {})
+
+    def save_window_state(
+        self,
+        *,
+        width: int,
+        height: int,
+        x: int | None = None,
+        y: int | None = None,
+        maximized: bool = False,
+    ) -> None:
+        meta = self.load_meta()
+        meta["window"] = {
+            "width": int(width),
+            "height": int(height),
+            "x": x,
+            "y": y,
+            "maximized": bool(maximized),
+        }
+        self.save_meta(meta)
+
     def apply_safe_defaults(self, config: AppConfig) -> AppConfig:
         """First-run defaults from the conversion plan."""
         config.settings.mode = "search_only"

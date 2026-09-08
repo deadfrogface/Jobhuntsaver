@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -10,9 +11,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -23,33 +24,49 @@ from core.config import (
     ExperienceEntry,
     LanguageEntry,
 )
+from desktop.i18n import tr
 
 
 class _EntryListEditor(QWidget):
     """List with add/edit/remove opening a dialog."""
 
-    def __init__(self, empty_hint: str, parent=None) -> None:
+    def __init__(self, empty_hint: str, parent=None, *, visible_rows: int = 3) -> None:
         super().__init__(parent)
+        self._hint = empty_hint
+        self.hint_label = QLabel(empty_hint)
         self.list = QListWidget()
+        self.list.setMinimumHeight(22 * max(2, visible_rows))
+        self.list.setMaximumHeight(22 * max(3, visible_rows) + 8)
+        self.list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._items: list = []
-        add_btn = QPushButton("Hinzufügen")
-        edit_btn = QPushButton("Bearbeiten")
-        remove_btn = QPushButton("Entfernen")
-        for b in (add_btn, edit_btn, remove_btn):
+        self.add_btn = QPushButton()
+        self.edit_btn = QPushButton()
+        self.remove_btn = QPushButton()
+        for b in (self.add_btn, self.edit_btn, self.remove_btn):
             b.setObjectName("SecondaryButton")
-        add_btn.clicked.connect(self._add)
-        edit_btn.clicked.connect(self._edit)
-        remove_btn.clicked.connect(self._remove)
+        self.add_btn.clicked.connect(self._add)
+        self.edit_btn.clicked.connect(self._edit)
+        self.remove_btn.clicked.connect(self._remove)
+        self.retranslate()
         row = QHBoxLayout()
-        row.addWidget(add_btn)
-        row.addWidget(edit_btn)
-        row.addWidget(remove_btn)
+        row.addWidget(self.add_btn)
+        row.addWidget(self.edit_btn)
+        row.addWidget(self.remove_btn)
         row.addStretch()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel(empty_hint))
+        layout.setSpacing(6)
+        layout.addWidget(self.hint_label)
         layout.addWidget(self.list)
         layout.addLayout(row)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def retranslate(self) -> None:
+        self.add_btn.setText(tr("btn.add"))
+        self.edit_btn.setText(tr("btn.edit"))
+        self.remove_btn.setText(tr("btn.remove"))
+
 
     def _refresh(self) -> None:
         self.list.clear()
