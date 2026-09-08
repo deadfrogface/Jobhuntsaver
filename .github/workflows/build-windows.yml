@@ -1,0 +1,62 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build EXE
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
+          if (!(Test-Path "dist\Jobhuntsaver\config")) { New-Item -ItemType Directory -Path "dist\Jobhuntsaver\config" | Out-Null }
+          Copy-Item "config\*.example" "dist\Jobhuntsaver\config\" -Force
+          if (!(Test-Path "dist\Jobhuntsaver\templates")) { New-Item -ItemType Directory -Path "dist\Jobhuntsaver\templates" | Out-Null }
+          Copy-Item "templates\cover_letter.txt" "dist\Jobhuntsaver\templates\" -Force
+        shell: pwsh
+
+      - name: Verify EXE
+        run: |
+          if (!(Test-Path "dist\Jobhuntsaver\Jobhuntsaver.exe")) {
+            Write-Error "EXE missing"
+            exit 1
+          }
+          Get-Item "dist\Jobhuntsaver\Jobhuntsaver.exe" | Format-List FullName, Length
+        shell: pwsh
+
+      - name: Zip release folder
+        run: |
+          Compress-Archive -Path "dist\Jobhuntsaver\*" -DestinationPath "Jobhuntsaver-windows.zip" -Force
+        shell: pwsh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jobhuntsaver-windows
+          path: Jobhuntsaver-windows.zip
+          if-no-files-found: error
+          retention-days: 14

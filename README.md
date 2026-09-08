@@ -13,12 +13,18 @@ Kein Cloud-Konto, keine Pflicht-KI-API, keine Docker-Installation.
 
 ## Start
 
-- **Oberfläche:** Doppelklick auf **`start.bat`**
-- **Nur Suche:** Doppelklick auf **`run_search.bat`**
+- **Desktop-App (empfohlen):** Doppelklick auf **`start_desktop.bat`** oder später `dist\Jobhuntsaver\Jobhuntsaver.exe`
+- **EXE bauen:** Doppelklick auf **`build.bat`**
+- **Legacy-Streamlit:** Doppelklick auf **`start.bat`**
+- **Nur Suche (CLI):** Doppelklick auf **`run_search.bat`**
 
-Die Oberfläche öffnet sich im Browser (lokal, typischerweise Port 3847).
+Die Desktop-Oberfläche speichert Profil und Einstellungen unter `%LOCALAPPDATA%\Jobhuntsaver` — YAML muss nicht manuell editiert werden.
 
 ## Profil einrichten
+
+**In der Desktop-App:** Seite *Profil* und *Einstellungen* (inkl. CV-Auswahl, Modus, Dry Run).
+
+Alternativ (Legacy):
 
 1. Öffnen Sie `config/profile.yaml`  
    - Wunsch-Jobtitel  

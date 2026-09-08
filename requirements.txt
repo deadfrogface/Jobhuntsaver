@@ -12,3 +12,5 @@ beautifulsoup4>=4.12
 lxml>=5.0
 python-jobspy>=1.1.0
 pytest>=8.0
+PySide6>=6.6
+pyinstaller>=6.3

@@ -259,6 +259,77 @@ class Database:
             ).fetchone()
         return int(row["c"] if row else 0)
 
+    def list_applications(
+        self,
+        *,
+        statuses: list[str] | None = None,
+        limit: int = 500,
+    ) -> list[ApplicationRecord]:
+        sql = "SELECT * FROM applications"
+        params: list[Any] = []
+        if statuses:
+            placeholders = ", ".join("?" for _ in statuses)
+            sql += f" WHERE status IN ({placeholders})"
+            params.extend(statuses)
+        sql += " ORDER BY application_date DESC LIMIT ?"
+        params.append(limit)
+        with self.connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        result: list[ApplicationRecord] = []
+        for row in rows:
+            data = dict(row)
+            result.append(
+                ApplicationRecord(
+                    id=data.get("id") or "",
+                    job_id=data.get("job_id") or "",
+                    company=data.get("company") or "",
+                    position=data.get("position") or "",
+                    application_date=data.get("application_date") or "",
+                    platform=data.get("platform") or "",
+                    status=data.get("status") or "",
+                    cv_used=data.get("cv_used") or "",
+                    cover_letter_used=data.get("cover_letter_used") or "",
+                    result=data.get("result") or "",
+                    error_message=data.get("error_message") or "",
+                )
+            )
+        return result
+
+    def get_meta(self, key: str) -> str | None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
+            row = conn.execute(
+                "SELECT value FROM app_meta WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                """,
+                (key, value, utc_now_iso()),
+            )
+
     def save_application(self, record: ApplicationRecord) -> str:
         if not record.id:
             record.id = str(uuid.uuid4())

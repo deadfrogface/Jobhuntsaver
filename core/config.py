@@ -86,6 +86,10 @@ class ApplicationProfile:
     first_name: str = ""
     last_name: str = ""
     address: str = ""
+    street: str = ""
+    postal_code: str = ""
+    city: str = ""
+    country: str = "DE"
     email: str = ""
     phone: str = ""
     date_of_birth: str = ""
@@ -114,6 +118,20 @@ class ApplicationProfile:
     def phone_full(self) -> str:
         return self.phone
 
+    def sync_address(self) -> None:
+        """Compose legacy `address` from structured fields when present."""
+        parts = [
+            p.strip()
+            for p in (
+                self.street,
+                f"{self.postal_code} {self.city}".strip(),
+                self.country,
+            )
+            if p and str(p).strip()
+        ]
+        if parts:
+            self.address = ", ".join(parts)
+
 
 @dataclass
 class SettingsConfig:
@@ -138,6 +156,13 @@ class SettingsConfig:
     geocoder: str = "nominatim"
     cover_letter_template: str = "templates/cover_letter.txt"
     exclude_on_missing_mandatory: bool = False
+    automatic_cover_letters: bool = True
+    automatic_submission: bool = False
+    automation_paused: bool = False
+    run_automatically: bool = False
+    schedule_mode: str = "every_x_hours"  # on_login | every_x_hours | once_daily | twice_daily | custom
+    schedule_interval_hours: int = 6
+    schedule_times: list[str] = field(default_factory=lambda: ["08:00"])
 
 
 @dataclass
@@ -175,23 +200,73 @@ def _merge_dataclass(cls, data: dict[str, Any]):
     return cls(**kwargs)
 
 
-def load_config(
+def _dataclass_to_dict(obj: Any) -> Any:
+    if hasattr(obj, "__dataclass_fields__"):
+        return {
+            name: _dataclass_to_dict(getattr(obj, name))
+            for name in obj.__dataclass_fields__
+        }
+    if isinstance(obj, list):
+        return [_dataclass_to_dict(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _dataclass_to_dict(v) for k, v in obj.items()}
+    return obj
+
+
+def _dump_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+
+def save_config(
+    config: AppConfig,
+    *,
     profile_path: Path | None = None,
     application_path: Path | None = None,
     settings_path: Path | None = None,
-) -> AppConfig:
-    load_dotenv(ROOT / ".env")
+) -> None:
+    """Persist GUI-editable configuration to YAML files."""
     profile_path = profile_path or CONFIG_DIR / "profile.yaml"
     application_path = application_path or CONFIG_DIR / "application_profile.yaml"
     settings_path = settings_path or CONFIG_DIR / "settings.yaml"
 
+    config.application.sync_address()
+    profile_data = {
+        "location": _dataclass_to_dict(config.profile.location),
+        "jobs": _dataclass_to_dict(config.profile.jobs),
+        "employment": _dataclass_to_dict(config.profile.employment),
+        "qualifications": _dataclass_to_dict(config.profile.qualifications),
+        "filters": _dataclass_to_dict(config.profile.filters),
+    }
+    application_data = _dataclass_to_dict(config.application)
+    settings_data = _dataclass_to_dict(config.settings)
+    _dump_yaml(profile_path, profile_data)
+    _dump_yaml(application_path, application_data)
+    _dump_yaml(settings_path, settings_data)
+
+
+def load_config(
+    profile_path: Path | None = None,
+    application_path: Path | None = None,
+    settings_path: Path | None = None,
+    root: Path | None = None,
+) -> AppConfig:
+    root = root or ROOT
+    load_dotenv(root / ".env")
+    load_dotenv(ROOT / ".env")
+    example_dir = CONFIG_DIR
+    profile_path = profile_path or (root / "config" / "profile.yaml")
+    application_path = application_path or (root / "config" / "application_profile.yaml")
+    settings_path = settings_path or (root / "config" / "settings.yaml")
+
     # Prefer real files; fall back to examples for first run
     if not profile_path.exists():
-        profile_path = CONFIG_DIR / "profile.yaml.example"
+        profile_path = example_dir / "profile.yaml.example"
     if not application_path.exists():
-        application_path = CONFIG_DIR / "application_profile.yaml.example"
+        application_path = example_dir / "application_profile.yaml.example"
     if not settings_path.exists():
-        settings_path = CONFIG_DIR / "settings.yaml.example"
+        settings_path = example_dir / "settings.yaml.example"
 
     profile_raw = _load_yaml(profile_path)
     application_raw = _load_yaml(application_path)
@@ -218,4 +293,9 @@ def load_config(
     if os.getenv("CV_PATH"):
         application.cv_path = os.environ["CV_PATH"]
 
-    return AppConfig(profile=profile, application=application, settings=settings)
+    return AppConfig(
+        profile=profile,
+        application=application,
+        settings=settings,
+        root=root,
+    )

@@ -40,3 +40,10 @@ Thumbs.db
 exports/
 *.xlsx
 !tests/fixtures/**
+
+# Desktop build / analysis clones
+_analysis/
+build/
+dist/
+*.spec.bak
+packaging/build/

@@ -91,13 +91,25 @@ def enrich_locations(jobs, location: LocationService):
     return jobs
 
 
-def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> dict:
+def run_pipeline(
+    config: AppConfig | None = None,
+    mode: str | None = None,
+    progress_callback=None,
+) -> dict:
+    def progress(message: str) -> None:
+        if progress_callback:
+            try:
+                progress_callback(message)
+            except Exception:
+                pass
+
     config = config or load_config()
     if mode:
         config.settings.mode = mode
 
     run = RunLogger(config.root / config.settings.logs_dir)
     run.info("Run started")
+    progress("Suche gestartet…")
     db = Database(config.db_path)
     location = LocationService(db, config)
     location.ensure_home_coords()
@@ -106,10 +118,12 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
     sources = build_sources(config.settings.enabled_sources)
     all_jobs = []
     for source in sources:
+        progress(f"Suche {source.source_id}…")
         jobs, err = source.safe_search(queries)
         if err:
             run.error(f"{source.source_id}: {err}")
             db.set_source_status(source.source_id, "error", err, 0)
+            progress(f"{source.source_id}-Suche fehlgeschlagen. Andere Quellen laufen weiter.")
             continue
         run.info(f"{source.source_id}: {len(jobs)} jobs")
         db.set_source_status(source.source_id, "ok", "", len(jobs))
@@ -118,12 +132,15 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
     total = len(all_jobs)
     run.info(f"{total} total results")
 
+    progress("Standorte anreichern…")
     all_jobs = enrich_locations(all_jobs, location)
+    progress("Duplikate entfernen…")
     all_jobs = deduplicate(all_jobs)
     primary = [j for j in all_jobs if not j.duplicate_of]
     duplicates_removed = len(all_jobs) - len(primary)
     run.info(f"{duplicates_removed} duplicates marked")
 
+    progress("Jobs matchen…")
     scored = []
     outside = 0
     new_count = 0
@@ -176,10 +193,12 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
     if config.settings.mode == OperatingMode.SEARCH_ONLY.value:
         run.info("Mode search_only — no applications")
         run.info("Finished")
+        progress("Suche abgeschlossen.")
         return stats
 
     browser = None
     try:
+        progress("Browser starten…")
         browser = BrowserManager(
             config.root / config.settings.browser_profile_dir,
             headless=config.settings.headless,
@@ -193,6 +212,8 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
             if manager.applied_this_run >= config.settings.max_applications_per_run:
                 run.info("Application limit reached")
                 break
+            ats = job.ats_type or "ATS"
+            progress(f"Öffne {ats}: {job.company} – {job.title[:40]}")
             result = manager.prepare_and_apply(job)
             label = job.title[:40]
             if result.captcha_detected:
@@ -203,12 +224,15 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
                 run.info(f"{label} → application successful")
             elif result.needs_review or result.dry_run_stopped or result.manual_required:
                 stats["needs_review"] += 1
+                if result.dry_run_stopped:
+                    progress("Dry Run: vor dem Absenden gestoppt.")
                 run.info(f"{label} → needs_review ({result.error_message})")
             else:
                 stats["failed"] += 1
                 run.info(f"{label} → failed ({result.error_message})")
     except Exception as exc:
         run.error(f"Browser/apply pipeline error: {exc}")
+        progress("Bewerbungslauf fehlgeschlagen. Details stehen in den Logs.")
     finally:
         if browser:
             browser.close()
@@ -217,6 +241,7 @@ def run_pipeline(config: AppConfig | None = None, mode: str | None = None) -> di
         f"Finished: {stats['applied']} applications successful, "
         f"{stats['needs_review']} Needs Review, {stats['captcha']} CAPTCHA, {stats['failed']} Failed"
     )
+    progress("Lauf abgeschlossen.")
     return stats
 
 
