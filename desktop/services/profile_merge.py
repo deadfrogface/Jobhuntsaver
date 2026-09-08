@@ -1,84 +1,445 @@
-"""Merge CV-extracted qualifications into an existing profile without blind duplicates."""
+"""CV import: replace / merge profile data with origin tracking and de-duplication."""
 
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import Literal
+from dataclasses import dataclass, fields, replace
+from typing import Any, Literal
 
 from core.config import (
+    ApplicationProfile,
     CertificateEntry,
     EducationEntry,
     ExperienceEntry,
     LanguageEntry,
     QualificationsConfig,
+    SourcedText,
 )
 
+ImportMode = Literal["replace", "merge"]
 Action = Literal["add", "update", "keep", "ignore"]
+SOURCE_MANUAL = "manual"
+SOURCE_CV = "cv"
+SOURCE_DEFAULT = "default"
+
+# Personal fields that CV import may set / replace.
+PERSONAL_FIELDS = (
+    "first_name",
+    "last_name",
+    "street",
+    "postal_code",
+    "city",
+    "address",
+    "email",
+    "phone",
+    "date_of_birth",
+    "driving_license",
+    "education",
+    "languages",
+    "current_employment",
+    "work_experience",
+)
+
+# Soft aliases so merge does not create near-duplicates.
+_EQUIVALENCE: dict[str, str] = {
+    "ms office": "microsoft office",
+    "microsoft office": "microsoft office",
+    "msoffice": "microsoft office",
+    "office": "microsoft office",
+    "ms word": "microsoft word",
+    "microsoft word": "microsoft word",
+    "ms excel": "microsoft excel",
+    "microsoft excel": "microsoft excel",
+    "excel": "microsoft excel",
+    "ms outlook": "microsoft outlook",
+    "microsoft outlook": "microsoft outlook",
+    "outlook": "microsoft outlook",
+    "ms powerpoint": "microsoft powerpoint",
+    "microsoft powerpoint": "microsoft powerpoint",
+    "powerpoint": "microsoft powerpoint",
+    "klasse b": "klasse b",
+    "klasse b (pkw)": "klasse b",
+    "führerschein b": "klasse b",
+    "fuehrerschein b": "klasse b",
+    "b": "klasse b",
+}
 
 
-def _merge_list_str(existing: list[str], incoming: list[str], action: Action) -> list[str]:
-    if action == "ignore" or action == "keep":
-        return list(existing)
-    if action == "update":
-        # Replace empty profile with incoming; otherwise union
-        if not existing:
-            return list(dict.fromkeys(incoming))
-    seen = {e.lower() for e in existing}
-    out = list(existing)
-    for item in incoming:
-        if item.lower() not in seen:
-            out.append(item)
-            seen.add(item.lower())
+def normalize_key(value: str) -> str:
+    key = " ".join(str(value or "").strip().lower().split())
+    return _EQUIVALENCE.get(key, key)
+
+
+def _as_sourced_item(item: Any, default_source: str = SOURCE_MANUAL) -> SourcedText | None:
+    if isinstance(item, SourcedText):
+        return item if item.value.strip() else None
+    text = str(item or "").strip()
+    return SourcedText(value=text, source=default_source) if text else None
+
+
+def mark_qualifications_source(q: QualificationsConfig, source: str = SOURCE_CV) -> QualificationsConfig:
+    """Return a copy with every entry marked as the given source."""
+
+    def _src_text(items: list) -> list[SourcedText]:
+        out: list[SourcedText] = []
+        for item in items:
+            parsed = _as_sourced_item(item, source)
+            if parsed:
+                out.append(SourcedText(value=parsed.value, source=source))
+        return out
+
+    return QualificationsConfig(
+        languages=[replace(x, source=source) for x in q.languages],
+        education=[replace(x, source=source) for x in q.education],
+        work_experience=[replace(x, source=source) for x in q.work_experience],
+        certificates=[replace(x, source=source) for x in q.certificates],
+        skills=_src_text(q.skills),
+        software=_src_text(q.software),
+        driving_license=_src_text(q.driving_license),
+    )
+
+
+def keep_manual_qualifications(q: QualificationsConfig) -> QualificationsConfig:
+    """Keep only explicitly manual entries; drop CV / legacy / default."""
+
+    def _manual_entries(items: list) -> list:
+        out = []
+        for x in items:
+            if isinstance(x, SourcedText):
+                if x.source == SOURCE_MANUAL:
+                    out.append(x)
+            elif hasattr(x, "source"):
+                if getattr(x, "source", "") == SOURCE_MANUAL:
+                    out.append(x)
+            # plain / legacy without source → not kept on replace
+        return out
+
+    return QualificationsConfig(
+        languages=_manual_entries(q.languages),
+        education=_manual_entries(q.education),
+        work_experience=_manual_entries(q.work_experience),
+        certificates=_manual_entries(q.certificates),
+        skills=_manual_entries(q.skills),
+        software=_manual_entries(q.software),
+        driving_license=_manual_entries(q.driving_license),
+    )
+
+
+def clear_all_qualifications() -> QualificationsConfig:
+    return QualificationsConfig()
+
+
+def strings_to_sourced(items: list[str], *, source: str = SOURCE_MANUAL) -> list[SourcedText]:
+    return [SourcedText(value=s.strip(), source=source) for s in items if str(s).strip()]
+
+
+def preserve_sourced_on_edit(
+    previous: list[SourcedText],
+    new_values: list[str],
+    *,
+    edited_source: str = SOURCE_MANUAL,
+) -> list[SourcedText]:
+    """Map UI string lists back to SourcedText, keeping source when value unchanged."""
+    by_norm = {normalize_key(s.value): s for s in previous if s.value}
+    out: list[SourcedText] = []
+    seen: set[str] = set()
+    for raw in new_values:
+        text = str(raw).strip()
+        if not text:
+            continue
+        key = normalize_key(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        prev = by_norm.get(key)
+        if prev and normalize_key(prev.value) == key:
+            out.append(SourcedText(value=text, source=prev.source or edited_source))
+        else:
+            out.append(SourcedText(value=text, source=edited_source))
     return out
 
 
-def _merge_by_key(existing: list, incoming: list, action: Action) -> list:
-    if action == "ignore":
-        return list(existing)
-    if action == "keep":
-        return list(existing)
-    by_key = {item.normalized_key(): item for item in existing if item.normalized_key()}
-    order = [item.normalized_key() for item in existing if item.normalized_key()]
+def _merge_sourced(
+    existing: list[SourcedText],
+    incoming: list[SourcedText],
+) -> list[SourcedText]:
+    by_key: dict[str, SourcedText] = {}
+    order: list[str] = []
+    for item in existing:
+        parsed = _as_sourced_item(item)
+        if not parsed:
+            continue
+        key = normalize_key(parsed.value)
+        if not key:
+            continue
+        by_key[key] = parsed
+        order.append(key)
     for item in incoming:
-        key = item.normalized_key()
+        parsed = _as_sourced_item(item, SOURCE_CV)
+        if not parsed:
+            continue
+        key = normalize_key(parsed.value)
         if not key:
             continue
         if key in by_key:
-            if action == "update":
-                by_key[key] = item
-            # add: skip duplicate
-        else:
-            by_key[key] = item
-            order.append(key)
-    # Preserve existing order, append new
+            continue  # keep existing; no duplicate
+        by_key[key] = parsed
+        order.append(key)
+    return [by_key[k] for k in order if k in by_key]
+
+
+def _merge_by_key(existing: list, incoming: list) -> list:
+    by_key = {normalize_key(item.normalized_key()): item for item in existing if item.normalized_key()}
+    order = [normalize_key(item.normalized_key()) for item in existing if item.normalized_key()]
+    for item in incoming:
+        key = normalize_key(item.normalized_key())
+        if not key:
+            continue
+        if key in by_key:
+            continue
+        by_key[key] = item
+        order.append(key)
     return [by_key[k] for k in order if k in by_key]
 
 
 def merge_qualifications(
     existing: QualificationsConfig,
     incoming: QualificationsConfig,
-    *,
-    languages: Action = "add",
-    education: Action = "add",
-    work_experience: Action = "add",
-    certificates: Action = "add",
-    skills: Action = "add",
-    software: Action = "add",
-    driving_license: Action = "add",
+    **actions: Action,
 ) -> QualificationsConfig:
+    """Merge without duplicates (normalized). Optional legacy per-section actions."""
+    if actions:
+        return merge_qualifications_actions(existing, incoming, **actions)
+    incoming = mark_qualifications_source(incoming, SOURCE_CV)
     return QualificationsConfig(
-        languages=_merge_by_key(existing.languages, incoming.languages, languages),
-        education=_merge_by_key(existing.education, incoming.education, education),
-        work_experience=_merge_by_key(
-            existing.work_experience, incoming.work_experience, work_experience
-        ),
-        certificates=_merge_by_key(existing.certificates, incoming.certificates, certificates),
-        skills=_merge_list_str(existing.skills, incoming.skills, skills),
-        software=_merge_list_str(existing.software, incoming.software, software),
-        driving_license=_merge_list_str(
-            existing.driving_license, incoming.driving_license, driving_license
-        ),
+        languages=_merge_by_key(existing.languages, incoming.languages),
+        education=_merge_by_key(existing.education, incoming.education),
+        work_experience=_merge_by_key(existing.work_experience, incoming.work_experience),
+        certificates=_merge_by_key(existing.certificates, incoming.certificates),
+        skills=_merge_sourced(existing.skills, incoming.skills),
+        software=_merge_sourced(existing.software, incoming.software),
+        driving_license=_merge_sourced(existing.driving_license, incoming.driving_license),
     )
+
+
+def replace_qualifications(
+    existing: QualificationsConfig,
+    incoming: QualificationsConfig,
+) -> QualificationsConfig:
+    """Remove previous CV-derived quals, keep manual, then add new CV data (no dups)."""
+    incoming = mark_qualifications_source(incoming, SOURCE_CV)
+    kept = keep_manual_qualifications(existing)
+    return merge_qualifications(kept, incoming)
+
+
+@dataclass
+class FieldConflict:
+    field: str
+    label: str
+    current_value: str
+    incoming_value: str
+    current_source: str
+
+
+@dataclass
+class PersonalImportPlan:
+    updates: dict[str, str]
+    conflicts: list[FieldConflict]
+    will_replace: list[str]
+    will_keep: list[str]
+
+
+def field_origin(app: ApplicationProfile, name: str) -> str:
+    origins = getattr(app, "field_origins", None) or {}
+    if name in origins:
+        return str(origins.get(name) or "")
+    # Untagged personal data is replaceable (legacy / prior CV)
+    return SOURCE_CV if str(getattr(app, name, "") or "").strip() else ""
+
+
+def set_field_origin(app: ApplicationProfile, name: str, source: str) -> None:
+    if not isinstance(app.field_origins, dict):
+        app.field_origins = {}
+    app.field_origins[name] = source
+
+
+def personal_from_parsed(parsed: dict[str, Any]) -> dict[str, str]:
+    """Map CV parser personal block + contact hints into ApplicationProfile fields."""
+    personal = dict(parsed.get("personal") or {})
+    out: dict[str, str] = {}
+    for key in PERSONAL_FIELDS:
+        val = str(personal.get(key) or "").strip()
+        if val:
+            out[key] = val
+    emails = parsed.get("emails") or []
+    phones = parsed.get("phones") or []
+    if emails and "email" not in out:
+        out["email"] = str(emails[0]).strip()
+    if phones and "phone" not in out:
+        out["phone"] = str(phones[0]).strip()
+    # Compose address if structured parts present
+    if not out.get("address"):
+        parts = [
+            out.get("street", ""),
+            f"{out.get('postal_code', '')} {out.get('city', '')}".strip(),
+        ]
+        composed = ", ".join(p for p in parts if p)
+        if composed:
+            out["address"] = composed
+    return {k: v for k, v in out.items() if v}
+
+
+def sync_application_summaries(app: ApplicationProfile, quals: QualificationsConfig) -> None:
+    """Refresh short application text fields from structured quals (CV-sourced)."""
+    if quals.language_labels():
+        app.languages = ", ".join(quals.language_labels())
+        set_field_origin(app, "languages", SOURCE_CV)
+    if quals.education:
+        app.education = quals.education[0].qualification or quals.education[0].label()
+        set_field_origin(app, "education", SOURCE_CV)
+    if quals.work_experience:
+        app.current_employment = quals.work_experience[0].title or quals.work_experience[0].label()
+        set_field_origin(app, "current_employment", SOURCE_CV)
+        app.work_experience = quals.work_experience[0].label()
+        set_field_origin(app, "work_experience", SOURCE_CV)
+    if quals.driving_values():
+        app.driving_license = quals.driving_values()[0]
+        set_field_origin(app, "driving_license", SOURCE_CV)
+
+
+def plan_personal_import(
+    app: ApplicationProfile,
+    incoming: dict[str, str],
+    *,
+    mode: ImportMode,
+) -> PersonalImportPlan:
+    """Decide which personal fields to update; flag manual conflicts."""
+    updates: dict[str, str] = {}
+    conflicts: list[FieldConflict] = []
+    will_replace: list[str] = []
+    will_keep: list[str] = []
+
+    labels = {
+        "first_name": "Vorname",
+        "last_name": "Nachname",
+        "street": "Straße",
+        "postal_code": "PLZ",
+        "city": "Ort",
+        "address": "Adresse",
+        "email": "E-Mail",
+        "phone": "Telefon",
+        "date_of_birth": "Geburtsdatum",
+        "driving_license": "Führerschein",
+        "education": "Ausbildung (kurz)",
+        "languages": "Sprachen (kurz)",
+        "current_employment": "Aktuelle Tätigkeit",
+        "work_experience": "Berufserfahrung (kurz)",
+    }
+
+    for field_name, new_val in incoming.items():
+        new_val = str(new_val).strip()
+        if not new_val:
+            continue
+        current = str(getattr(app, field_name, "") or "").strip()
+        origin = field_origin(app, field_name)
+        if not current:
+            updates[field_name] = new_val
+            will_replace.append(labels.get(field_name, field_name))
+            continue
+        if current == new_val:
+            will_keep.append(labels.get(field_name, field_name))
+            continue
+        if mode == "replace" and origin == SOURCE_CV:
+            updates[field_name] = new_val
+            will_replace.append(labels.get(field_name, field_name))
+            continue
+        if mode == "replace" and origin in (SOURCE_DEFAULT, ""):
+            updates[field_name] = new_val
+            will_replace.append(labels.get(field_name, field_name))
+            continue
+        if origin == SOURCE_MANUAL or (mode == "merge" and current):
+            conflicts.append(
+                FieldConflict(
+                    field=field_name,
+                    label=labels.get(field_name, field_name),
+                    current_value=current,
+                    incoming_value=new_val,
+                    current_source=origin or SOURCE_MANUAL,
+                )
+            )
+            continue
+        # replace unknown / cv-like
+        updates[field_name] = new_val
+        will_replace.append(labels.get(field_name, field_name))
+
+    # In replace mode, clear CV-sourced personal fields that are absent from new CV
+    if mode == "replace":
+        for field_name in PERSONAL_FIELDS:
+            if field_name in incoming and incoming[field_name]:
+                continue
+            if field_name in updates:
+                continue
+            origin = field_origin(app, field_name)
+            current = str(getattr(app, field_name, "") or "").strip()
+            if origin == SOURCE_CV and current:
+                updates[field_name] = ""
+                will_replace.append(labels.get(field_name, field_name) + " (leeren)")
+
+    return PersonalImportPlan(
+        updates=updates,
+        conflicts=conflicts,
+        will_replace=list(dict.fromkeys(will_replace)),
+        will_keep=list(dict.fromkeys(will_keep)),
+    )
+
+
+def apply_personal_updates(
+    app: ApplicationProfile,
+    updates: dict[str, str],
+    *,
+    source: str = SOURCE_CV,
+    conflict_choices: dict[str, Literal["cv", "keep"]] | None = None,
+    conflicts: list[FieldConflict] | None = None,
+) -> ApplicationProfile:
+    """Apply planned updates and resolved conflicts onto application profile."""
+    conflict_choices = conflict_choices or {}
+    for c in conflicts or []:
+        choice = conflict_choices.get(c.field, "keep")
+        if choice == "cv":
+            updates[c.field] = c.incoming_value
+        # keep: leave current value, do not touch
+
+    for name, value in updates.items():
+        if not hasattr(app, name):
+            continue
+        setattr(app, name, value)
+        if value:
+            set_field_origin(app, name, source)
+        elif name in (app.field_origins or {}):
+            app.field_origins.pop(name, None)
+    app.sync_address()
+    return app
+
+
+def clear_cv_personal(app: ApplicationProfile) -> ApplicationProfile:
+    for name in PERSONAL_FIELDS:
+        if field_origin(app, name) == SOURCE_CV:
+            setattr(app, name, "")
+            app.field_origins.pop(name, None)
+    app.sync_address()
+    return app
+
+
+def clear_complete_application(app: ApplicationProfile) -> ApplicationProfile:
+    for f in fields(app):
+        if f.name == "answers":
+            app.answers = {}
+        elif f.name == "field_origins":
+            app.field_origins = {}
+        elif f.name == "country":
+            app.country = "DE"
+        elif isinstance(getattr(app, f.name), str):
+            setattr(app, f.name, "")
+    return app
 
 
 def summarize_incoming(q: QualificationsConfig) -> dict[str, list[str]]:
@@ -87,7 +448,101 @@ def summarize_incoming(q: QualificationsConfig) -> dict[str, list[str]]:
         "education": q.education_labels(),
         "work_experience": q.experience_labels(),
         "certificates": q.certificate_labels(),
-        "skills": list(q.skills),
-        "software": list(q.software),
-        "driving_license": list(q.driving_license),
+        "skills": q.skill_values(),
+        "software": q.software_values(),
+        "driving_license": q.driving_values(),
     }
+
+
+def quals_section_labels(q: QualificationsConfig) -> list[str]:
+    labels = []
+    if q.languages:
+        labels.append("Sprachen")
+    if q.education:
+        labels.append("Ausbildung")
+    if q.work_experience:
+        labels.append("Berufserfahrung")
+    if q.certificates:
+        labels.append("Zertifikate")
+    if q.software:
+        labels.append("Software")
+    if q.skills:
+        labels.append("Skills")
+    if q.driving_license:
+        labels.append("Führerschein")
+    return labels
+
+
+def merge_qualifications_actions(
+    existing: QualificationsConfig,
+    incoming: QualificationsConfig,
+    **actions: Action,
+) -> QualificationsConfig:
+    """Legacy per-section actions — maps onto merge/replace behavior."""
+    incoming = mark_qualifications_source(incoming, SOURCE_CV)
+    result = QualificationsConfig(
+        languages=list(existing.languages),
+        education=list(existing.education),
+        work_experience=list(existing.work_experience),
+        certificates=list(existing.certificates),
+        skills=list(existing.skills),
+        software=list(existing.software),
+        driving_license=list(existing.driving_license),
+    )
+    mapping = {
+        "languages": ("languages", _merge_by_key),
+        "education": ("education", _merge_by_key),
+        "work_experience": ("work_experience", _merge_by_key),
+        "certificates": ("certificates", _merge_by_key),
+        "skills": ("skills", _merge_sourced),
+        "software": ("software", _merge_sourced),
+        "driving_license": ("driving_license", _merge_sourced),
+    }
+    for key, (attr, merger) in mapping.items():
+        action = actions.get(key, "add")
+        existing_list = getattr(result, attr)
+        incoming_list = getattr(incoming, attr)
+        if action in ("keep", "ignore"):
+            continue
+        if action == "update":
+            # replace matching keys with incoming, then add new
+            if attr in ("skills", "software", "driving_license"):
+                by_key: dict[str, SourcedText] = {}
+                order: list[str] = []
+                for x in existing_list:
+                    parsed = _as_sourced_item(x)
+                    if not parsed:
+                        continue
+                    k = normalize_key(parsed.value)
+                    by_key[k] = parsed
+                    order.append(k)
+                for item in incoming_list:
+                    parsed = _as_sourced_item(item, SOURCE_CV)
+                    if not parsed:
+                        continue
+                    k = normalize_key(parsed.value)
+                    if not k:
+                        continue
+                    if k in by_key:
+                        by_key[k] = parsed
+                    else:
+                        by_key[k] = parsed
+                        order.append(k)
+                setattr(result, attr, [by_key[k] for k in order if k in by_key])
+            else:
+                by_key = {normalize_key(x.normalized_key()): x for x in existing_list}
+                order = [normalize_key(x.normalized_key()) for x in existing_list]
+                for item in incoming_list:
+                    k = normalize_key(item.normalized_key())
+                    if not k:
+                        continue
+                    if k in by_key:
+                        by_key[k] = item
+                    else:
+                        by_key[k] = item
+                        order.append(k)
+                setattr(result, attr, [by_key[k] for k in order if k in by_key])
+        else:  # add
+            setattr(result, attr, merger(existing_list, incoming_list))
+    return result
+

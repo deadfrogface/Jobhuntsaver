@@ -154,8 +154,8 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     # Skills / software / certificates / keywords (0-25)
     skill_hits: list[str] = []
     candidates = (
-        list(quals.skills)
-        + list(quals.software)
+        list(quals.skill_values())
+        + list(quals.software_values())
         + list(profile.filters.desired_keywords)
         + [c.name for c in quals.certificates if c.name]
     )
@@ -242,11 +242,12 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     )
     if needs_license:
         if quals.driving_license:
+            license_vals = quals.driving_values()
             if "klasse b" in combined or re.search(r"führerschein\s*b|\bklasse\s*b\b", combined):
-                if _has_driving_class_b(quals.driving_license, combined):
+                if _has_driving_class_b(license_vals, combined):
                     score += 5
                     reasons.append("Driving license Klasse B available")
-                elif quals.driving_license:
+                elif license_vals:
                     score += 3
                     reasons.append("Driving license available")
             else:

@@ -33,7 +33,7 @@ def render_cover_letter(job: Job, config: AppConfig) -> str:
         template = DEFAULT_TEMPLATE
 
     skills = ", ".join(
-        (config.profile.qualifications.skills + config.profile.qualifications.software)[:6]
+        (config.profile.qualifications.skill_values() + config.profile.qualifications.software_values())[:6]
     ) or "meine bisherigen beruflichen Erfahrungen"
     exp = config.profile.qualifications.work_experience
     if exp:

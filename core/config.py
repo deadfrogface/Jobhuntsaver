@@ -65,6 +65,7 @@ class EmploymentConfig:
 class LanguageEntry:
     language: str = ""
     level: str = ""
+    source: str = ""  # manual | cv | default | "" (legacy → replaceable)
 
     def label(self) -> str:
         if self.language and self.level:
@@ -83,6 +84,7 @@ class EducationEntry:
     start_date: str = ""
     end_date: str = ""
     completion_date: str = ""
+    source: str = ""
 
     def label(self) -> str:
         parts = [self.qualification, self.institution, self.completion_date or self.end_date]
@@ -103,6 +105,7 @@ class ExperienceEntry:
     start_date: str = ""
     end_date: str = ""
     responsibilities: list[str] = field(default_factory=list)
+    source: str = ""
 
     def label(self) -> str:
         period = " – ".join(p for p in (self.start_date, self.end_date) if p)
@@ -123,6 +126,7 @@ class CertificateEntry:
     name: str = ""
     issuer: str = ""
     date: str = ""
+    source: str = ""
 
     def label(self) -> str:
         parts = [self.name, self.issuer, self.date]
@@ -133,14 +137,41 @@ class CertificateEntry:
 
 
 @dataclass
+class SourcedText:
+    value: str = ""
+    source: str = ""
+
+    def normalized_key(self) -> str:
+        return self.value.strip().lower()
+
+    def label(self) -> str:
+        return self.value
+
+
+def _sourced_value(item: Any) -> str:
+    if isinstance(item, SourcedText):
+        return item.value.strip()
+    return str(item or "").strip()
+
+
+@dataclass
 class QualificationsConfig:
     education: list[EducationEntry] = field(default_factory=list)
     work_experience: list[ExperienceEntry] = field(default_factory=list)
-    skills: list[str] = field(default_factory=list)
-    software: list[str] = field(default_factory=list)
-    driving_license: list[str] = field(default_factory=list)
+    skills: list[SourcedText] = field(default_factory=list)
+    software: list[SourcedText] = field(default_factory=list)
+    driving_license: list[SourcedText] = field(default_factory=list)
     languages: list[LanguageEntry] = field(default_factory=list)
     certificates: list[CertificateEntry] = field(default_factory=list)
+
+    def skill_values(self) -> list[str]:
+        return [_sourced_value(s) for s in self.skills if _sourced_value(s)]
+
+    def software_values(self) -> list[str]:
+        return [_sourced_value(s) for s in self.software if _sourced_value(s)]
+
+    def driving_values(self) -> list[str]:
+        return [_sourced_value(s) for s in self.driving_license if _sourced_value(s)]
 
     def language_labels(self) -> list[str]:
         return [lang.label() for lang in self.languages if lang.language]
@@ -157,9 +188,9 @@ class QualificationsConfig:
     def all_match_tokens(self) -> list[str]:
         """Flattened tokens for job matching (no invented values)."""
         tokens: list[str] = []
-        tokens.extend(self.skills)
-        tokens.extend(self.software)
-        tokens.extend(self.driving_license)
+        tokens.extend(self.skill_values())
+        tokens.extend(self.software_values())
+        tokens.extend(self.driving_values())
         tokens.extend(self.language_labels())
         for edu in self.education:
             tokens.extend(edu.search_tokens())
@@ -216,6 +247,8 @@ class ApplicationProfile:
     portfolio_url: str = ""
     cv_path: str = ""
     answers: dict[str, str] = field(default_factory=dict)
+    # Track origin of personal fields: manual | cv | default
+    field_origins: dict[str, str] = field(default_factory=dict)
 
     @property
     def full_name(self) -> str:
@@ -317,9 +350,10 @@ def _parse_language(value: Any) -> LanguageEntry | None:
     if isinstance(value, dict):
         lang = str(value.get("language") or "").strip()
         level = str(value.get("level") or "").strip()
+        source = str(value.get("source") or "").strip()
         if not lang and not level:
             return None
-        return LanguageEntry(language=lang, level=level)
+        return LanguageEntry(language=lang, level=level, source=source)
     if isinstance(value, str) and value.strip():
         text = value.strip()
         m = re.match(
@@ -352,6 +386,7 @@ def _parse_education(value: Any) -> EducationEntry | None:
             start_date=str(value.get("start_date") or "").strip(),
             end_date=str(value.get("end_date") or "").strip(),
             completion_date=str(value.get("completion_date") or "").strip(),
+            source=str(value.get("source") or "").strip(),
         )
         return entry if entry.qualification or entry.institution else None
     if isinstance(value, str) and value.strip():
@@ -373,6 +408,7 @@ def _parse_experience(value: Any) -> ExperienceEntry | None:
             start_date=str(value.get("start_date") or "").strip(),
             end_date=str(value.get("end_date") or "").strip(),
             responsibilities=[str(r).strip() for r in responsibilities if str(r).strip()],
+            source=str(value.get("source") or "").strip(),
         )
         return entry if entry.title or entry.company else None
     if isinstance(value, str) and value.strip():
@@ -388,10 +424,24 @@ def _parse_certificate(value: Any) -> CertificateEntry | None:
             name=str(value.get("name") or "").strip(),
             issuer=str(value.get("issuer") or "").strip(),
             date=str(value.get("date") or "").strip(),
+            source=str(value.get("source") or "").strip(),
         )
         return entry if entry.name else None
     if isinstance(value, str) and value.strip():
         return CertificateEntry(name=value.strip())
+    return None
+
+
+def _parse_sourced_text(value: Any) -> SourcedText | None:
+    if isinstance(value, SourcedText):
+        return value if value.value.strip() else None
+    if isinstance(value, dict):
+        text = str(value.get("value") or value.get("text") or "").strip()
+        source = str(value.get("source") or "").strip()
+        return SourcedText(value=text, source=source) if text else None
+    if isinstance(value, str) and value.strip():
+        # Bare strings from older YAML: replaceable until user edits (manual)
+        return SourcedText(value=value.strip(), source="")
     return None
 
 
@@ -417,24 +467,32 @@ def parse_qualifications(raw: dict[str, Any] | None) -> QualificationsConfig:
         parsed = _parse_certificate(item)
         if parsed:
             certificates.append(parsed)
+
+    def _list_sourced(key: str) -> list[SourcedText]:
+        out: list[SourcedText] = []
+        for item in raw.get(key) or []:
+            parsed = _parse_sourced_text(item)
+            if parsed:
+                out.append(parsed)
+        return out
+
     return QualificationsConfig(
         education=education,
         work_experience=experience,
-        skills=[str(s).strip() for s in (raw.get("skills") or []) if str(s).strip()],
-        software=[str(s).strip() for s in (raw.get("software") or []) if str(s).strip()],
-        driving_license=[
-            str(s).strip() for s in (raw.get("driving_license") or []) if str(s).strip()
-        ],
+        skills=_list_sourced("skills"),
+        software=_list_sourced("software"),
+        driving_license=_list_sourced("driving_license"),
         languages=languages,
         certificates=certificates,
     )
 
 
+
 def strip_example_placeholders(profile: ProfileConfig) -> ProfileConfig:
     """Remove known demo qualification sets so they never influence matching."""
     q = profile.qualifications
-    skill_set = {s.lower() for s in q.skills}
-    software_set = {s.lower() for s in q.software}
+    skill_set = {v.lower() for v in q.skill_values()}
+    software_set = {v.lower() for v in q.software_values()}
     lang_set = {lang.label().lower() for lang in q.languages} | {
         f"{lang.language} ({lang.level})".lower() for lang in q.languages if lang.level
     }
@@ -449,6 +507,58 @@ def strip_example_placeholders(profile: ProfileConfig) -> ProfileConfig:
     if keyword_set and keyword_set <= EXAMPLE_KEYWORD_SET:
         profile.filters.desired_keywords = []
     return profile
+
+
+# Demo application fingerprint from older examples — never treat as real user data.
+EXAMPLE_APPLICATION_MARKERS = {
+    "first_name": "max",
+    "last_name": "mustermann",
+    "email": "max.mustermann@example.com",
+}
+
+
+def strip_example_application(application: ApplicationProfile) -> ApplicationProfile:
+    """Clear Mustermann-style demo personal data from production configs."""
+    fn = (application.first_name or "").strip().lower()
+    ln = (application.last_name or "").strip().lower()
+    em = (application.email or "").strip().lower()
+    is_demo = (
+        fn == EXAMPLE_APPLICATION_MARKERS["first_name"]
+        and ln == EXAMPLE_APPLICATION_MARKERS["last_name"]
+    ) or em == EXAMPLE_APPLICATION_MARKERS["email"]
+    if not is_demo:
+        return application
+    for name in (
+        "first_name",
+        "last_name",
+        "address",
+        "street",
+        "postal_code",
+        "city",
+        "email",
+        "phone",
+        "date_of_birth",
+        "driving_license",
+        "work_authorization",
+        "notice_period",
+        "earliest_start_date",
+        "salary_expectation",
+        "current_employment",
+        "education",
+        "work_experience",
+        "languages",
+        "willingness_to_travel",
+        "willingness_to_relocate",
+        "remote_preference",
+        "linkedin_url",
+        "portfolio_url",
+        "cv_path",
+    ):
+        setattr(application, name, "")
+    application.country = "DE"
+    application.answers = {}
+    application.field_origins = {}
+    return application
 
 
 def _dataclass_to_dict(obj: Any) -> Any:
@@ -536,6 +646,8 @@ def load_config(
     if strip_placeholders:
         profile = strip_example_placeholders(profile)
     application = _merge_dataclass(ApplicationProfile, application_raw)
+    if strip_placeholders:
+        application = strip_example_application(application)
     settings = _merge_dataclass(SettingsConfig, settings_raw)
 
     if os.getenv("CV_PATH"):

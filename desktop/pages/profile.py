@@ -22,6 +22,15 @@ from PySide6.QtWidgets import (
 from desktop.i18n import TRANSLATIONS, tr
 from desktop.services import ConfigService
 from desktop.widgets import ListEditor
+from desktop.services.profile_merge import (
+    SOURCE_MANUAL,
+    clear_all_qualifications,
+    clear_complete_application,
+    clear_cv_personal,
+    keep_manual_qualifications,
+    preserve_sourced_on_edit,
+    set_field_origin,
+)
 from desktop.widgets.cv_import_dialog import CvImportDialog
 from desktop.widgets.scroll_page import wrap_scrollable
 from desktop.widgets.structured_editors import (
@@ -202,17 +211,17 @@ class ProfilePage(QWidget):
         self.cv_select.clicked.connect(self.select_cv)
         self.cv_import = QPushButton()
         self.cv_import.setObjectName("PrimaryButton")
-        self.cv_import.clicked.connect(lambda: self.import_from_cv(update=False))
-        self.cv_update = QPushButton()
-        self.cv_update.setObjectName("SecondaryButton")
-        self.cv_update.clicked.connect(lambda: self.import_from_cv(update=True))
+        self.cv_import.clicked.connect(self.import_from_cv)
+        self.cv_reset = QPushButton()
+        self.cv_reset.setObjectName("SecondaryButton")
+        self.cv_reset.clicked.connect(self.reset_profile)
         self.cv_box = QGroupBox()
         cv_layout = QVBoxLayout(self.cv_box)
         cv_layout.addWidget(self.cv_label)
         cv_row = QHBoxLayout()
         cv_row.addWidget(self.cv_select)
         cv_row.addWidget(self.cv_import)
-        cv_row.addWidget(self.cv_update)
+        cv_row.addWidget(self.cv_reset)
         cv_row.addStretch()
         cv_layout.addLayout(cv_row)
         layout.addWidget(self.cv_box)
@@ -264,7 +273,7 @@ class ProfilePage(QWidget):
             self.cv_label.setText(tr("profile.no_cv"))
         self.cv_select.setText(tr("btn.select_cv"))
         self.cv_import.setText(tr("btn.import_cv"))
-        self.cv_update.setText(tr("btn.update_cv"))
+        self.cv_reset.setText(tr("btn.reset_profile"))
         self.save_btn.setText(tr("btn.save_profile"))
         for editor in (
             self.desired_titles,
@@ -291,10 +300,10 @@ class ProfilePage(QWidget):
         self.unwanted_titles.set_items(p.jobs.unwanted_titles)
         self.desired_industries.set_items(p.jobs.desired_industries)
         self.excluded_industries.set_items(p.jobs.excluded_industries)
-        self.skills.set_items(p.qualifications.skills)
-        self.software.set_items(p.qualifications.software)
+        self.skills.set_items(p.qualifications.skill_values())
+        self.software.set_items(p.qualifications.software_values())
         self.languages.set_items(p.qualifications.languages)
-        self.driving.set_items(p.qualifications.driving_license)
+        self.driving.set_items(p.qualifications.driving_values())
         self.education.set_items(p.qualifications.education)
         self.experience.set_items(p.qualifications.work_experience)
         self.certificates.set_items(p.qualifications.certificates)
@@ -352,7 +361,7 @@ class ProfilePage(QWidget):
             tr("profile.cv_saved"),
         )
 
-    def import_from_cv(self, update: bool = False) -> None:
+    def import_from_cv(self) -> None:
         cfg = self.config_service.load()
         cv_path = Path(cfg.application.cv_path) if cfg.application.cv_path else None
         if not cv_path or not cv_path.exists():
@@ -368,27 +377,53 @@ class ProfilePage(QWidget):
             self.cv_label.setText(str(cv_path))
             cfg = self.config_service.load()
 
-        dlg = CvImportDialog(cv_path, cfg.profile.qualifications, self)
-        if update:
-            for key, combo in dlg.actions.items():
-                idx = combo.findData("update")
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
+        dlg = CvImportDialog(cv_path, cfg.profile.qualifications, cfg.application, self)
         if dlg.exec() != dlg.DialogCode.Accepted or dlg.result_quals is None:
             return
         cfg.profile.qualifications = dlg.result_quals
-        # Sync short application fields when empty
-        if dlg.result_quals.driving_license and not cfg.application.driving_license:
-            cfg.application.driving_license = dlg.result_quals.driving_license[0]
-        if dlg.result_quals.languages and not cfg.application.languages:
-            cfg.application.languages = ", ".join(dlg.result_quals.language_labels())
-        if dlg.result_quals.education and not cfg.application.education:
-            cfg.application.education = dlg.result_quals.education[0].qualification
-        if dlg.result_quals.work_experience and not cfg.application.current_employment:
-            cfg.application.current_employment = dlg.result_quals.work_experience[0].title
+        if dlg.result_application is not None:
+            cfg.application = dlg.result_application
+        cfg.application.cv_path = str(cv_path)
         self.config_service.save(cfg)
         self.load_from_config()
         QMessageBox.information(self, tr("profile.cv"), tr("profile.cv_updated"))
+
+    def reset_profile(self) -> None:
+        msg = QMessageBox(self)
+        msg.setWindowTitle(tr("profile.reset_title"))
+        msg.setText(tr("profile.reset"))
+        msg.setInformativeText(tr("profile.reset_confirm_cv"))
+        cv_btn = msg.addButton(tr("profile.reset_cv_only"), QMessageBox.ButtonRole.AcceptRole)
+        all_btn = msg.addButton(tr("profile.reset_all"), QMessageBox.ButtonRole.DestructiveRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is None or clicked == msg.button(QMessageBox.StandardButton.Cancel):
+            return
+        cfg = self.config_service.load()
+        if clicked is all_btn:
+            confirm = QMessageBox.question(
+                self,
+                tr("profile.reset_title"),
+                tr("profile.reset_confirm_all"),
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+            cfg.profile.qualifications = clear_all_qualifications()
+            cfg.application = clear_complete_application(cfg.application)
+        else:
+            confirm = QMessageBox.question(
+                self,
+                tr("profile.reset_title"),
+                tr("profile.reset_confirm_cv"),
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+            cfg.profile.qualifications = keep_manual_qualifications(cfg.profile.qualifications)
+            cfg.application = clear_cv_personal(cfg.application)
+        self.config_service.save(cfg)
+        self.load_from_config()
+        QMessageBox.information(self, tr("profile.reset_title"), tr("profile.reset_done"))
 
     def save(self) -> None:
         cfg = self.config_service.load()
@@ -398,10 +433,20 @@ class ProfilePage(QWidget):
         p.jobs.unwanted_titles = self.unwanted_titles.get_items()
         p.jobs.desired_industries = self.desired_industries.get_items()
         p.jobs.excluded_industries = self.excluded_industries.get_items()
-        p.qualifications.skills = self.skills.get_items()
-        p.qualifications.software = self.software.get_items()
-        p.qualifications.languages = self.languages.get_items()
-        p.qualifications.driving_license = self.driving.get_items()
+        p.qualifications.skills = preserve_sourced_on_edit(
+            p.qualifications.skills, self.skills.get_items()
+        )
+        p.qualifications.software = preserve_sourced_on_edit(
+            p.qualifications.software, self.software.get_items()
+        )
+        langs = self.languages.get_items()
+        for lang in langs:
+            if getattr(lang, "source", None) in (None, ""):
+                lang.source = SOURCE_MANUAL
+        p.qualifications.languages = langs
+        p.qualifications.driving_license = preserve_sourced_on_edit(
+            p.qualifications.driving_license, self.driving.get_items()
+        )
         p.qualifications.education = self.education.get_items()
         p.qualifications.work_experience = self.experience.get_items()
         p.qualifications.certificates = self.certificates.get_items()
@@ -420,23 +465,34 @@ class ProfilePage(QWidget):
         p.location.country = self.country.text().strip() or "DE"
 
         a = cfg.application
-        a.first_name = self.first_name.text().strip()
-        a.last_name = self.last_name.text().strip()
-        a.street = self.street.text().strip()
-        a.postal_code = self.postal_code.text().strip()
-        a.city = self.city.text().strip()
+        personal_map = {
+            "first_name": self.first_name.text().strip(),
+            "last_name": self.last_name.text().strip(),
+            "street": self.street.text().strip(),
+            "postal_code": self.postal_code.text().strip(),
+            "city": self.city.text().strip(),
+            "email": self.email.text().strip(),
+            "phone": self.phone.text().strip(),
+            "date_of_birth": self.dob.text().strip(),
+            "driving_license": self.drv.text().strip(),
+            "education": self.edu_text.text().strip(),
+            "languages": self.lang_text.text().strip(),
+            "current_employment": self.current_job.text().strip(),
+        }
+        for name, value in personal_map.items():
+            old = str(getattr(a, name, "") or "")
+            setattr(a, name, value)
+            if value != old:
+                set_field_origin(a, name, SOURCE_MANUAL if value else SOURCE_MANUAL)
+                if not value and name in (a.field_origins or {}):
+                    a.field_origins.pop(name, None)
+                elif value:
+                    set_field_origin(a, name, SOURCE_MANUAL)
         a.country = self.app_country.text().strip() or "DE"
-        a.email = self.email.text().strip()
-        a.phone = self.phone.text().strip()
-        a.date_of_birth = self.dob.text().strip()
-        a.driving_license = self.drv.text().strip()
         a.work_authorization = self.work_auth.text().strip()
         a.notice_period = self.notice.text().strip()
         a.earliest_start_date = self.start.text().strip()
         a.salary_expectation = self.salary_exp.text().strip()
-        a.current_employment = self.current_job.text().strip()
-        a.education = self.edu_text.text().strip()
-        a.languages = self.lang_text.text().strip()
         a.willingness_to_travel = self.travel.text().strip()
         a.willingness_to_relocate = self.relocate.text().strip()
         a.remote_preference = self.remote_pref.text().strip()

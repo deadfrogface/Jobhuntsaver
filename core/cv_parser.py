@@ -434,6 +434,7 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         "experience_lines": [],
         "emails": [],
         "phones": [],
+        "personal": {},
         "uncertain": [],
     }
     if not text.strip():
@@ -442,6 +443,7 @@ def parse_cv_text(text: str) -> dict[str, Any]:
     emails = re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
     phones = re.findall(r"(?:\+?\d[\d\s\-()]{7,}\d)", text)
     sections = _split_named_sections(text)
+    personal = _parse_personal_header(text, sections)
 
     languages = _parse_languages(sections.get("languages", ""))
     software = _parse_software(sections.get("software", ""))
@@ -467,7 +469,8 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         "skills": list(dict.fromkeys(skills)),
         "software": software,
         "languages": [
-            {"language": lang.language, "level": lang.level} for lang in languages
+            {"language": lang.language, "level": lang.level, "source": "cv"}
+            for lang in languages
         ],
         "education": [
             {
@@ -477,6 +480,7 @@ def parse_cv_text(text: str) -> dict[str, Any]:
                 "start_date": e.start_date,
                 "end_date": e.end_date,
                 "completion_date": e.completion_date,
+                "source": "cv",
             }
             for e in education
         ],
@@ -488,25 +492,111 @@ def parse_cv_text(text: str) -> dict[str, Any]:
                 "start_date": e.start_date,
                 "end_date": e.end_date,
                 "responsibilities": e.responsibilities,
+                "source": "cv",
             }
             for e in experience
         ],
-        "certificates": [{"name": c.name, "issuer": c.issuer, "date": c.date} for c in certificates],
-        "driving_license": list(dict.fromkeys(driving)),
+        "certificates": [
+            {"name": c.name, "issuer": c.issuer, "date": c.date, "source": "cv"}
+            for c in certificates
+        ],
+        "driving_license": [{"value": d, "source": "cv"} for d in dict.fromkeys(driving)],
         "experience_lines": [e.label() for e in experience],
         "emails": list(dict.fromkeys(emails)),
         "phones": list(dict.fromkeys(p.strip() for p in phones)),
+        "personal": personal,
         "uncertain": [],
     }
     return result
 
 
+_HEADING_LINE = re.compile(
+    r"^(Berufserfahrung|Ausbildung|Weiterbildungen|Sprachen|EDV|Führerschein|"
+    r"Fähigkeiten|Kompetenzen|Kenntnisse|Experience|Education|Skills)\b",
+    re.I,
+)
+_POSTAL_CITY = re.compile(
+    r"(?P<street>.+?)\s*,?\s*(?P<plz>\d{5})\s+(?P<city>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-\s]+)"
+)
+_DOB = re.compile(
+    r"(?:Geburtsdatum|geboren(?:\s+am)?|DoB|Date of birth)\s*[:\-]?\s*"
+    r"(?P<dob>\d{1,2}\.\d{1,2}\.\d{2,4})",
+    re.I,
+)
+
+
+def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str]:
+    """Extract name/address from the CV header (before first known section)."""
+    personal: dict[str, str] = {}
+    header_lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            if header_lines:
+                break
+            continue
+        if _HEADING_LINE.match(line):
+            break
+        # Skip obvious non-name contact-only lines later
+        header_lines.append(line)
+        if len(header_lines) >= 12:
+            break
+
+    # Name: first line that looks like 2+ words and is not email/phone/address-heavy
+    for line in header_lines:
+        if "@" in line or re.search(r"\d{5}", line) or re.search(r"\+?\d[\d\s\-()]{7,}\d", line):
+            continue
+        if _DOB.search(line):
+            continue
+        if re.fullmatch(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-]+(?:\s+[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-]+)+", line):
+            parts = line.split()
+            if 2 <= len(parts) <= 4:
+                personal["first_name"] = parts[0]
+                personal["last_name"] = " ".join(parts[1:])
+                break
+
+    for line in header_lines:
+        m = _POSTAL_CITY.search(line)
+        if m:
+            street = m.group("street").strip(" ,;")
+            # Drop leading labels
+            street = re.sub(r"^(Adresse|Anschrift)\s*[:\-]?\s*", "", street, flags=re.I)
+            if street and not re.search(r"@", street):
+                personal["street"] = street
+            personal["postal_code"] = m.group("plz")
+            personal["city"] = m.group("city").strip(" ,;")
+            break
+
+    dob_m = _DOB.search(text)
+    if dob_m:
+        personal["date_of_birth"] = dob_m.group("dob")
+
+    if personal.get("street") or personal.get("postal_code"):
+        parts = [
+            personal.get("street", ""),
+            f"{personal.get('postal_code', '')} {personal.get('city', '')}".strip(),
+        ]
+        personal["address"] = ", ".join(p for p in parts if p)
+    return personal
+
+
 def parsed_to_qualifications(parsed: dict[str, Any]) -> QualificationsConfig:
+    def _as_sourced(items: list) -> list[dict[str, str]]:
+        out = []
+        for s in items or []:
+            if isinstance(s, dict):
+                val = str(s.get("value") or s.get("text") or "").strip()
+                if val:
+                    out.append({"value": val, "source": "cv"})
+            elif str(s).strip():
+                out.append({"value": str(s).strip(), "source": "cv"})
+        return out
+
     return parse_qualifications(
         {
-            "skills": parsed.get("skills") or [],
-            "software": parsed.get("software") or [],
-            "driving_license": parsed.get("driving_license") or [],
+            "skills": _as_sourced(parsed.get("skills") or []),
+            "software": _as_sourced(parsed.get("software") or []),
+            "driving_license": _as_sourced(parsed.get("driving_license") or []),
             "languages": parsed.get("languages") or [],
             "education": parsed.get("education") or [],
             "work_experience": parsed.get("work_experience") or [],

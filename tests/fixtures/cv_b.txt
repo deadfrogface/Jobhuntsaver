@@ -1,0 +1,38 @@
+Bruno Beta
+Technologiering 5, 80331 München
+bruno.beta@example.com
++49 170 2222222
+Geburtsdatum: 15.05.1985
+
+Berufserfahrung
+Seit 01.03.2020
+Softwareentwickler
+Beta AG, München
+• Python-Backends
+• API-Design
+
+Ausbildung
+Master Informatik
+Abschluss: 20.09.2019
+TU München
+
+Sprachen
+• Deutsch – C1
+• Englisch – C1
+• Spanisch – A2
+
+EDV-Kenntnisse
+• Python
+• Docker
+• Microsoft Office
+• PostgreSQL
+
+Führerschein
+• Klasse A
+
+Weiterbildungen
+• AWS Solutions Architect
+
+Skills
+• Backend
+• DevOps

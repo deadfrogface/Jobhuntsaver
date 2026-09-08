@@ -74,16 +74,20 @@ class ConfigService:
         self._config = config
         # Persist cleaned profile if demo placeholders were stripped
         try:
-            from core.config import strip_example_placeholders
+            from core.config import strip_example_application, strip_example_placeholders
             from copy import deepcopy
 
             before = deepcopy(config.profile.qualifications)
             strip_example_placeholders(config.profile)
             after = config.profile.qualifications
+            before_app = (config.application.first_name, config.application.email)
+            strip_example_application(config.application)
+            after_app = (config.application.first_name, config.application.email)
             if (
                 before.skills != after.skills
                 or before.software != after.software
                 or before.languages != after.languages
+                or before_app != after_app
             ):
                 self.save(config)
         except Exception:

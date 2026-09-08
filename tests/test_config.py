@@ -15,4 +15,5 @@ def test_load_example_configs():
     assert cfg.profile.location.max_distance_km == 20
     assert cfg.settings.dry_run is True
     assert "bundesagentur" in cfg.settings.enabled_sources
-    assert cfg.application.first_name
+    assert cfg.application.first_name == ""
+    assert cfg.application.email == ""

@@ -290,7 +290,9 @@ class FirstRunWizard(QWizard):
             cfg.profile.jobs.desired_titles = titles
         skills = self.skills.skills.get_items()
         if skills:
-            cfg.profile.qualifications.skills = skills
+            from desktop.services.profile_merge import strings_to_sourced
+
+            cfg.profile.qualifications.skills = strings_to_sourced(skills)
         langs = self.skills.languages.get_items()
         if langs:
             from core.config import LanguageEntry

@@ -87,13 +87,13 @@ Führerschein
     assert ("Englisch", "C1") in langs
     assert ("Dänisch", "A2") in langs
     assert ("Schwedisch", "A2") in langs
-    assert any("Klasse B" in d for d in q.driving_license)
+    assert any("Klasse B" in d for d in q.driving_values())
     assert any("Kauffrau für Spedition und Logistikdienstleistung" in e.qualification for e in q.education)
     assert any("Mittlere Reife" in e.qualification for e in q.education)
     assert any("06.07.2023" == e.completion_date for e in q.education)
     assert any("Zollgrundlagen" == c.name for c in q.certificates)
-    assert any("Shopify" == s for s in q.software)
-    assert any("Excel" in s for s in q.software)
+    assert any("Shopify" == s for s in q.software_values())
+    assert any("Excel" in s for s in q.software_values())
     assert len(q.work_experience) >= 2
     assert any("Reklamationsbearbeitung" in " ".join(e.responsibilities) for e in q.work_experience)
 
@@ -105,7 +105,7 @@ def test_real_test_cv_if_present():
     q = parsed_to_qualifications(import_cv(path))
     assert len(q.languages) >= 4
     assert any(l.language == "Englisch" and l.level == "C1" for l in q.languages)
-    assert any("Klasse B" in d for d in q.driving_license)
+    assert any("Klasse B" in d for d in q.driving_values())
     assert any("Speditionskauffrau" in e.qualification for e in q.education)
     assert any(c.name == "Zollgrundlagen" for c in q.certificates)
     assert len(q.work_experience) >= 3
@@ -144,7 +144,7 @@ def test_reimport_no_duplicates():
     merged_add = merge_qualifications(existing, incoming, languages="add", software="add")
     assert len(merged_add.languages) == 2  # Deutsch kept once, Englisch added
     assert {l.language for l in merged_add.languages} == {"Deutsch", "Englisch"}
-    assert merged_add.software == ["Excel", "Shopify"]
+    assert merged_add.software_values() == ["Excel", "Shopify"]
 
     merged_update = merge_qualifications(
         existing, incoming, languages="update", software="update"
