@@ -27,7 +27,7 @@ from desktop.services import ConfigService
 from desktop.services.browser_install import playwright_available
 from desktop.services.schedule_service import ScheduleService
 from desktop.widgets.scroll_page import wrap_scrollable
-from desktop.workers import BrowserInstallWorker, start_worker
+from desktop.workers import BrowserCheckWorker, BrowserRepairWorker, start_worker
 
 
 SOURCES = [
@@ -209,17 +209,25 @@ class SettingsPage(QWidget):
         browser_page, browser_layout = _scroll_form()
         br_box = QGroupBox()
         self.br_box = br_box
-        br_layout = QHBoxLayout(br_box)
+        br_layout = QVBoxLayout(br_box)
         self.browser_status = QLabel()
         self.browser_status.setWordWrap(True)
-        self.install_btn = QPushButton()
-        self.install_btn.setObjectName("SecondaryButton")
-        self.install_btn.clicked.connect(self.install_browser)
-        br_layout.addWidget(self.browser_status, 1)
-        br_layout.addWidget(self.install_btn)
+        btn_row = QHBoxLayout()
+        self.check_browser_btn = QPushButton()
+        self.check_browser_btn.setObjectName("SecondaryButton")
+        self.check_browser_btn.clicked.connect(self.check_browser_component)
+        self.repair_browser_btn = QPushButton()
+        self.repair_browser_btn.setObjectName("SecondaryButton")
+        self.repair_browser_btn.clicked.connect(self.repair_browser_component)
+        btn_row.addWidget(self.check_browser_btn)
+        btn_row.addWidget(self.repair_browser_btn)
+        btn_row.addStretch(1)
+        br_layout.addWidget(self.browser_status)
+        br_layout.addLayout(btn_row)
         browser_layout.addWidget(br_box)
         browser_layout.addStretch(1)
         self.tabs.addTab(browser_page, "")
+        self._browser_busy = False
 
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("PrimaryButton")
@@ -295,7 +303,8 @@ class SettingsPage(QWidget):
         idx = self.schedule_mode.findData(current)
         self.schedule_mode.setCurrentIndex(idx if idx >= 0 else 1)
         self.custom_times.setPlaceholderText("08:00, 17:00")
-        self.install_btn.setText(tr("btn.install_browser"))
+        self.check_browser_btn.setText(tr("btn.check_browser"))
+        self.repair_browser_btn.setText(tr("btn.repair_browser"))
         self.save_btn.setText(tr("btn.save_settings"))
 
     def load_from_config(self) -> None:
@@ -405,18 +414,51 @@ class SettingsPage(QWidget):
         )
         self.load_from_config()
 
-    def install_browser(self) -> None:
-        self.browser_status.setText(tr("settings.browser_installing"))
-        worker = BrowserInstallWorker()
+    def _set_browser_busy(self, busy: bool) -> None:
+        self._browser_busy = busy
+        self.check_browser_btn.setEnabled(not busy)
+        self.repair_browser_btn.setEnabled(not busy)
+
+    def check_browser_component(self) -> None:
+        if self._browser_busy:
+            return
+        self._set_browser_busy(True)
+        self.browser_status.setText(tr("settings.browser_checking"))
+        worker = BrowserCheckWorker()
         thread = start_worker(worker)
 
         def done(ok: bool, msg: str) -> None:
-            self.browser_status.setText(msg)
+            self._set_browser_busy(False)
+            self.browser_status.setText(
+                tr("settings.browser_ok") if ok else tr("settings.browser_missing")
+            )
             if ok:
                 QMessageBox.information(self, tr("settings.browser"), msg)
             else:
                 QMessageBox.warning(self, tr("settings.browser"), msg)
 
         worker.finished.connect(done)
-        self._install_worker = worker
-        self._install_thread = thread
+        self._browser_worker = worker
+        self._browser_thread = thread
+
+    def repair_browser_component(self) -> None:
+        if self._browser_busy:
+            return
+        self._set_browser_busy(True)
+        self.browser_status.setText(tr("settings.browser_repairing"))
+        worker = BrowserRepairWorker()
+        thread = start_worker(worker)
+
+        def done(ok: bool, msg: str) -> None:
+            self._set_browser_busy(False)
+            self.browser_status.setText(
+                tr("settings.browser_ok") if ok else tr("settings.browser_missing")
+            )
+            if ok:
+                QMessageBox.information(self, tr("settings.browser"), msg)
+            else:
+                QMessageBox.warning(self, tr("settings.browser"), msg)
+
+        worker.finished.connect(done)
+        self._browser_worker = worker
+        self._browser_thread = thread

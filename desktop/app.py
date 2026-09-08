@@ -14,6 +14,14 @@ if str(_ROOT) not in sys.path:
 os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
 
+# Packaged Chromium path before any Playwright import
+try:
+    from desktop.services.browser_install import configure_playwright_browsers_path
+
+    configure_playwright_browsers_path()
+except Exception:
+    pass
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
@@ -60,7 +68,44 @@ def run() -> int:
 
 
 def main() -> int:
+    if "--smoke-browser" in sys.argv:
+        return _smoke_browser()
     return run()
+
+
+def _smoke_browser() -> int:
+    """Headless packaged check: detect Chromium and open about:blank."""
+    import tempfile
+
+    from desktop.services.browser_install import check_browser, configure_playwright_browsers_path
+    from browser.browser_manager import BrowserManager
+
+    log_path = Path(sys.executable).resolve().parent / "smoke_browser_result.txt"
+    lines: list[str] = []
+    try:
+        configure_playwright_browsers_path()
+        ok, msg = check_browser()
+        lines.append(msg)
+        if not ok:
+            log_path.write_text("\n".join(lines), encoding="utf-8")
+            return 1
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = BrowserManager(Path(tmp) / "profile", headless=True)
+            try:
+                page = mgr.get_page()
+                page.goto("about:blank")
+                lines.append(f"SMOKE_BROWSER_OK {page.url}")
+            finally:
+                mgr.close()
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"FAIL: {exc}")
+        try:
+            log_path.write_text("\n".join(lines), encoding="utf-8")
+        except Exception:
+            pass
+        return 1
 
 
 if __name__ == "__main__":

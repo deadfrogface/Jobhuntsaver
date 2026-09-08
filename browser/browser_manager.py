@@ -1,6 +1,7 @@
 """Playwright browser manager with persistent profile.
 
-Adapted from AutoApply bot/browser.py (MIT).
+Uses bundled Chromium when present (packaged EXE). Never requires
+``python -m playwright`` from a frozen executable.
 """
 
 from __future__ import annotations
@@ -33,6 +34,23 @@ def _find_system_chrome() -> str | None:
     return None
 
 
+def _resolve_chromium_executable() -> str | None:
+    """Prefer bundled / PLAYWRIGHT_BROWSERS_PATH Chromium over system Chrome."""
+    try:
+        from desktop.services.browser_install import (
+            configure_playwright_browsers_path,
+            find_chromium_executable,
+        )
+
+        configure_playwright_browsers_path()
+        bundled = find_chromium_executable()
+        if bundled and bundled.exists():
+            return str(bundled)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Bundled Chromium lookup failed: %s", exc)
+    return None
+
+
 class BrowserManager:
     def __init__(self, profile_dir: Path, headless: bool = True) -> None:
         self.headless = headless
@@ -41,6 +59,12 @@ class BrowserManager:
         self._playwright: Any = None
         self._context: Any = None
         self._page: Any = None
+        try:
+            from desktop.services.browser_install import configure_playwright_browsers_path
+
+            configure_playwright_browsers_path()
+        except Exception:
+            pass
 
     def get_page(self):
         if self._page and not self._page.is_closed():
@@ -49,7 +73,7 @@ class BrowserManager:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
             raise RuntimeError(
-                "Playwright missing. Run setup.bat or: pip install playwright && python -m playwright install chromium"
+                "Playwright fehlt. Entwicklung: pip install playwright && python -m playwright install chromium"
             ) from exc
 
         if self._playwright is None:
@@ -67,14 +91,26 @@ class BrowserManager:
             ],
             ignore_default_args=["--enable-automation"],
         )
-        chrome = _find_system_chrome()
-        if chrome:
-            launch_kwargs["executable_path"] = chrome
+
+        chromium = _resolve_chromium_executable()
+        if chromium:
+            launch_kwargs["executable_path"] = chromium
+        else:
+            # Last resort: system Chrome (dev machines)
+            chrome = _find_system_chrome()
+            if chrome:
+                launch_kwargs["executable_path"] = chrome
+                logger.warning("Using system Chrome; bundled Playwright Chromium not found")
+
         try:
             self._context = self._playwright.chromium.launch_persistent_context(**launch_kwargs)
         except Exception as exc:
             if "executable doesn't exist" in str(exc).lower():
-                raise RuntimeError("Playwright Chromium not installed. Run: python -m playwright install chromium") from exc
+                raise RuntimeError(
+                    "Playwright Chromium fehlt. In der App: Einstellungen → Browser → "
+                    "„Browser-Komponente reparieren“. "
+                    "Entwicklung: python -m playwright install chromium"
+                ) from exc
             # Fallback non-headless if headless fails
             if self.headless:
                 logger.warning("Headless launch failed (%s); retrying visible browser", exc)

@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from app.main import run_pipeline
 from core.config import AppConfig
-from desktop.services.browser_install import install_chromium
+from desktop.services.browser_install import check_browser, repair_browser
 
 
 class PipelineWorker(QObject):
@@ -31,12 +31,24 @@ class PipelineWorker(QObject):
             self.failed.emit(str(exc))
 
 
-class BrowserInstallWorker(QObject):
+class BrowserCheckWorker(QObject):
     finished = Signal(bool, str)
 
     def run(self) -> None:
-        ok, msg = install_chromium()
+        ok, msg = check_browser()
         self.finished.emit(ok, msg)
+
+
+class BrowserRepairWorker(QObject):
+    finished = Signal(bool, str)
+
+    def run(self) -> None:
+        ok, msg = repair_browser()
+        self.finished.emit(ok, msg)
+
+
+# Backwards-compatible alias
+BrowserInstallWorker = BrowserRepairWorker
 
 
 def start_worker(worker: QObject, slot_name: str = "run") -> QThread:

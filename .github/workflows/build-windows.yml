@@ -30,6 +30,9 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Prepare bundled Chromium
+        run: python packaging/prepare_browsers.py
+
       - name: Build EXE
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
@@ -37,6 +40,8 @@ jobs:
           Copy-Item "config\*.example" "dist\Jobhuntsaver\config\" -Force
           if (!(Test-Path "dist\Jobhuntsaver\templates")) { New-Item -ItemType Directory -Path "dist\Jobhuntsaver\templates" | Out-Null }
           Copy-Item "templates\cover_letter.txt" "dist\Jobhuntsaver\templates\" -Force
+          if (Test-Path "dist\Jobhuntsaver\ms-playwright") { Remove-Item "dist\Jobhuntsaver\ms-playwright" -Recurse -Force }
+          Copy-Item "packaging\ms-playwright" "dist\Jobhuntsaver\ms-playwright" -Recurse -Force
         shell: pwsh
 
       - name: Verify EXE
@@ -45,7 +50,13 @@ jobs:
             Write-Error "EXE missing"
             exit 1
           }
+          $chrome = Get-ChildItem -Path "dist\Jobhuntsaver\ms-playwright" -Recurse -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $chrome) {
+            Write-Error "Bundled chrome.exe missing"
+            exit 1
+          }
           Get-Item "dist\Jobhuntsaver\Jobhuntsaver.exe" | Format-List FullName, Length
+          Write-Host "Bundled Chromium:" $chrome.FullName
         shell: pwsh
 
       - name: Zip release folder

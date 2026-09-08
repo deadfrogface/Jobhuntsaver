@@ -47,3 +47,4 @@ build/
 dist/
 *.spec.bak
 packaging/build/
+packaging/ms-playwright/
