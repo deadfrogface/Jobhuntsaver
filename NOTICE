@@ -1,0 +1,37 @@
+Jobhuntsaver
+=============
+
+Copyright (C) 2026 Jobhuntsaver contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+See the file LICENSE for the full GPL-3.0 text.
+
+Third-party source acknowledgements
+-----------------------------------
+
+### JobRadar (GPL-3.0)
+
+Portions of the job discovery adapters (especially Bundesagentur für Arbeit /
+Arbeitsagentur REST client patterns, JobSpy wrapper ideas, StepStone/XING
+scraping approach, and hard-filter patterns) are adapted from:
+
+  https://github.com/jason-huanghao/jobradar
+  Copyright (C) JobRadar contributors
+  Licensed under the GNU General Public License v3.0
+
+### AutoApply (MIT)
+
+Portions of the browser automation and ATS application adapters
+(Greenhouse, Lever, Ashby, Indeed, LinkedIn, Workday), browser session
+management, ATS URL detection, and document text extraction are adapted from:
+
+  https://github.com/AbhishekMandapmalvi/AutoApply
+  Copyright (C) 2026 Abhishek Mandapmalvi
+  Licensed under the MIT License
+
+The MIT License permission notice and copyright must be retained for those
+portions. Electron/Flask frontend code from AutoApply is not included.

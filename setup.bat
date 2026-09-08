@@ -1,0 +1,74 @@
+@echo off
+setlocal EnableExtensions
+cd /d "%~dp0"
+
+echo ========================================
+echo   Jobhuntsaver Setup
+echo ========================================
+
+where python >nul 2>&1
+if errorlevel 1 (
+  echo ERROR: Python wurde nicht gefunden.
+  echo Bitte Python 3.11+ installieren und erneut setup.bat ausfuehren.
+  exit /b 1
+)
+
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
+if errorlevel 1 (
+  echo ERROR: Python 3.11 oder neuer wird benoetigt.
+  exit /b 1
+)
+
+if not exist ".venv" (
+  echo Erstelle virtuelle Umgebung...
+  python -m venv .venv
+)
+
+call .venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+if errorlevel 1 (
+  echo ERROR: Abhaengigkeiten konnten nicht installiert werden.
+  exit /b 1
+)
+
+echo Installiere Playwright Chromium...
+python -m playwright install chromium
+
+if not exist "data" mkdir data
+if not exist "logs" mkdir logs
+if not exist "private" mkdir private
+if not exist "private\cover_letters" mkdir private\cover_letters
+if not exist "private\browser_profile" mkdir private\browser_profile
+
+if not exist "config\profile.yaml" copy "config\profile.yaml.example" "config\profile.yaml" >nul
+if not exist "config\application_profile.yaml" copy "config\application_profile.yaml.example" "config\application_profile.yaml" >nul
+if not exist "config\settings.yaml" copy "config\settings.yaml.example" "config\settings.yaml" >nul
+if not exist ".env" copy ".env.example" ".env" >nul
+
+echo Initialisiere Datenbank...
+python -c "from core.config import load_config; from core.database import Database; c=load_config(); Database(c.db_path); print('DB OK', c.db_path)"
+if errorlevel 1 (
+  echo ERROR: Datenbank-Initialisierung fehlgeschlagen.
+  exit /b 1
+)
+
+echo Fuehre Basistests aus...
+python -m pytest tests -q
+if errorlevel 1 (
+  echo WARNUNG: Einige Tests sind fehlgeschlagen. Installation trotzdem fortgesetzt.
+) else (
+  echo Tests OK.
+)
+
+echo.
+echo ========================================
+echo   Setup erfolgreich!
+echo ========================================
+echo 1. Profil bearbeiten: config\profile.yaml
+echo 2. Bewerbungsdaten:  config\application_profile.yaml
+echo 3. Start:            start.bat
+echo 4. Nur Suche:        run_search.bat
+echo.
+pause
+endlocal

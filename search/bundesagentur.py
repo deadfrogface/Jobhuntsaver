@@ -1,0 +1,228 @@
+"""Bundesagentur für Arbeit / Jobsuche adapter (API v6).
+
+Adapted from JobRadar arbeitsagentur patterns (GPL-3.0) and updated to the
+public Jobsuche OpenAPI (bund.dev / bundesAPI): list via /pc/v6/jobs,
+details via /pc/v4/jobdetails/{base64(refnr)}.
+"""
+
+from __future__ import annotations
+
+import base64
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import httpx
+
+from core.deduplicator import make_job_id
+from core.models import Job, RemoteType
+from search.base import JobSource, SearchQuery
+
+logger = logging.getLogger("jobhuntsaver")
+
+_BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+_LIST_URL = f"{_BASE}/pc/v6/jobs"
+_DETAIL_URL = f"{_BASE}/pc/v4/jobdetails"
+_API_KEY = "jobboerse-jobsuche"
+_PAGE_SIZE = 25
+_DETAIL_WORKERS = 8
+_HEADERS = {
+    "X-API-Key": _API_KEY,
+    "Accept": "application/json",
+    "User-Agent": "Jobhuntsaver/1.0 (local personal use)",
+}
+
+
+def _detect_remote(item: dict, text: str = "") -> str:
+    homeoffice = item.get("homeofficemoeglich") or item.get("homeoffice")
+    blob = f"{homeoffice} {text}".lower()
+    if any(x in blob for x in ("100%", "vollständig remote", "remote only", "rein remote")):
+        return RemoteType.REMOTE.value
+    if homeoffice or "homeoffice" in blob or "remote" in blob or "hybrid" in blob:
+        if "hybrid" in blob or "tage" in blob:
+            return RemoteType.HYBRID.value
+        return RemoteType.REMOTE.value if homeoffice else RemoteType.ONSITE.value
+    return RemoteType.ONSITE.value
+
+
+def _employment_type(item: dict) -> str:
+    if item.get("arbeitszeitVollzeit"):
+        return "fulltime"
+    if any(
+        item.get(k)
+        for k in (
+            "arbeitszeitTeilzeitFlexibel",
+            "arbeitszeitTeilzeitVormittag",
+            "arbeitszeitTeilzeitNachmittag",
+            "arbeitszeitTeilzeitAbend",
+        )
+    ):
+        return "parttime"
+    return ""
+
+
+class BundesagenturSource(JobSource):
+    source_id = "bundesagentur"
+
+    def search(self, queries: list[SearchQuery]) -> list[Job]:
+        all_jobs: list[Job] = []
+        seen: set[str] = set()
+        for query in queries:
+            try:
+                batch = self._search_one(query)
+            except Exception as exc:
+                logger.error("Bundesagentur query '%s' failed: %s", query.keyword, exc)
+                continue
+            for job in batch:
+                if job.id not in seen:
+                    seen.add(job.id)
+                    all_jobs.append(job)
+        return all_jobs
+
+    def _search_one(self, query: SearchQuery) -> list[Job]:
+        location = query.location
+        is_remote_query = location.lower() in {"remote", "deutschland remote"}
+        if is_remote_query:
+            # BA v6 rejects empty `wo`; search DE-wide and keep remote/hybrid locally.
+            location = "Deutschland"
+        params = {
+            "was": query.keyword,
+            "wo": location,
+            "umkreis": 0 if location.lower() in {"deutschland", "germany"} else int(query.radius_km),
+            "size": min(_PAGE_SIZE, query.max_results),
+            "page": 1,
+            "veroeffentlichtseit": query.published_within_days,
+        }
+        stubs: list[Job] = []
+        with httpx.Client(timeout=30.0, headers=_HEADERS) as client:
+            while len(stubs) < query.max_results:
+                resp = client.get(_LIST_URL, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                page_items = data.get("ergebnisliste") or data.get("stellenangebote") or []
+                if not page_items:
+                    break
+                for item in page_items:
+                    job = self._map_stub(item)
+                    if job:
+                        stubs.append(job)
+                total = data.get("maxErgebnisse", 0)
+                if len(stubs) >= total or len(stubs) >= query.max_results:
+                    break
+                params["page"] += 1
+
+        stubs = stubs[: query.max_results]
+        if is_remote_query:
+            stubs = [j for j in stubs if j.remote_type in ("remote", "hybrid")]
+        logger.info("Bundesagentur: %d stubs for '%s' — enriching", len(stubs), query.keyword)
+        with httpx.Client(timeout=15.0, headers=_HEADERS) as detail_client:
+            return self._fetch_details(stubs, detail_client)
+
+    def _map_stub(self, item: dict) -> Job | None:
+        try:
+            ref_nr = str(item.get("referenznummer") or item.get("refnr") or "")
+            locs = item.get("stellenlokationen") or []
+            loc0 = locs[0] if locs else {}
+            addr = loc0.get("adresse") or {}
+            city = addr.get("ort") or ""
+            postal = str(addr.get("plz") or "")
+            region = addr.get("region") or ""
+            address_parts = [p for p in (postal, city, region) if p]
+            url = item.get("externeURL") or item.get("externeUrl") or ""
+            if not url and ref_nr:
+                url = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref_nr}"
+            lat = loc0.get("breite")
+            lon = loc0.get("laenge")
+            distance = item.get("entfernung")
+            published = ""
+            if isinstance(item.get("veroeffentlichungszeitraum"), dict):
+                published = str(item["veroeffentlichungszeitraum"].get("von") or "")
+            published = published or str(item.get("datumErsteVeroeffentlichung") or "")
+
+            job = Job(
+                id=make_job_id("bundesagentur", ref_nr, url),
+                source="bundesagentur",
+                source_job_id=ref_nr,
+                title=item.get("stellenangebotsTitel") or item.get("titel") or "",
+                company=item.get("firma") or item.get("arbeitgeber") or "",
+                description=item.get("hauptberuf") or item.get("beruf") or "",
+                city=city,
+                postal_code=postal,
+                address=", ".join(address_parts),
+                latitude=float(lat) if lat is not None else None,
+                longitude=float(lon) if lon is not None else None,
+                distance_km=float(distance) if distance is not None else None,
+                remote_type=_detect_remote(item),
+                employment_type=_employment_type(item),
+                published_at=published,
+                url=url,
+                application_url=url,
+            )
+            return job
+        except Exception as exc:
+            logger.warning("Failed to parse BA stub: %s", exc)
+            return None
+
+    def _fetch_details(self, stubs: list[Job], client: httpx.Client) -> list[Job]:
+        if not stubs:
+            return stubs
+
+        def enrich(job: Job) -> Job:
+            ref = job.source_job_id
+            if not ref:
+                return job
+            enc = base64.b64encode(ref.encode("utf-8")).decode("ascii")
+            try:
+                resp = client.get(f"{_DETAIL_URL}/{enc}")
+                resp.raise_for_status()
+                detail = resp.json()
+            except Exception as exc:
+                logger.debug("Detail fetch failed for %s: %s", ref, exc)
+                return job
+
+            parts = []
+            for key in (
+                "stellenbeschreibung",
+                "aufgaben",
+                "anforderungen",
+                "angebote",
+                "stellenbeschreibungHtml",
+            ):
+                val = detail.get(key, "")
+                if val:
+                    parts.append(str(val))
+            # v6 detail alternate keys
+            for key in ("beschreibung", "taetigkeit", "qualifikation"):
+                val = detail.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(val)
+                elif isinstance(val, dict):
+                    for sub in val.values():
+                        if isinstance(sub, str) and sub.strip():
+                            parts.append(sub)
+            if parts:
+                job.description = "\n\n".join(parts)
+            lohn = detail.get("verguetung") or detail.get("gehalt") or {}
+            if isinstance(lohn, dict):
+                low, high, cur = lohn.get("von"), lohn.get("bis"), lohn.get("waehrung", "EUR")
+                if low or high:
+                    job.salary_text = f"{low or '?'} – {high or '?'} {cur}"
+                    try:
+                        job.salary_min = float(low) if low is not None else None
+                        job.salary_max = float(high) if high is not None else None
+                    except (TypeError, ValueError):
+                        pass
+            job.remote_type = _detect_remote(detail, job.description)
+            return job
+
+        order = {job.id: idx for idx, job in enumerate(stubs)}
+        enriched: list[Job] = []
+        with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
+            futures = {pool.submit(enrich, job): job for job in stubs}
+            for fut in as_completed(futures):
+                try:
+                    enriched.append(fut.result())
+                except Exception as exc:
+                    logger.warning("Enrichment error: %s", exc)
+                    enriched.append(futures[fut])
+        enriched.sort(key=lambda j: order.get(j.id, 9999))
+        return enriched

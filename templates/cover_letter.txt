@@ -1,0 +1,12 @@
+Sehr geehrte Damen und Herren,
+
+hiermit bewerbe ich mich um die Position als {job_title} bei {company}.
+
+{experience_sentence}
+
+Zu meinen relevanten Kenntnissen zählen insbesondere: {skills}.
+
+Über die Möglichkeit eines persönlichen Gesprächs freue ich mich.
+
+Mit freundlichen Grüßen
+{full_name}

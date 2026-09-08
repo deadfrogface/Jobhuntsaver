@@ -1,0 +1,42 @@
+# Secrets & personal data
+.env
+config/profile.yaml
+config/application_profile.yaml
+config/settings.yaml
+private/
+*.pdf
+*.docx
+!docs/**
+
+# Runtime
+data/*.db
+data/*.db-*
+logs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+agent-tools/
+
+# Browser / cookies / sessions
+**/browser_profile/
+**/cookies*
+*.session
+
+# Cover letters generated for real applications
+private/cover_letters/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Exports that may contain personal info
+exports/
+*.xlsx
+!tests/fixtures/**
