@@ -161,7 +161,49 @@ def run() -> int:
 def main() -> int:
     if "--smoke-browser" in sys.argv:
         return _smoke_browser()
+    if "--smoke-cv-corpus" in sys.argv:
+        return _smoke_cv_corpus()
     return run()
+
+
+def _smoke_cv_corpus() -> int:
+    """Headless packaged check: parse fictional corpus PDFs passed as argv paths."""
+    from core.cv_parser import import_cv
+
+    args = sys.argv[sys.argv.index("--smoke-cv-corpus") + 1 :]
+    paths = [Path(a) for a in args if a and not a.startswith("--")]
+    log_path = Path(sys.executable).resolve().parent / "smoke_cv_corpus_result.txt"
+    lines: list[str] = []
+    try:
+        if not paths:
+            lines.append("FAIL: no PDF paths given after --smoke-cv-corpus")
+            log_path.write_text("\n".join(lines), encoding="utf-8")
+            return 1
+        for path in paths:
+            if not path.is_file():
+                lines.append(f"FAIL missing: {path}")
+                log_path.write_text("\n".join(lines), encoding="utf-8")
+                return 1
+            parsed = import_cv(path)
+            name = f"{(parsed.get('personal') or {}).get('first_name', '')} {(parsed.get('personal') or {}).get('last_name', '')}".strip()
+            lines.append(
+                f"OK {path.name} name={name!r} "
+                f"langs={len(parsed.get('languages') or [])} "
+                f"work={len(parsed.get('work_experience') or [])} "
+                f"edu={len(parsed.get('education') or [])}"
+            )
+        lines.append("SMOKE_CV_CORPUS_OK")
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+        print("\n".join(lines))
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"FAIL: {exc}")
+        try:
+            log_path.write_text("\n".join(lines), encoding="utf-8")
+        except Exception:
+            pass
+        print("\n".join(lines))
+        return 1
 
 
 def _smoke_browser() -> int:

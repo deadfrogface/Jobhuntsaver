@@ -1,102 +1,167 @@
-"""German CV section heading detection and body splitting."""
+"""German + English CV section heading detection and body splitting."""
 
 from __future__ import annotations
 
 import re
 
-HEADINGS = {
+# Longer / more specific aliases should appear first within each group so
+# compound headings (e.g. "weiterbildungen & zertifikate") match correctly.
+HEADINGS: dict[str, tuple[str, ...]] = {
     "experience": (
-        "berufserfahrung",
         "berufliche erfahrung",
         "beruflicher Werdegang",
-        "experience",
-        "work experience",
-        "tätigkeiten",
-        "beschäftigung",
-        "karriere",
+        "berufserfahrung",
         "berufliche stationen",
+        "professional experience",
+        "employment history",
+        "work experience",
+        "career history",
+        "praxiserfahrung",
+        "beschäftigung",
+        "employment",
+        "experience",
+        "tätigkeiten",
+        "karriere",
+        "erfahrung",
     ),
     "education": (
-        "ausbildung",
-        "ausbildungen",
-        "schulbildung",
-        "schule",
-        "studium",
-        "education",
+        "schul- und berufsausbildung",
+        "academic background",
+        "education & training",
+        "education and training",
         "akademischer Werdegang",
         "schulischer Werdegang",
-        "qualifikation",
+        "ausbildungen",
+        "ausbildung",
+        "schulbildung",
         "qualifikationen",
+        "qualifikation",
+        "education",
+        "studium",
+        "schule",
     ),
     "certificates": (
+        "weiterbildungen & zertifikate",
+        "weiterbildungen und zertifikate",
         "weiterbildungen",
         "weiterbildung",
+        "zertifizierungen",
+        "zertifizierung",
+        "certifications",
+        "certificates",
         "zertifikate",
         "zertifikat",
-        "fortbildung",
         "fortbildungen",
-        "licenses",
-        "zertifizierung",
-        "zertifizierungen",
-        "kurse",
+        "fortbildung",
         "seminare",
+        "kurse",
     ),
     "languages": (
-        "sprachen",
-        "languages",
+        "sprachen / it / mobilität",
+        "sprachen / it / mobilitaet",
+        "language proficiency",
         "sprachkenntnisse",
         "fremdsprachen",
+        "languages",
+        "sprachen",
     ),
     "software": (
+        "applications & platforms",
+        "applications and platforms",
+        "weitere kenntnisse",
         "edv-kenntnisse",
         "edv kenntnisse",
-        "edv",
         "it-kenntnisse",
         "it kenntnisse",
-        "software",
-        "kenntnisse",
-        "it skills",
         "computerkenntnisse",
         "anwenderkenntnisse",
         "pc-kenntnisse",
         "pc kenntnisse",
+        "tech stack",
+        "it skills",
+        "systems",
+        "software",
+        "tools",
+        "edv",
+        "it",
     ),
     "license": (
-        "führerschein",
-        "fuehrerschein",
-        "fahrerlaubnis",
-        "driving licence",
-        "driving license",
         "führerscheinklassen",
         "fuehrerscheinklassen",
+        "driving licence",
+        "driving license",
+        "fahrerlaubnis",
+        "führerschein",
+        "fuehrerschein",
     ),
     "skills": (
-        "fähigkeiten",
-        "kompetenzen",
-        "skills",
-        "stärken",
-        "soft skills",
         "schlüsselkompetenzen",
+        "additional skills",
         "fachkenntnisse",
+        "core skills",
+        "key skills",
+        "soft skills",
+        "capabilities",
+        "kompetenzen",
+        "fähigkeiten",
+        "kenntnisse",
+        "stärken",
+        "skills",
     ),
     "profile": (
-        "profil",
+        "persönliche daten",
+        "persoenliche daten",
         "über mich",
         "ueber mich",
         "zusammenfassung",
+        "projekt- und sonderaufgaben",
         "summary",
-        "persönliche daten",
-        "persoenliche daten",
+        "profil",
         "kontakt",
         "interessen",
         "hobbys",
         "hobby",
     ),
+    # Composite bodies that mix languages + tools + mobility on one block.
+    "languages_tools_mobility": (
+        "sprachen / it / mobilität",
+        "sprachen / it / mobilitaet",
+        "sprachen/it/mobilität",
+        "sprachen/it/mobilitaet",
+    ),
 }
 
-# Section heading tokens must never become field values.
+# Keep languages_tools_mobility out of the primary languages list for exact
+# matching priority — those aliases live only on the composite key.
+HEADINGS["languages"] = tuple(
+    a
+    for a in HEADINGS["languages"]
+    if a not in HEADINGS["languages_tools_mobility"]
+)
+
 ALL_HEADING_ALIASES = {
     alias.lower() for aliases in HEADINGS.values() for alias in aliases
+}
+
+_DOC_TITLE = re.compile(
+    r"(?is)^(tabellarischer\s+)?"
+    r"(lebenslauf|curriculum\s+vitae|cv|résumé|resume|"
+    r"fiktiver(\s+test)?[\-\s]*lebenslauf|bewerbungsprofil|"
+    r"personal\s+profile|profile)$"
+)
+
+_COMPOSITE_REST_OK = {
+    "zertifikate",
+    "zertifikat",
+    "certificates",
+    "certifications",
+    "training",
+    "kurse",
+    "platforms",
+    "it",
+    "mobilität",
+    "mobilitaet",
+    "tools",
 }
 
 
@@ -104,19 +169,51 @@ def normalize_bullet(line: str) -> str:
     return re.sub(r"^[\s•\-–—*·]+", "", line).strip()
 
 
+def is_document_title(line: str) -> bool:
+    cleaned = line.strip()
+    if not cleaned:
+        return False
+    return bool(_DOC_TITLE.fullmatch(cleaned))
+
+
+def _normalize_heading_key(line: str) -> str:
+    cleaned = line.strip().lower().rstrip(":").strip()
+    cleaned = cleaned.replace("&", " & ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+
 def is_heading(line: str) -> str | None:
-    cleaned = line.strip().lower().rstrip(":")
-    if not cleaned or len(cleaned) > 48:
+    cleaned = _normalize_heading_key(line)
+    if not cleaned or len(cleaned) > 64:
         return None
+
+    # Exact match — prefer longer aliases via sorted scan.
+    best: tuple[int, str] | None = None
     for key, aliases in HEADINGS.items():
-        if cleaned in {a.lower() for a in aliases}:
-            return key
-    return None
+        for alias in aliases:
+            al = alias.lower()
+            if cleaned == al:
+                score = len(al)
+                if best is None or score > best[0]:
+                    best = (score, key)
+            elif cleaned.startswith(al):
+                rest = cleaned[len(al) :].strip(" &/|,.-")
+                if not rest or rest in _COMPOSITE_REST_OK or all(
+                    tok in _COMPOSITE_REST_OK for tok in re.split(r"[\s/&]+", rest) if tok
+                ):
+                    score = len(al)
+                    if best is None or score > best[0]:
+                        best = (score, key)
+    return best[1] if best else None
 
 
 def is_heading_value(text: str) -> bool:
-    cleaned = text.strip().lower().rstrip(":")
-    return cleaned in ALL_HEADING_ALIASES
+    cleaned = _normalize_heading_key(text)
+    if cleaned in ALL_HEADING_ALIASES:
+        return True
+    # Reject bare document titles used as values.
+    return is_document_title(text)
 
 
 def split_named_sections(text: str) -> dict[str, str]:
@@ -133,8 +230,7 @@ def split_named_sections(text: str) -> dict[str, str]:
             current = heading
             sections.setdefault(current, [])
             continue
-        # Skip document title lines such as "Lebenslauf" / "Curriculum Vitae"
-        if re.fullmatch(r"(tabellarischer\s+)?lebenslauf|curriculum\s+vitae", line, re.I):
+        if is_document_title(line):
             continue
         sections.setdefault(current, []).append(raw.rstrip())
     return {k: "\n".join(v).strip() for k, v in sections.items() if "".join(v).strip()}

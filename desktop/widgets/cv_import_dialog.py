@@ -25,6 +25,7 @@ from desktop.services.profile_merge import (
     ImportMode,
     PersonalImportPlan,
     apply_personal_updates,
+    filter_parsed_for_import,
     merge_qualifications,
     personal_from_parsed,
     plan_personal_import,
@@ -96,7 +97,7 @@ class CvImportDialog(QDialog):
         layout.addWidget(buttons)
 
         try:
-            self.parsed = import_cv(cv_path)
+            self.parsed = filter_parsed_for_import(import_cv(cv_path))
             self.incoming = parsed_to_qualifications(self.parsed)
             self.personal_incoming = personal_from_parsed(self.parsed)
             self._refresh_preview()

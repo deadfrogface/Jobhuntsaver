@@ -1,0 +1,411 @@
+{
+  "purpose": "Fictional-only regression corpus for Jobhuntsaver CV parser. No real user data.",
+  "rules": [
+    "Do not hard-code names, employers, headings, or exact values from these files into parser logic.",
+    "Use these PDFs only as black-box acceptance/regression fixtures.",
+    "Parser should generalize across German and English headings/layouts.",
+    "Missing fields are valid and must not be invented.",
+    "Low-confidence or invalid extracted data must not overwrite good manual profile data."
+  ],
+  "documents": {
+    "DE_01_Klassisch.pdf": {
+      "language": "de",
+      "name": {
+        "first_name": "Mara",
+        "last_name": "König"
+      },
+      "address": {
+        "street": "Buchenweg",
+        "house_number": "14",
+        "postal_code": "48143",
+        "city": "Münster"
+      },
+      "dob": "07.11.1994",
+      "email": "mara.koenig@example.com",
+      "phone": "+49 151 20003000",
+      "languages": [
+        [
+          "Deutsch",
+          "C2"
+        ],
+        [
+          "Englisch",
+          "C1"
+        ],
+        [
+          "Französisch",
+          "B1"
+        ]
+      ],
+      "licenses": [
+        "B"
+      ],
+      "education_count": 1,
+      "work_count": 3,
+      "certificates": [
+        "IHK Beschwerdemanagement",
+        "Power BI Grundlagen",
+        "Ersthelferin"
+      ],
+      "software": [
+        "Microsoft 365",
+        "SAP Business One",
+        "Salesforce",
+        "Jira",
+        "Confluence",
+        "DocuWare"
+      ],
+      "skills": [
+        "Kundenservice",
+        "Auftragsmanagement",
+        "KPI-Reporting",
+        "Prozessoptimierung",
+        "Reklamationsmanagement"
+      ]
+    },
+    "DE_02_Zweispaltig_Trap.pdf": {
+      "language": "de",
+      "name": {
+        "first_name": "Jonas",
+        "last_name": "Falkenberg"
+      },
+      "address": {
+        "street": "Hafenweg",
+        "house_number": "87",
+        "postal_code": "28195",
+        "city": "Bremen"
+      },
+      "dob": "19.02.1991",
+      "email": "jonas.falkenberg@example.com",
+      "phone": "+49 151 11112222",
+      "languages": [
+        [
+          "Deutsch",
+          "C2"
+        ],
+        [
+          "Englisch",
+          "C1"
+        ],
+        [
+          "Niederländisch",
+          "B1"
+        ],
+        [
+          "Polnisch",
+          "A2"
+        ]
+      ],
+      "licenses": [
+        "B",
+        "BE"
+      ],
+      "education_count": 2,
+      "work_count": 4,
+      "certificates_count": 5,
+      "software_count": 12,
+      "skills_count": 12,
+      "traps": [
+        "FIKTIVER TEST-LEBENSLAUF is not a name",
+        "WEITERE KENNTNISSE is not a language",
+        "C1/B1/A2 are not licences"
+      ]
+    },
+    "DE_03_C1_Kontextfalle.pdf": {
+      "language": "de",
+      "name": {
+        "first_name": "Selin",
+        "last_name": "Aras"
+      },
+      "address": {
+        "street": "Kastanienallee",
+        "house_number": "6a",
+        "postal_code": "40233",
+        "city": "Düsseldorf"
+      },
+      "languages": [
+        [
+          "Deutsch",
+          "C2"
+        ],
+        [
+          "Englisch",
+          "C1"
+        ],
+        [
+          "Türkisch",
+          "C1"
+        ]
+      ],
+      "licenses": [
+        "B",
+        "C1"
+      ],
+      "education_count": 2,
+      "work_count": 2,
+      "software": [
+        "Excel",
+        "Word",
+        "Outlook",
+        "SAP S/4HANA",
+        "DATEV",
+        "Microsoft Teams"
+      ],
+      "traps": [
+        "C1 is both a CEFR language level and a real licence class; context must disambiguate"
+      ]
+    },
+    "DE_04_Unvollstaendige_Kontaktdaten.pdf": {
+      "language": "de",
+      "name": {
+        "first_name": "Nina",
+        "last_name": "Sommer"
+      },
+      "address": {
+        "city": "Leipzig"
+      },
+      "email": "nina.sommer@example.org",
+      "languages": [
+        [
+          "Deutsch",
+          "native"
+        ],
+        [
+          "Englisch",
+          "B2"
+        ],
+        [
+          "Spanisch",
+          "A2"
+        ]
+      ],
+      "licenses": [],
+      "education_count": 2,
+      "work_count": 2,
+      "certificates_count": 3,
+      "software_count": 5,
+      "skills_count": 4,
+      "missing": [
+        "street",
+        "house_number",
+        "postal_code",
+        "phone",
+        "date_of_birth"
+      ]
+    },
+    "DE_05_Zweiseitig.pdf": {
+      "language": "de",
+      "name": {
+        "first_name": "Tobias",
+        "last_name": "Renner"
+      },
+      "address": {
+        "street": "Am Stadtpark",
+        "house_number": "22b",
+        "postal_code": "90402",
+        "city": "Nürnberg"
+      },
+      "languages": [
+        [
+          "Deutsch",
+          "C2"
+        ],
+        [
+          "Englisch",
+          "B2"
+        ],
+        [
+          "Tschechisch",
+          "A2"
+        ]
+      ],
+      "licenses": [
+        "B",
+        "BE"
+      ],
+      "education_count": 2,
+      "work_count": 4,
+      "certificates_count": 4,
+      "software_count": 6,
+      "skills_count": 7,
+      "notes": [
+        "two-page CV"
+      ]
+    },
+    "EN_01_Classic_Resume.pdf": {
+      "language": "en",
+      "name": {
+        "first_name": "Emily",
+        "last_name": "Carter"
+      },
+      "address": {
+        "street": "Willow Street",
+        "house_number": "18",
+        "postal_code": "BS1 4QF",
+        "city": "Bristol",
+        "country": "United Kingdom"
+      },
+      "languages": [
+        [
+          "English",
+          "native"
+        ],
+        [
+          "German",
+          "B2"
+        ],
+        [
+          "French",
+          "A2"
+        ]
+      ],
+      "education_count": 1,
+      "work_count": 3,
+      "certificates_count": 3,
+      "software_count": 6,
+      "skills_count": 5
+    },
+    "EN_02_Two_Column_Trap.pdf": {
+      "language": "en",
+      "name": {
+        "first_name": "Daniel",
+        "last_name": "Brooks"
+      },
+      "address": {
+        "street": "Kingfisher Road",
+        "house_number": "42",
+        "postal_code": "M1 2AB",
+        "city": "Manchester"
+      },
+      "languages": [
+        [
+          "English",
+          "C2"
+        ],
+        [
+          "Spanish",
+          "C1"
+        ],
+        [
+          "German",
+          "B1"
+        ]
+      ],
+      "licenses": [
+        "B"
+      ],
+      "education_count": 2,
+      "work_count": 3,
+      "certificates_count": 3,
+      "software_count": 7,
+      "skills_count": 6,
+      "traps": [
+        "CURRICULUM VITAE is not a name",
+        "C1/B1 are language levels, not licences"
+      ]
+    },
+    "EN_03_Missing_Address_Fields.pdf": {
+      "language": "en",
+      "name": {
+        "first_name": "Aisha",
+        "last_name": "Rahman"
+      },
+      "address": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "email": "aisha.rahman@example.net",
+      "languages": [
+        [
+          "German",
+          "C1"
+        ],
+        [
+          "English",
+          "C2"
+        ],
+        [
+          "Arabic",
+          "native"
+        ]
+      ],
+      "licenses": [],
+      "education_count": 1,
+      "work_count": 2,
+      "software_count": 5,
+      "skills_count": 5,
+      "missing": [
+        "street",
+        "house_number",
+        "postal_code",
+        "phone",
+        "date_of_birth"
+      ]
+    },
+    "EN_04_German_Address_English_CV.pdf": {
+      "language": "en",
+      "name": {
+        "first_name": "Lucas",
+        "last_name": "Meyer"
+      },
+      "address": {
+        "street": "Seestraße",
+        "house_number": "31",
+        "postal_code": "78462",
+        "city": "Konstanz",
+        "country": "Germany"
+      },
+      "languages": [
+        [
+          "German",
+          "C2"
+        ],
+        [
+          "English",
+          "C1"
+        ],
+        [
+          "Italian",
+          "B2"
+        ]
+      ],
+      "licenses": [
+        "B",
+        "BE"
+      ],
+      "education_count": 1,
+      "work_count": 2,
+      "software_count": 6,
+      "skills_count": 5
+    },
+    "EN_05_Skills_Heavy.pdf": {
+      "language": "en",
+      "name": {
+        "first_name": "Sophia",
+        "last_name": "Bennett"
+      },
+      "address": {
+        "street": "Orchard Lane",
+        "house_number": "7",
+        "postal_code": "D02 XY76",
+        "city": "Dublin",
+        "country": "Ireland"
+      },
+      "languages": [
+        [
+          "English",
+          "native"
+        ],
+        [
+          "German",
+          "B1"
+        ]
+      ],
+      "education_count": 1,
+      "work_count": 3,
+      "certificates_count": 3,
+      "software_count": 6,
+      "skills_count": 8
+    }
+  }
+}

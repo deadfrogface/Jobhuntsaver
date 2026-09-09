@@ -270,9 +270,27 @@ def set_field_origin(app: ApplicationProfile, name: str, source: str) -> None:
 
 
 def personal_from_parsed(parsed: dict[str, Any]) -> dict[str, str]:
-    """Map CV parser personal block + contact hints into ApplicationProfile fields."""
+    """Map CV parser personal block + contact hints into ApplicationProfile fields.
+
+    Low-confidence / uncertain personal extractions are omitted so they cannot
+    overwrite reliable manual profile data.
+    """
+    conf = (parsed.get("confidence") or {}).get("personal")
+    uncertain = set(parsed.get("uncertain") or [])
+    if conf == "low" or "personal" in uncertain:
+        # Still allow high-signal contact channels when present as regex hits,
+        # but never promote a garbage name/address block.
+        out: dict[str, str] = {}
+        emails = parsed.get("emails") or []
+        phones = parsed.get("phones") or []
+        if emails:
+            out["email"] = str(emails[0]).strip()
+        if phones:
+            out["phone"] = str(phones[0]).strip()
+        return {k: v for k, v in out.items() if v}
+
     personal = dict(parsed.get("personal") or {})
-    out: dict[str, str] = {}
+    out = {}
     for key in PERSONAL_FIELDS:
         val = str(personal.get(key) or "").strip()
         if val:
@@ -293,6 +311,32 @@ def personal_from_parsed(parsed: dict[str, Any]) -> dict[str, str]:
         if composed:
             out["address"] = composed
     return {k: v for k, v in out.items() if v}
+
+
+def filter_parsed_for_import(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Drop low-confidence / uncertain sections before profile merge/replace.
+
+    Missing sections stay empty lists/dicts so merge keeps manual data and
+    replace only clears prior CV-sourced values — never invents replacements.
+    """
+    out = dict(parsed)
+    conf = dict(parsed.get("confidence") or {})
+    uncertain = set(parsed.get("uncertain") or [])
+    section_keys = (
+        "languages",
+        "driving_license",
+        "education",
+        "work_experience",
+        "certificates",
+        "software",
+        "skills",
+    )
+    for key in section_keys:
+        if conf.get(key) == "low" or key in uncertain:
+            out[key] = []
+    if conf.get("personal") == "low" or "personal" in uncertain:
+        out["personal"] = {}
+    return out
 
 
 def sync_application_summaries(app: ApplicationProfile, quals: QualificationsConfig) -> None:
