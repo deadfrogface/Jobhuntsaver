@@ -41,24 +41,7 @@ class AshbyApplier(BaseApplier):
             cover_letter_text,
             ['textarea[name*="cover"], textarea[placeholder*="cover"]'],
         )
-        # Custom questions: only fill known answers; otherwise needs_review
-        unknown = []
-        for label in self.page.query_selector_all("label"):
-            try:
-                label_text = label.inner_text().strip().lower()
-            except Exception:
-                continue
-            matched = False
-            for key, value in profile.answers.items():
-                if key.lower().replace("_", " ") in label_text and value:
-                    label_for = label.get_attribute("for")
-                    if label_for:
-                        self._safe_fill(f"#{label_for}", value)
-                        matched = True
-                        break
-            if not matched and "*" in label_text:
-                if not any(x in label_text for x in ("name", "email", "phone", "resume")):
-                    unknown.append(label_text[:80])
+        unknown = self._unknown_required_labels(profile)
         if unknown:
             return ApplyResult(
                 success=False,

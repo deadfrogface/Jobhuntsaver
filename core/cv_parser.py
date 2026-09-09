@@ -1,7 +1,7 @@
 """Structured German CV profile parsing.
 
-Text extraction lives in ``core.cv_extract``; this module never invents
-qualifications that are not present in the text. No paid AI.
+Text extraction: ``core.cv_extract``. Section headings/split: ``core.cv_sections``.
+This module never invents qualifications that are not present in the text. No paid AI.
 """
 
 from __future__ import annotations
@@ -20,6 +20,12 @@ from core.config import (
     parse_qualifications,
 )
 from core.cv_extract import extract_text
+from core.cv_sections import (
+    is_heading as _is_heading,
+    is_heading_value as _is_heading_value,
+    normalize_bullet as _normalize_bullet,
+    split_named_sections as _split_named_sections,
+)
 
 logger = logging.getLogger("jobhuntsaver")
 
@@ -34,125 +40,12 @@ _ABSCHLUSS = re.compile(
     re.IGNORECASE,
 )
 _LEVEL = re.compile(r"\b([ABC][12]|Muttersprache|native)\b", re.IGNORECASE)
-_HEADINGS = {
-    "experience": (
-        "berufserfahrung",
-        "berufliche erfahrung",
-        "beruflicher Werdegang",
-        "experience",
-        "work experience",
-        "tätigkeiten",
-        "beschäftigung",
-        "karriere",
-        "berufliche stationen",
-    ),
-    "education": (
-        "ausbildung",
-        "ausbildungen",
-        "schulbildung",
-        "schule",
-        "studium",
-        "education",
-        "akademischer Werdegang",
-        "schulischer Werdegang",
-        "qualifikation",
-        "qualifikationen",
-    ),
-    "certificates": (
-        "weiterbildungen",
-        "weiterbildung",
-        "zertifikate",
-        "zertifikat",
-        "fortbildung",
-        "fortbildungen",
-        "licenses",
-        "zertifizierung",
-        "zertifizierungen",
-        "kurse",
-        "seminare",
-    ),
-    "languages": (
-        "sprachen",
-        "languages",
-        "sprachkenntnisse",
-        "fremdsprachen",
-    ),
-    "software": (
-        "edv-kenntnisse",
-        "edv kenntnisse",
-        "edv",
-        "it-kenntnisse",
-        "it kenntnisse",
-        "software",
-        "kenntnisse",
-        "it skills",
-        "computerkenntnisse",
-        "anwenderkenntnisse",
-        "pc-kenntnisse",
-        "pc kenntnisse",
-    ),
-    "license": (
-        "führerschein",
-        "fuehrerschein",
-        "fahrerlaubnis",
-        "driving licence",
-        "driving license",
-        "führerscheinklassen",
-        "fuehrerscheinklassen",
-    ),
-    "skills": (
-        "fähigkeiten",
-        "kompetenzen",
-        "skills",
-        "stärken",
-        "soft skills",
-        "schlüsselkompetenzen",
-        "fachkenntnisse",
-    ),
-    "profile": (
-        "profil",
-        "über mich",
-        "ueber mich",
-        "zusammenfassung",
-        "summary",
-        "persönliche daten",
-        "persoenliche daten",
-        "kontakt",
-        "interessen",
-        "hobbys",
-        "hobby",
-    ),
-}
-
-# Section heading tokens must never become field values.
-_ALL_HEADING_ALIASES = {
-    alias.lower() for aliases in _HEADINGS.values() for alias in aliases
-}
 
 # EU driving licence class tokens (normalized uppercase).
 _LICENSE_CLASS = re.compile(
     r"\b(AM|A1|A2|A|B1|B|BE|C1|C1E|C|CE|D1|D1E|D|DE|L|T)\b",
     re.IGNORECASE,
 )
-
-
-def _normalize_bullet(line: str) -> str:
-    return re.sub(r"^[\s•\-–—*·]+", "", line).strip()
-
-
-def _is_heading(line: str) -> str | None:
-    cleaned = line.strip().lower().rstrip(":")
-    if not cleaned or len(cleaned) > 48:
-        return None
-    for key, aliases in _HEADINGS.items():
-        if cleaned in {a.lower() for a in aliases}:
-            return key
-    return None
-
-
-def _is_heading_value(text: str) -> bool:
-    cleaned = text.strip().lower().rstrip(":")
-    return cleaned in _ALL_HEADING_ALIASES
 
 
 def normalize_driving_license(raw: str | list[str]) -> list[str]:
@@ -179,27 +72,6 @@ def field_confidence(value: Any) -> str:
     if isinstance(value, list) and all(not str(v).strip() for v in value):
         return "Nicht erkannt"
     return "high"
-
-
-def _split_named_sections(text: str) -> dict[str, str]:
-    lines = text.splitlines()
-    sections: dict[str, list[str]] = {"general": []}
-    current = "general"
-    for raw in lines:
-        line = raw.strip()
-        if not line:
-            sections.setdefault(current, []).append("")
-            continue
-        heading = _is_heading(line)
-        if heading:
-            current = heading
-            sections.setdefault(current, [])
-            continue
-        # Skip document title lines such as "Lebenslauf" / "Curriculum Vitae"
-        if re.fullmatch(r"(tabellarischer\s+)?lebenslauf|curriculum\s+vitae", line, re.I):
-            continue
-        sections.setdefault(current, []).append(raw.rstrip())
-    return {k: "\n".join(v).strip() for k, v in sections.items() if "".join(v).strip()}
 
 
 def _parse_languages(body: str) -> list[LanguageEntry]:

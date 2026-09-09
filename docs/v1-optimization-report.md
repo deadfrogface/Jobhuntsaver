@@ -63,6 +63,8 @@ Follow-up (2026-09-09 b): Shared `search/jsonld.py`; SuccessFactors via `_maybe_
 
 Follow-up (2026-09-09 d): Greenhouse/Indeed/LinkedIn via `_fill_identity_fields`; shared `_fill_cover_letter` / `_unknown_required_fields`; F401 cleanup; profile section smoke tests.
 
+Follow-up (2026-09-09 e): StepStone/XING/LinkedIn adapter smoke tests; Ashby `_unknown_required_labels`; `core/cv_sections.py`; `setup.bat` uses `requirements-runtime.txt`.
+
 ## PRIVACY
 
 | Item | Result |
@@ -93,7 +95,7 @@ Follow-up (2026-09-09 d): Greenhouse/Indeed/LinkedIn via `_fill_identity_fields`
 
 ## TESTS
 
-- `pytest`: **60+** (incl. search adapter, captcha stop, hard filter, reset helpers)
+- `pytest`: **85+** (incl. search adapters, captcha stop, hard filter, reset helpers, profile sections)
 - Privacy scan: **OK**
 - Packaged smoke: **SMOKE_OK** (`scripts/smoke_onefile_exe.py`)
 - GitHub artifact verified: only `Jobhuntsaver.exe`

@@ -269,6 +269,36 @@ class BaseApplier(ABC):
                 continue
         return unknown
 
+    def _unknown_required_labels(
+        self,
+        profile: ApplicationProfile,
+        *,
+        skip_tokens: tuple[str, ...] = ("name", "email", "phone", "resume", "cover"),
+    ) -> list[str]:
+        """Ashby-style: required labels marked with ``*`` that lack known answers."""
+        unknown: list[str] = []
+        for label in self.page.query_selector_all("label"):
+            try:
+                label_text = label.inner_text().strip().lower()
+            except Exception:
+                continue
+            matched = False
+            for key, value in profile.answers.items():
+                if key.lower().replace("_", " ") in label_text and value:
+                    label_for = label.get_attribute("for")
+                    if label_for:
+                        self._safe_fill(f"#{label_for}", value)
+                        matched = True
+                        break
+            if matched:
+                continue
+            if "*" not in label_text:
+                continue
+            if any(x in label_text for x in skip_tokens):
+                continue
+            unknown.append(label_text[:80])
+        return unknown
+
     def _maybe_submit(self, submit_selector: str) -> ApplyResult:
         """Central hard guard: never click final submit in dry_run / non-submit mode."""
         if self.dry_run or not self.submit:

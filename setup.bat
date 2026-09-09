@@ -26,7 +26,8 @@ if not exist ".venv" (
 
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+REM End-user runtime only (pytest/ruff/pyinstaller live in requirements-dev.txt).
+pip install -r requirements-runtime.txt
 if errorlevel 1 (
   echo ERROR: Abhaengigkeiten konnten nicht installiert werden.
   exit /b 1
@@ -54,6 +55,7 @@ if errorlevel 1 (
 )
 
 echo Fuehre Basistests aus...
+pip install -q pytest
 python -m pytest tests -q
 if errorlevel 1 (
   echo WARNUNG: Einige Tests sind fehlgeschlagen. Installation trotzdem fortgesetzt.
@@ -69,6 +71,7 @@ echo 1. Profil bearbeiten: config\profile.yaml
 echo 2. Bewerbungsdaten:  config\application_profile.yaml
 echo 3. Start:            start.bat
 echo 4. Nur Suche:        run_search.bat
+echo 5. Dev-Tools:        pip install -r requirements-dev.txt
 echo.
 pause
 endlocal
