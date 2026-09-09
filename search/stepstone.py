@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import urllib.parse
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -29,6 +30,14 @@ _HEADERS = {
 
 class StepstoneSource(JobSource):
     source_id = "stepstone"
+
+    def health_check(self) -> tuple[bool, str]:
+        try:
+            with httpx.Client(timeout=8.0, headers=_HEADERS) as client:
+                r = client.get("https://www.stepstone.de/", follow_redirects=True)
+                return r.status_code < 500, f"HTTP {r.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         all_jobs: list[Job] = []
@@ -57,18 +66,19 @@ class StepstoneSource(JobSource):
                 items = data if isinstance(data, list) else [data]
                 for item in items:
                     if isinstance(item, dict) and item.get("@type") in ("JobPosting", ["JobPosting"]):
-                        job = self._from_jsonld(item)
+                        job = self.normalize(item)
                         if job:
                             jobs.append(job)
                     if isinstance(item, dict) and "@graph" in item:
                         for g in item["@graph"]:
                             if isinstance(g, dict) and g.get("@type") == "JobPosting":
-                                job = self._from_jsonld(g)
+                                job = self.normalize(g)
                                 if job:
                                     jobs.append(job)
         return jobs[: query.max_results]
 
-    def _from_jsonld(self, item: dict) -> Job | None:
+    def normalize(self, raw: Any) -> Job | None:
+        item = raw if isinstance(raw, dict) else {}
         title = item.get("title") or ""
         if not title:
             return None

@@ -54,7 +54,6 @@ def test_stylesheet_for_light_and_dark():
 
 
 def test_window_state_persist(tmp_path: Path, monkeypatch):
-    # Point AppData-like dirs to tmp via monkeypatch of ensure_app_dirs
     from desktop import paths as paths_mod
 
     def fake_dirs():
@@ -65,6 +64,7 @@ def test_window_state_persist(tmp_path: Path, monkeypatch):
             "data": root / "data",
             "logs": root / "logs",
             "browser_profile": root / "browser_profile",
+            "browsers": root / "browsers",
             "cvs": root / "cvs",
             "cache": root / "cache",
             "cover_letters": root / "cover_letters",
@@ -82,3 +82,13 @@ def test_window_state_persist(tmp_path: Path, monkeypatch):
     assert state["height"] == 800
     assert state["maximized"] is True
     assert state["x"] == 10
+
+
+def test_sync_address_to_search_preference_persists(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    svc = ConfigService()
+    assert svc.get_sync_address_to_search() is False
+    svc.set_sync_address_to_search(True)
+    assert svc.get_sync_address_to_search() is True
+    again = ConfigService()
+    assert again.get_sync_address_to_search() is True

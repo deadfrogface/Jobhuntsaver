@@ -52,6 +52,23 @@ _INSTANCE_KEY = "JobhuntsaverSingleInstance"
 _INSTANCE_SERVER = "JobhuntsaverLocalServer"
 
 
+def acquire_single_instance_lock() -> QSharedMemory | None:
+    """Create the single-instance shared-memory lock.
+
+    Returns the lock object on success, or ``None`` if another live instance
+    already holds it (caller should notify/focus and exit).
+    """
+    shared = QSharedMemory(_INSTANCE_KEY)
+    if shared.attach():
+        if _try_notify_existing_instance():
+            return None
+        # Stale segment after crash — reclaim
+        shared.detach()
+    if not shared.create(1):
+        return None
+    return shared
+
+
 def apply_appearance(app: QApplication, config_service: ConfigService) -> None:
     cfg = config_service.load()
     lang = (cfg.settings.language or "de").lower()
@@ -87,17 +104,9 @@ def run() -> int:
     app.setQuitOnLastWindowClosed(True)
 
     # Single-instance lock (QSharedMemory + QLocalServer for focus).
-    shared = QSharedMemory(_INSTANCE_KEY)
-    if shared.attach():
-        if _try_notify_existing_instance():
-            QMessageBox.warning(None, "Jobhuntsaver", "Jobhuntsaver läuft bereits.")
-            return 1
-        # Stale segment after crash — reclaim
-        shared.detach()
-    if not shared.create(1):
-        if _try_notify_existing_instance():
-            QMessageBox.warning(None, "Jobhuntsaver", "Jobhuntsaver läuft bereits.")
-            return 1
+    shared = acquire_single_instance_lock()
+    if shared is None:
+        _try_notify_existing_instance()
         QMessageBox.warning(None, "Jobhuntsaver", "Jobhuntsaver läuft bereits.")
         return 1
 

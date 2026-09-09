@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any
 
 from core.deduplicator import make_job_id
 from core.models import Job, RemoteType
@@ -89,7 +90,7 @@ class IndeedSource(JobSource):
             if df is None or getattr(df, "empty", True):
                 continue
             for _, row in df.iterrows():
-                job = self._map_row(row)
+                job = self.normalize(row)
                 if job and job.id not in seen:
                     seen.add(job.id)
                     all_jobs.append(job)
@@ -97,7 +98,8 @@ class IndeedSource(JobSource):
             raise RuntimeError(hard_errors[0])
         return all_jobs
 
-    def _map_row(self, row) -> Job | None:
+    def normalize(self, raw: Any) -> Job | None:
+        row = raw
         title = str(row.get("title") or "").strip()
         if not title:
             return None

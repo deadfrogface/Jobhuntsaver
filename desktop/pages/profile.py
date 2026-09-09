@@ -322,6 +322,9 @@ class ProfilePage(QWidget):
         self.allow_remote.setChecked(p.location.allow_remote_germany)
         self.allow_hybrid.setChecked(p.location.allow_hybrid)
         self.country.setText(p.location.country)
+        self.sync_home_from_address.setChecked(
+            self.config_service.get_sync_address_to_search()
+        )
 
         a = cfg.application
         self.first_name.setText(a.first_name)
@@ -503,8 +506,10 @@ class ProfilePage(QWidget):
         a.remote_preference = self.remote_pref.text().strip()
         a.sync_address()
 
-        # Opt-in only (default unchecked): copy applicant address → search home_address
-        if self.sync_home_from_address.isChecked():
+        # Opt-in: copy applicant address → search home_address (preference persisted)
+        sync_addr = self.sync_home_from_address.isChecked()
+        self.config_service.set_sync_address_to_search(sync_addr)
+        if sync_addr:
             parts = [
                 p
                 for p in (

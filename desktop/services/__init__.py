@@ -193,6 +193,15 @@ class ConfigService:
         meta["last_search_run"] = iso_ts
         self.save_meta(meta)
 
+    def get_sync_address_to_search(self) -> bool:
+        """Opt-in: copy applicant address into search home_address on save."""
+        return bool(self.load_meta().get("sync_address_to_search", False))
+
+    def set_sync_address_to_search(self, enabled: bool) -> None:
+        meta = self.load_meta()
+        meta["sync_address_to_search"] = bool(enabled)
+        self.save_meta(meta)
+
     def get_window_state(self) -> dict[str, Any]:
         meta = self.load_meta()
         return dict(meta.get("window") or {})

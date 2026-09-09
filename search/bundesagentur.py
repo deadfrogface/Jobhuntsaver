@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 import httpx
 
@@ -112,7 +113,7 @@ class BundesagenturSource(JobSource):
                 if not page_items:
                     break
                 for item in page_items:
-                    job = self._map_stub(item)
+                    job = self.normalize(item)
                     if job:
                         stubs.append(job)
                 total = data.get("maxErgebnisse", 0)
@@ -127,8 +128,9 @@ class BundesagenturSource(JobSource):
         with httpx.Client(timeout=15.0, headers=_HEADERS) as detail_client:
             return self._fetch_details(stubs, detail_client)
 
-    def _map_stub(self, item: dict) -> Job | None:
+    def normalize(self, raw: Any) -> Job | None:
         try:
+            item = raw if isinstance(raw, dict) else {}
             ref_nr = str(item.get("referenznummer") or item.get("refnr") or "")
             locs = item.get("stellenlokationen") or []
             loc0 = locs[0] if locs else {}

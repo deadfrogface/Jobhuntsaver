@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import urllib.parse
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -29,6 +30,14 @@ _HEADERS = {
 
 class XingSource(JobSource):
     source_id = "xing"
+
+    def health_check(self) -> tuple[bool, str]:
+        try:
+            with httpx.Client(timeout=8.0, headers=_HEADERS) as client:
+                r = client.get("https://www.xing.com/jobs", follow_redirects=True)
+                return r.status_code < 500, f"HTTP {r.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         all_jobs: list[Job] = []
@@ -64,12 +73,13 @@ class XingSource(JobSource):
                         candidates = item.get("@graph") or []
                     for g in candidates:
                         if isinstance(g, dict) and g.get("@type") == "JobPosting":
-                            job = self._from_jsonld(g)
+                            job = self.normalize(g)
                             if job:
                                 jobs.append(job)
         return jobs[: query.max_results]
 
-    def _from_jsonld(self, item: dict) -> Job | None:
+    def normalize(self, raw: Any) -> Job | None:
+        item = raw if isinstance(raw, dict) else {}
         title = item.get("title") or ""
         if len(title) < 4:
             return None
