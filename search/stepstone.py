@@ -13,9 +13,9 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-from core.deduplicator import make_job_id
-from core.models import Job, RemoteType
+from core.models import Job
 from search.base import JobSource, SearchQuery
+from search.jsonld import iter_job_postings, job_from_job_posting
 
 logger = logging.getLogger("jobhuntsaver")
 
@@ -63,56 +63,11 @@ class StepstoneSource(JobSource):
                     data = json.loads(script.string or "")
                 except Exception:
                     continue
-                items = data if isinstance(data, list) else [data]
-                for item in items:
-                    if isinstance(item, dict) and item.get("@type") in ("JobPosting", ["JobPosting"]):
-                        job = self.normalize(item)
-                        if job:
-                            jobs.append(job)
-                    if isinstance(item, dict) and "@graph" in item:
-                        for g in item["@graph"]:
-                            if isinstance(g, dict) and g.get("@type") == "JobPosting":
-                                job = self.normalize(g)
-                                if job:
-                                    jobs.append(job)
+                for item in iter_job_postings(data):
+                    job = self.normalize(item)
+                    if job:
+                        jobs.append(job)
         return jobs[: query.max_results]
 
     def normalize(self, raw: Any) -> Job | None:
-        item = raw if isinstance(raw, dict) else {}
-        title = item.get("title") or ""
-        if not title:
-            return None
-        company = ""
-        org = item.get("hiringOrganization") or {}
-        if isinstance(org, dict):
-            company = org.get("name") or ""
-        url = item.get("url") or item.get("mainEntityOfPage") or ""
-        if isinstance(url, dict):
-            url = url.get("@id") or ""
-        loc = item.get("jobLocation") or {}
-        city = ""
-        if isinstance(loc, list) and loc:
-            loc = loc[0]
-        if isinstance(loc, dict):
-            addr = loc.get("address") or {}
-            if isinstance(addr, dict):
-                city = addr.get("addressLocality") or ""
-        description = item.get("description") or ""
-        remote = RemoteType.ONSITE.value
-        blob = f"{title} {description}".lower()
-        if "remote" in blob or "homeoffice" in blob:
-            remote = RemoteType.REMOTE.value if "hybrid" not in blob else RemoteType.HYBRID.value
-        return Job(
-            id=make_job_id("stepstone", url, url, title, company),
-            source="stepstone",
-            source_job_id=url,
-            title=title,
-            company=company,
-            description=BeautifulSoup(description, "lxml").get_text("\n", strip=True) if description else "",
-            city=city,
-            address=city,
-            remote_type=remote,
-            published_at=str(item.get("datePosted") or ""),
-            url=url,
-            application_url=url,
-        )
+        return job_from_job_posting(raw if isinstance(raw, dict) else {}, source=self.source_id)

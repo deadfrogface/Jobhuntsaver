@@ -13,9 +13,9 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-from core.deduplicator import make_job_id
-from core.models import Job, RemoteType
+from core.models import Job
 from search.base import JobSource, SearchQuery
+from search.jsonld import iter_job_postings, job_from_job_posting
 
 logger = logging.getLogger("jobhuntsaver")
 
@@ -64,53 +64,15 @@ class XingSource(JobSource):
                     data = json.loads(script.string or "")
                 except Exception:
                     continue
-                items = data if isinstance(data, list) else [data]
-                for item in items:
-                    candidates = []
-                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
-                        candidates = [item]
-                    elif isinstance(item, dict) and "@graph" in item:
-                        candidates = item.get("@graph") or []
-                    for g in candidates:
-                        if isinstance(g, dict) and g.get("@type") == "JobPosting":
-                            job = self.normalize(g)
-                            if job:
-                                jobs.append(job)
+                for item in iter_job_postings(data):
+                    job = self.normalize(item)
+                    if job:
+                        jobs.append(job)
         return jobs[: query.max_results]
 
     def normalize(self, raw: Any) -> Job | None:
-        item = raw if isinstance(raw, dict) else {}
-        title = item.get("title") or ""
-        if len(title) < 4:
-            return None
-        org = item.get("hiringOrganization") or {}
-        company = org.get("name") if isinstance(org, dict) else ""
-        url = item.get("url") or ""
-        city = ""
-        loc = item.get("jobLocation") or {}
-        if isinstance(loc, list) and loc:
-            loc = loc[0]
-        if isinstance(loc, dict):
-            addr = loc.get("address") or {}
-            if isinstance(addr, dict):
-                city = addr.get("addressLocality") or ""
-        description = item.get("description") or ""
-        text = BeautifulSoup(description, "lxml").get_text("\n", strip=True) if description else ""
-        remote = RemoteType.ONSITE.value
-        blob = f"{title} {text}".lower()
-        if "remote" in blob or "homeoffice" in blob:
-            remote = RemoteType.HYBRID.value if "hybrid" in blob else RemoteType.REMOTE.value
-        return Job(
-            id=make_job_id("xing", url, url, title, company or ""),
-            source="xing",
-            source_job_id=url,
-            title=title,
-            company=company or "",
-            description=text,
-            city=city,
-            address=city,
-            remote_type=remote,
-            published_at=str(item.get("datePosted") or ""),
-            url=url,
-            application_url=url,
+        return job_from_job_posting(
+            raw if isinstance(raw, dict) else {},
+            source=self.source_id,
+            min_title_len=4,
         )

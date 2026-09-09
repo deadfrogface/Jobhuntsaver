@@ -11,6 +11,8 @@ from core.models import Job
 
 logger = logging.getLogger("jobhuntsaver")
 
+_SUBMIT_SEL = "button[type='submit'], button:has-text('Submit'), button:has-text('Senden')"
+
 
 class SuccessFactorsApplier(BaseApplier):
     def _do_apply(
@@ -43,8 +45,16 @@ class SuccessFactorsApplier(BaseApplier):
                 error_message="SuccessFactors login required",
             )
 
-        if self.dry_run or not self.submit:
-            return self._maybe_submit("button[type='submit'], button:has-text('Submit')")
+        # Always use the central submit guard when a submit control is present.
+        if self._wait_and_query(_SUBMIT_SEL, timeout=2000):
+            result = self._maybe_submit(_SUBMIT_SEL)
+            if result.dry_run_stopped or result.submitted:
+                result.needs_review = True
+                if not result.error_message:
+                    result.error_message = "SuccessFactors — review recommended"
+                return result
+            return result
+
         return ApplyResult(
             success=False,
             needs_review=True,
