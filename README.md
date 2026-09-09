@@ -1,6 +1,6 @@
 # Jobhuntsaver
 
-Einfaches, lokales System für Jobsuche und Bewerbungen in **Deutschland**.  
+Lokale Windows-Desktop-App für Jobsuche und Bewerbungen in **Deutschland**.  
 Kein Cloud-Konto, keine Pflicht-KI-API, keine Docker-Installation.
 
 ## Installation
@@ -9,36 +9,30 @@ Kein Cloud-Konto, keine Pflicht-KI-API, keine Docker-Installation.
 2. Warten, bis „Setup erfolgreich!“ erscheint
 3. Fertig
 
-`setup.bat` prüft Python, legt eine virtuelle Umgebung an, installiert Abhängigkeiten und Playwright, erstellt Ordner und Beispiel-Konfigurationen und initialisiert die Datenbank.
+`setup.bat` prüft Python 3.11+, legt `.venv` an, installiert Runtime-Abhängigkeiten und Playwright Chromium und führt Basistests aus.
 
 ## Start
 
-- **Desktop-App:** Doppelklick auf **`start.bat`** / **`start_desktop.bat`** oder `dist\Jobhuntsaver.exe`
-- **EXE bauen:** Doppelklick auf **`build.bat`**
-- **Nur Suche (CLI):** Doppelklick auf **`run_search.bat`**
+- **Desktop-App (Entwicklung):** Doppelklick auf **`start.bat`** (oder `start_desktop.bat`)
+- **Fertige EXE:** `dist\Jobhuntsaver.exe` (bauen mit **`build.bat`**)
+- **Nur Suche (CLI):** **`run_search.bat`**
 
-Die Desktop-Oberfläche speichert Profil und Einstellungen unter `%LOCALAPPDATA%\Jobhuntsaver` — YAML muss nicht manuell editiert werden.
+Profil, Lebenslauf und Einstellungen liegen unter **`%LOCALAPPDATA%\Jobhuntsaver`**. YAML muss für den Normalbetrieb nicht manuell editiert werden.
 
 ## Profil einrichten
 
-**In der Desktop-App:** Seite *Profil* und *Einstellungen* (inkl. CV-Auswahl, Modus, Dry Run).
+In der Desktop-App:
 
-Alternativ (Legacy):
+1. Seite **Profil** — Berufswünsche, Qualifikationen, Bewerbungsdaten, CV-Import  
+2. Seite **Einstellungen** — Modus, Dry Run, Quellen, Automatik  
 
-1. Öffnen Sie `config/profile.yaml`  
-   - Wunsch-Jobtitel  
-   - Home-Adresse und max. Pendelstrecke  
-   - Max. Pendelstrecke (Standard: 20 km)  
-   - Remote / Hybrid  
-   - Skills, Sprachen, Ausschlussbegriffe
-2. Öffnen Sie `config/application_profile.yaml`  
-   - Name, E-Mail, Telefon, CV-Pfad  
-   - Nur Antworten eintragen, die Sie **sicher** wissen
-3. Legen Sie Ihren Lebenslauf unter `private/cv.pdf` ab (Ordner wird nicht ins Git committed)
+Optional (Legacy/CLI, Repo-`config\`):
 
-## Einstellungen
+- `config/profile.yaml` — Suchpräferenzen  
+- `config/application_profile.yaml` — Bewerberdaten  
+- Lebenslauf unter `%LOCALAPPDATA%\Jobhuntsaver\cvs\` (über die App speichern)
 
-In `config/settings.yaml`:
+## Einstellungen (GUI oder YAML)
 
 | Einstellung | Bedeutung |
 |-------------|-----------|
@@ -50,11 +44,11 @@ In `config/settings.yaml`:
 
 ## Typischer Ablauf
 
-1. `run_search.bat` oder Button „Suche starten“ in der GUI  
+1. Button „Suche starten“ in der GUI (oder `run_search.bat`)  
 2. Jobs von Bundesagentur / Indeed (weitere Quellen optional)  
-3. Filter: >20 km weg (außer echtes Remote in DE), Duplikate, Ausschlüsse  
+3. Filter: Distanz, Duplikate, Ausschlüsse  
 4. Lokales Matching 0–100 mit Begründung  
-5. In der GUI prüfen, Status setzen, exportieren  
+5. In der GUI prüfen, Status setzen, AutoApply nur bei Dry Run / Review  
 
 ## Windows-Aufgabenplanung
 
@@ -67,10 +61,11 @@ Der Lauf startet, verarbeitet Jobs und **beendet sich danach**.
 
 ## Sicherheit & Privatsphäre
 
-- Daten bleiben auf Ihrem PC (SQLite)
+- Daten bleiben auf Ihrem PC (SQLite + AppData-YAML)
 - Keine Telemetrie
 - `.env`, CV, Cookies, Browser-Profil und Datenbank sind in `.gitignore`
 - Niemals Passwörter oder Lebensläufe committen
+- Profil-Reset in der App leert Bewerberdaten und CV-Speicher
 
 ## Lizenzen
 
@@ -81,7 +76,10 @@ Wiederverwendete Teile stammen aus JobRadar (GPL-3.0) und AutoApply (MIT). Detai
 
 ```bat
 call .venv\Scripts\activate.bat
+pip install -r requirements-dev.txt
 set PYTHONPATH=%cd%
 pytest -q
-python -m app.main --mode search_only
+python -m desktop.app
 ```
+
+Weitere Doku: `docs/v1-optimization-report.md`, `docs/desktop-conversion.md`.

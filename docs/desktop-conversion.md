@@ -58,7 +58,7 @@ Jobhuntsaver.exe
 
 | Criterion | Implementation |
 | --------- | -------------- |
-| Double-click EXE | PyInstaller one-folder `dist/Jobhuntsaver/Jobhuntsaver.exe` |
+| Double-click EXE | PyInstaller **onefile** `dist/Jobhuntsaver.exe` (CI artifact `Jobhuntsaver-Windows`) |
 | First-run setup | Wizard; defaults: Search Only, Dry Run ON, Auto OFF |
 | GUI settings | ConfigService read/write YAML |
 | Search button | Worker → `run_pipeline(..., mode=search_only)` |

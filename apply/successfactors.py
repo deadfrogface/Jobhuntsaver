@@ -35,6 +35,7 @@ class SuccessFactorsApplier(BaseApplier):
             last_name="input[id*='last'], input[name*='last']",
             resume_pdf_path=resume_pdf_path,
         )
+        self._fill_cover_letter(cover_letter_text)
 
         # Many SF portals require login / complex multi-page flows
         if self.page.query_selector("input[type='password'], text=Sign In, text=Anmelden"):

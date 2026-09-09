@@ -32,4 +32,12 @@ class SmartRecruitersApplier(BaseApplier):
             last_name="input[name*='lastName'], input[id*='lastName']",
             resume_pdf_path=resume_pdf_path,
         )
+        self._fill_cover_letter(cover_letter_text)
+        unknown = self._unknown_required_fields(profile)
+        if unknown:
+            return ApplyResult(
+                success=False,
+                needs_review=True,
+                error_message=f"Unknown SmartRecruiters fields: {', '.join(unknown[:5])}",
+            )
         return self._maybe_submit("button[type='submit'], button:has-text('Submit'), button:has-text('Send')")

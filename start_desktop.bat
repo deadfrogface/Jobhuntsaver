@@ -1,7 +1,11 @@
 @echo off
 cd /d "%~dp0"
-if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" -m desktop
-) else (
-  py -3 -m desktop
+if not exist ".venv\Scripts\activate.bat" (
+  echo Bitte zuerst setup.bat ausfuehren.
+  pause
+  exit /b 1
 )
+call .venv\Scripts\activate.bat
+set PYTHONPATH=%cd%
+echo Starte Jobhuntsaver Desktop-App...
+python -m desktop.app

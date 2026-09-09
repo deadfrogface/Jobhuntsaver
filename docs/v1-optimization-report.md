@@ -55,7 +55,7 @@ Repo: https://github.com/deadfrogface/Jobhuntsaver
 
 **Major refactors:** EMPTY_PROFILE + real Reset; CV German normalize + A→B→C tests; onefile CI artifact; AppData browsers; ConfigService `clear_cv_storage` / `reset_to_empty_profile`; SearchPreferences aliases; central TEST MODE submit guard; single-instance QSharedMemory; rotating logs; DB indexes; lazy pipeline import.
 
-**Remaining debt:** None material for V1 polish; further UI micro-splits optional.
+**Remaining debt:** None material for V1.
 
 Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapter` alias + `health_check` on BA/Indeed; GitHub artifact verified as single `Jobhuntsaver.exe`.
 
@@ -64,6 +64,8 @@ Follow-up (2026-09-09 b): Shared `search/jsonld.py`; SuccessFactors via `_maybe_
 Follow-up (2026-09-09 d): Greenhouse/Indeed/LinkedIn via `_fill_identity_fields`; shared `_fill_cover_letter` / `_unknown_required_fields`; F401 cleanup; profile section smoke tests.
 
 Follow-up (2026-09-09 e): StepStone/XING/LinkedIn adapter smoke tests; Ashby `_unknown_required_labels`; `core/cv_sections.py`; `setup.bat` uses `requirements-runtime.txt`.
+
+Follow-up (2026-09-09 f): Cover letters on Indeed/SmartRecruiters/SuccessFactors; README/setup Desktop-first; apply helper unit tests; `start_desktop.bat` aligned with `start.bat`.
 
 ## PRIVACY
 
@@ -95,7 +97,7 @@ Follow-up (2026-09-09 e): StepStone/XING/LinkedIn adapter smoke tests; Ashby `_u
 
 ## TESTS
 
-- `pytest`: **85+** (incl. search adapters, captcha stop, hard filter, reset helpers, profile sections)
+- `pytest`: **88** (incl. search adapters, apply helpers, captcha stop, hard filter, reset helpers, profile sections)
 - Privacy scan: **OK**
 - Packaged smoke: **SMOKE_OK** (`scripts/smoke_onefile_exe.py`)
 - GitHub artifact verified: only `Jobhuntsaver.exe`

@@ -63,6 +63,15 @@ class IndeedApplier(BaseApplier):
                 phone="input[name*='phone'], input[id*='phone']",
                 resume_pdf_path=resume_pdf_path,
             )
+            self._fill_cover_letter(
+                cover_letter_text,
+                [
+                    "textarea[name*='cover']",
+                    "textarea[id*='cover']",
+                    "textarea[aria-label*='cover']",
+                    "textarea",
+                ],
+            )
             submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
             if submit:
                 # Central hard guard — never click submit outside _maybe_submit.

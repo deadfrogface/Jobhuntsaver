@@ -67,11 +67,14 @@ echo.
 echo ========================================
 echo   Setup erfolgreich!
 echo ========================================
-echo 1. Profil bearbeiten: config\profile.yaml
-echo 2. Bewerbungsdaten:  config\application_profile.yaml
-echo 3. Start:            start.bat
-echo 4. Nur Suche:        run_search.bat
-echo 5. Dev-Tools:        pip install -r requirements-dev.txt
+echo 1. Start Desktop-App: start.bat
+echo 2. Profil/Einstellungen in der App bearbeiten
+echo    (Daten: %%LOCALAPPDATA%%\Jobhuntsaver)
+echo 3. Optional CLI-Suche:  run_search.bat
+echo 4. EXE bauen:           build.bat
+echo 5. Dev-Tools:           pip install -r requirements-dev.txt
+echo.
+echo Hinweis: Repo-config\*.yaml ist nur Legacy/CLI-Fallback.
 echo.
 pause
 endlocal
