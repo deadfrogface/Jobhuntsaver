@@ -73,4 +73,4 @@ See `core/database.py` SCHEMA. Added for existing query patterns:
 - ATS: submits via `_maybe_submit`; common contact fills via `_fill_identity_fields`.
 - CAPTCHA stops AutoApply in `app/main.py`; Reset-all uses `reset_to_empty_profile`.
 - `boot.log` only with `JOBHUNTSAVER_BOOT_DIAG=1`.
-- Further split of profile page still open; CV text extraction is in `core/cv_extract.py`.
+- Profile UI sections live in `desktop/pages/profile_sections.py`; `SearchPreferences` is the canonical dataclass (`ProfileConfig` alias kept).

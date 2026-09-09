@@ -213,11 +213,11 @@ class FiltersConfig:
 
 
 @dataclass
-class ProfileConfig:
-    """Search preferences + qualifications (alias: SearchPreferences).
+class SearchPreferences:
+    """Where/what to search + qualifications used for matching.
 
     Distinct from ApplicationProfile: search location/titles/filters live here;
-    PII for form submit lives on ApplicationProfile.
+    PII for form submit lives on ApplicationProfile. See core/search_preferences.py.
     """
 
     location: LocationConfig = field(default_factory=LocationConfig)
@@ -227,12 +227,16 @@ class ProfileConfig:
     filters: FiltersConfig = field(default_factory=FiltersConfig)
 
 
+# Backward-compatible name used in older imports / YAML mental model.
+ProfileConfig = SearchPreferences
+
+
 @dataclass
 class ApplicationProfile:
     """Applicant / form-fill profile (PII). Not the jobs search location.
 
     street/city/postal_code are for ATS forms. Search commute uses
-    ProfileConfig.location.home_address unless the user opts into sync in the UI.
+    SearchPreferences.location.home_address unless the user opts into sync in the UI.
     """
 
     first_name: str = ""
@@ -296,9 +300,14 @@ def empty_qualifications() -> QualificationsConfig:
     return QualificationsConfig()
 
 
-def empty_profile_config() -> ProfileConfig:
-    """Blank search/qualification profile (no demo data)."""
-    return ProfileConfig()
+def empty_search_preferences() -> SearchPreferences:
+    """Blank search/qualification preferences (no demo data)."""
+    return SearchPreferences()
+
+
+def empty_profile_config() -> SearchPreferences:
+    """Blank search preferences (alias of empty_search_preferences)."""
+    return empty_search_preferences()
 
 
 # Canonical empty personal profile (copy via empty_application_profile()).
@@ -344,7 +353,7 @@ class SettingsConfig:
 
 @dataclass
 class AppConfig:
-    profile: ProfileConfig = field(default_factory=ProfileConfig)
+    profile: SearchPreferences = field(default_factory=SearchPreferences)
     application: ApplicationProfile = field(default_factory=ApplicationProfile)
     settings: SettingsConfig = field(default_factory=SettingsConfig)
     root: Path = field(default_factory=lambda: ROOT)
@@ -530,7 +539,7 @@ def parse_qualifications(raw: dict[str, Any] | None) -> QualificationsConfig:
 
 
 
-def strip_example_placeholders(profile: ProfileConfig) -> ProfileConfig:
+def strip_example_placeholders(profile: SearchPreferences) -> SearchPreferences:
     """Remove known demo qualification sets so they never influence matching."""
     q = profile.qualifications
     skill_set = {v.lower() for v in q.skill_values()}
@@ -685,7 +694,7 @@ def load_config(
     employment = _merge_dataclass(EmploymentConfig, profile_raw.get("employment", {}))
     qualifications = parse_qualifications(profile_raw.get("qualifications", {}))
     filters = _merge_dataclass(FiltersConfig, profile_raw.get("filters", {}))
-    profile = ProfileConfig(
+    profile = SearchPreferences(
         location=location,
         jobs=jobs,
         employment=employment,

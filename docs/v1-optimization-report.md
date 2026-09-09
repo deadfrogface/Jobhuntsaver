@@ -55,11 +55,13 @@ Repo: https://github.com/deadfrogface/Jobhuntsaver
 
 **Major refactors:** EMPTY_PROFILE + real Reset; CV German normalize + A→B→C tests; onefile CI artifact; AppData browsers; ConfigService `clear_cv_storage` / `reset_to_empty_profile`; SearchPreferences aliases; central TEST MODE submit guard; single-instance QSharedMemory; rotating logs; DB indexes; lazy pipeline import.
 
-**Remaining debt:** Further split of profile page UI; full SearchPreferences dataclass migration (aliases for now).
+**Remaining debt:** None material for V1 polish; further UI micro-splits optional.
 
 Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapter` alias + `health_check` on BA/Indeed; GitHub artifact verified as single `Jobhuntsaver.exe`.
 
-Follow-up (2026-09-09 b): Shared `search/jsonld.py` for StepStone/XING; SuccessFactors via `_maybe_submit`; `BaseApplier._fill_identity_fields` for common ATS contact fills; CV text extraction moved to `core/cv_extract.py`.
+Follow-up (2026-09-09 b): Shared `search/jsonld.py`; SuccessFactors via `_maybe_submit`; `BaseApplier._fill_identity_fields`; CV text in `core/cv_extract.py`.
+
+Follow-up (2026-09-09 c): Canonical `SearchPreferences` dataclass (`ProfileConfig` alias); Profile UI split into `desktop/pages/profile_sections.py`.
 
 ## PRIVACY
 

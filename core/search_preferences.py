@@ -1,10 +1,12 @@
 """Search preferences vs applicant profile — keep these domains separate.
 
-SearchPreferences (``ProfileConfig`` in ``core.config``)
-------------------------------------------------------
+SearchPreferences (``core.config.SearchPreferences``, formerly ProfileConfig)
+---------------------------------------------------------------------------
 Controls *where/what* to search: ``location.home_address``, commute radius,
 desired titles, employment model, company filters. Used by search adapters
 and distance filtering — not for filling application forms.
+
+``ProfileConfig`` remains a backward-compatible alias of ``SearchPreferences``.
 
 ApplicantProfile (``ApplicationProfile`` in ``core.config``)
 ------------------------------------------------------------
@@ -19,10 +21,20 @@ Optional UI may copy applicant street/city into ``location.home_address``
 
 from __future__ import annotations
 
-from core.config import ApplicationProfile, ProfileConfig
+from core.config import (
+    ApplicationProfile,
+    ProfileConfig,
+    SearchPreferences,
+    empty_search_preferences,
+)
 
-# Explicit aliases so call sites can name intent without restructuring YAML.
-SearchPreferences = ProfileConfig
+# Intent-named alias for form-fill PII (same class as ApplicationProfile).
 ApplicantProfile = ApplicationProfile
 
-__all__ = ["SearchPreferences", "ApplicantProfile", "ProfileConfig", "ApplicationProfile"]
+__all__ = [
+    "SearchPreferences",
+    "ApplicantProfile",
+    "ProfileConfig",
+    "ApplicationProfile",
+    "empty_search_preferences",
+]

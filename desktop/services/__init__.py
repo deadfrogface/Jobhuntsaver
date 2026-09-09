@@ -270,7 +270,7 @@ class ConfigService:
 
     def reset_to_empty_profile(self, *, clear_search_prefs: bool = False) -> AppConfig:
         """Persist an empty applicant + qualifications profile after clearing CV files."""
-        from core.config import empty_application_profile, empty_qualifications, empty_profile_config
+        from core.config import empty_application_profile, empty_qualifications, empty_search_preferences
         from desktop.services.profile_merge import clear_complete_application
 
         self.clear_cv_storage()
@@ -288,7 +288,7 @@ class ConfigService:
             jobs = cfg.profile.jobs
             emp = cfg.profile.employment
             filt = cfg.profile.filters
-            empty = empty_profile_config()
+            empty = empty_search_preferences()
             cfg.profile.location = empty.location
             # preserve commute defaults that are not personal PII
             cfg.profile.location.max_distance_km = loc.max_distance_km
