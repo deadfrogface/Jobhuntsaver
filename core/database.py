@@ -93,7 +93,6 @@ CREATE INDEX IF NOT EXISTS idx_apps_job ON applications(job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_source_job_id ON jobs(source, source_job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
-CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id);
 CREATE INDEX IF NOT EXISTS idx_apps_date ON applications(application_date);
 CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
 """
@@ -125,11 +124,15 @@ class Database:
 
     def _init_schema(self) -> None:
         with self.connection() as conn:
+            # 1) Base tables/indexes that are safe for both fresh and legacy DBs.
+            #    Do NOT create idx_jobs_run_id here — legacy jobs tables lack run_id.
             conn.executescript(SCHEMA)
-            # Migrate older DBs that predate run_id / search_runs.
+
+            # 2) Migrate older DBs that predate run_id / search_runs.
             cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
             if "run_id" not in cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN run_id TEXT DEFAULT ''")
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS search_runs (
@@ -141,9 +144,13 @@ class Database:
                 )
                 """
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id)"
-            )
+
+            # 3) Index only after run_id is guaranteed to exist.
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "run_id" in cols:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id)"
+                )
 
     def upsert_job(self, job: Job) -> None:
         data = job.to_dict()
