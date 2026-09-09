@@ -42,12 +42,12 @@ class StepstoneApplier(BaseApplier):
 
         self._safe_click("a:has-text('Jetzt bewerben'), button:has-text('Jetzt bewerben')", timeout=4000)
         self._random_pause(1, 2)
-        self._safe_fill("input[name*='first'], input[id*='firstName']", profile.first_name)
-        self._safe_fill("input[name*='last'], input[id*='lastName']", profile.last_name)
-        self._safe_fill("input[type='email']", profile.email)
-        self._safe_fill("input[type='tel']", profile.phone_full)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ["input[type='file']"])
+        self._fill_identity_fields(
+            profile,
+            first_name="input[name*='first'], input[id*='firstName']",
+            last_name="input[name*='last'], input[id*='lastName']",
+            resume_pdf_path=resume_pdf_path,
+        )
         if cover_letter_text:
             ta = self.page.query_selector("textarea")
             if ta and ta.is_visible():

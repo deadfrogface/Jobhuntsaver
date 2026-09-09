@@ -26,10 +26,10 @@ class SmartRecruitersApplier(BaseApplier):
         if self._detect_captcha():
             return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
         self._safe_click("button:has-text('Apply'), a:has-text('Apply'), button:has-text('Jetzt bewerben')", timeout=4000)
-        self._safe_fill("input[name*='firstName'], input[id*='firstName']", profile.first_name)
-        self._safe_fill("input[name*='lastName'], input[id*='lastName']", profile.last_name)
-        self._safe_fill("input[type='email']", profile.email)
-        self._safe_fill("input[type='tel']", profile.phone_full)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ["input[type='file']"])
+        self._fill_identity_fields(
+            profile,
+            first_name="input[name*='firstName'], input[id*='firstName']",
+            last_name="input[name*='lastName'], input[id*='lastName']",
+            resume_pdf_path=resume_pdf_path,
+        )
         return self._maybe_submit("button[type='submit'], button:has-text('Submit'), button:has-text('Send')")

@@ -27,15 +27,16 @@ class AshbyApplier(BaseApplier):
             return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
         self._safe_click('a:has-text("Apply"), button:has-text("Apply")', timeout=3000)
         self._random_pause(1, 2)
-        self._safe_fill('input[name*="firstName"], input[name*="first_name"]', profile.first_name)
-        self._safe_fill('input[name*="lastName"], input[name*="last_name"]', profile.last_name)
-        self._safe_fill('input[name="name"]', profile.full_name)
-        self._safe_fill('input[type="email"], input[name*="email"]', profile.email)
-        self._safe_fill('input[type="tel"], input[name*="phone"]', profile.phone_full)
-        if profile.linkedin_url:
-            self._safe_fill('input[name*="linkedin"], input[placeholder*="LinkedIn"]', profile.linkedin_url)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ['input[type="file"]'])
+        self._fill_identity_fields(
+            profile,
+            first_name='input[name*="firstName"], input[name*="first_name"]',
+            last_name='input[name*="lastName"], input[name*="last_name"]',
+            email='input[type="email"], input[name*="email"]',
+            phone='input[type="tel"], input[name*="phone"]',
+            full_name='input[name="name"]',
+            linkedin='input[name*="linkedin"], input[placeholder*="LinkedIn"]',
+            resume_pdf_path=resume_pdf_path,
+        )
         if cover_letter_text:
             ta = self.page.query_selector('textarea[name*="cover"], textarea[placeholder*="cover"]')
             if ta and ta.is_visible():

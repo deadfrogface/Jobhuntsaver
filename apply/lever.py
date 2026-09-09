@@ -34,13 +34,17 @@ class LeverApplier(BaseApplier):
         )
         if not form:
             return ApplyResult(success=False, manual_required=True, needs_review=True, error_message="Lever form not found")
-        self._safe_fill("input[name='name']", profile.full_name)
-        self._safe_fill("input[name='email']", profile.email)
-        self._safe_fill("input[name='phone']", profile.phone_full)
-        if profile.linkedin_url:
-            self._safe_fill("input[name='urls[LinkedIn]'], input[name*='linkedin']", profile.linkedin_url)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ["input[type='file'][name='resume']", "input[type='file']"])
+        self._fill_identity_fields(
+            profile,
+            first_name="",
+            last_name="",
+            full_name="input[name='name']",
+            email="input[name='email']",
+            phone="input[name='phone']",
+            linkedin="input[name='urls[LinkedIn]'], input[name*='linkedin']",
+            resume_pdf_path=resume_pdf_path,
+            file_selectors=["input[type='file'][name='resume']", "input[type='file']"],
+        )
         if cover_letter_text:
             ta = self.page.query_selector("textarea[name='comments'], textarea[name*='cover']")
             if ta and ta.is_visible():

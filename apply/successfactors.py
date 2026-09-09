@@ -29,12 +29,12 @@ class SuccessFactorsApplier(BaseApplier):
             return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
 
         # SuccessFactors UIs vary widely — fill what we can, prefer needs_review
-        self._safe_fill("input[id*='first'], input[name*='first']", profile.first_name)
-        self._safe_fill("input[id*='last'], input[name*='last']", profile.last_name)
-        self._safe_fill("input[type='email']", profile.email)
-        self._safe_fill("input[type='tel']", profile.phone_full)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ["input[type='file']"])
+        self._fill_identity_fields(
+            profile,
+            first_name="input[id*='first'], input[name*='first']",
+            last_name="input[id*='last'], input[name*='last']",
+            resume_pdf_path=resume_pdf_path,
+        )
 
         # Many SF portals require login / complex multi-page flows
         if self.page.query_selector("input[type='password'], text=Sign In, text=Anmelden"):

@@ -140,6 +140,36 @@ class BaseApplier(ABC):
             return True
         return False
 
+    def _fill_identity_fields(
+        self,
+        profile: ApplicationProfile,
+        *,
+        first_name: str = "input[name*='first'], input[id*='first']",
+        last_name: str = "input[name*='last'], input[id*='last']",
+        email: str = "input[type='email']",
+        phone: str = "input[type='tel']",
+        full_name: str | None = None,
+        linkedin: str | None = None,
+        resume_pdf_path: Path | None = None,
+        file_selectors: str | list[str] | None = "input[type='file']",
+    ) -> bool:
+        """Fill common contact fields; return False only if CV upload was requested and failed."""
+        if first_name:
+            self._safe_fill(first_name, profile.first_name)
+        if last_name:
+            self._safe_fill(last_name, profile.last_name)
+        if full_name:
+            self._safe_fill(full_name, profile.full_name)
+        if email:
+            self._safe_fill(email, profile.email)
+        if phone:
+            self._safe_fill(phone, profile.phone_full)
+        if linkedin and profile.linkedin_url:
+            self._safe_fill(linkedin, profile.linkedin_url)
+        if resume_pdf_path and file_selectors:
+            return self._safe_upload(resume_pdf_path, file_selectors)
+        return True
+
     def _safe_upload(self, resume_path: Path, selectors: str | list[str]) -> bool:
         if isinstance(selectors, str):
             selectors = [selectors]

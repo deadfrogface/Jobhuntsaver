@@ -43,12 +43,14 @@ class WorkdayApplier(BaseApplier):
                     error_message="Workday login required",
                 )
 
-        self._safe_fill("input[data-automation-id='legalNameSection_firstName'], input[name*='firstName']", profile.first_name)
-        self._safe_fill("input[data-automation-id='legalNameSection_lastName'], input[name*='lastName']", profile.last_name)
-        self._safe_fill("input[data-automation-id='email'], input[type='email']", profile.email)
-        self._safe_fill("input[data-automation-id='phone-number'], input[type='tel']", profile.phone_full)
-        if resume_pdf_path:
-            self._safe_upload(resume_pdf_path, ["input[type='file']"])
+        self._fill_identity_fields(
+            profile,
+            first_name="input[data-automation-id='legalNameSection_firstName'], input[name*='firstName']",
+            last_name="input[data-automation-id='legalNameSection_lastName'], input[name*='lastName']",
+            email="input[data-automation-id='email'], input[type='email']",
+            phone="input[data-automation-id='phone-number'], input[type='tel']",
+            resume_pdf_path=resume_pdf_path,
+        )
         if cover_letter_text:
             ta = self.page.query_selector("textarea")
             if ta and ta.is_visible():

@@ -29,14 +29,13 @@ class PersonioApplier(BaseApplier):
         self._safe_click("a:has-text('Jetzt bewerben'), button:has-text('Jetzt bewerben'), a:has-text('Apply'), button:has-text('Apply')", timeout=4000)
         self._random_pause(1, 2)
 
-        self._safe_fill("input[name*='first'], input[id*='first']", profile.first_name)
-        self._safe_fill("input[name*='last'], input[id*='last']", profile.last_name)
-        self._safe_fill("input[type='email']", profile.email)
-        self._safe_fill("input[type='tel'], input[name*='phone']", profile.phone_full)
-        if resume_pdf_path:
-            uploaded = self._safe_upload(resume_pdf_path, ["input[type='file']"])
-            if not uploaded:
-                return ApplyResult(success=False, needs_review=True, error_message="Personio CV upload failed")
+        uploaded = self._fill_identity_fields(
+            profile,
+            phone="input[type='tel'], input[name*='phone']",
+            resume_pdf_path=resume_pdf_path,
+        )
+        if resume_pdf_path and not uploaded:
+            return ApplyResult(success=False, needs_review=True, error_message="Personio CV upload failed")
         if cover_letter_text:
             ta = self.page.query_selector("textarea")
             if ta and ta.is_visible():

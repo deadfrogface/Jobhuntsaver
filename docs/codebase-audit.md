@@ -69,8 +69,8 @@ See `core/database.py` SCHEMA. Added for existing query patterns:
 
 ## Remaining technical debt (post follow-up)
 
-- Search adapters: `SearchAdapter` alias + `normalize`/`health_check` hooks on `JobSource`; BA/Indeed implement `health_check`. Full mapper rename (`_map_*` → `normalize`) still optional.
-- ATS: Indeed/LinkedIn/SuccessFactors route final submit through `_maybe_submit`.
+- Search adapters: `SearchAdapter` alias + `normalize`/`health_check` on `JobSource`; StepStone/XING share `search/jsonld.py`.
+- ATS: submits via `_maybe_submit`; common contact fills via `_fill_identity_fields`.
 - CAPTCHA stops AutoApply in `app/main.py`; Reset-all uses `reset_to_empty_profile`.
 - `boot.log` only with `JOBHUNTSAVER_BOOT_DIAG=1`.
 - Further split of large `cv_parser` / profile page still open.
