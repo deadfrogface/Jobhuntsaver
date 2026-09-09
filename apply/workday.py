@@ -51,10 +51,7 @@ class WorkdayApplier(BaseApplier):
             phone="input[data-automation-id='phone-number'], input[type='tel']",
             resume_pdf_path=resume_pdf_path,
         )
-        if cover_letter_text:
-            ta = self.page.query_selector("textarea")
-            if ta and ta.is_visible():
-                ta.fill(cover_letter_text)
+        self._fill_cover_letter(cover_letter_text, ["textarea"])
 
         # Multi-step: advance carefully; stop before final submit in dry_run
         for _ in range(6):

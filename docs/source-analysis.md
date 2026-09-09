@@ -1,5 +1,7 @@
 # Jobhuntsaver — Source Analysis (Phase 0)
 
+> **Historical (2026-09):** Analysis from the desktop conversion kickoff. The shipping UI is PySide6 (`desktop/`); Streamlit was removed. Keep this file for provenance of reused MIT/GPL adapters.
+
 Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored wholesale):
 
 | Project | URL | License | Verified |

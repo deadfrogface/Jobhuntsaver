@@ -9,9 +9,9 @@
 | ------- | --- | -------- | ----------------- |
 | AutoApply | https://github.com/AbhishekMandapmalvi/AutoApply | Flask + Vanilla JS SPA + Socket.IO in **PyWebView** (~8k LOC UI) | PyInstaller + pystray |
 | JobRadar | https://github.com/jason-huanghao/jobradar | FastAPI + **Alpine.js** single HTML (~567 LOC) in browser | None (local web) |
-| Jobhuntsaver (current) | this repo | **Streamlit** `ui/app.py` | BAT / CLI only |
+| Jobhuntsaver (current) | this repo | **PySide6 desktop** (`desktop/`) | PyInstaller onefile EXE |
 
-Local clones used for analysis: `_analysis/AutoApply`, `_analysis/jobradar`.
+> **Update (2026-09-09):** Streamlit `ui/` was removed. This document records the pre-desktop analysis; the shipping UI is Qt Desktop.
 
 ## Comparison table
 

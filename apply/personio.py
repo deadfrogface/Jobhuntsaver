@@ -26,7 +26,11 @@ class PersonioApplier(BaseApplier):
         if self._detect_captcha():
             return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
 
-        self._safe_click("a:has-text('Jetzt bewerben'), button:has-text('Jetzt bewerben'), a:has-text('Apply'), button:has-text('Apply')", timeout=4000)
+        self._safe_click(
+            "a:has-text('Jetzt bewerben'), button:has-text('Jetzt bewerben'), "
+            "a:has-text('Apply'), button:has-text('Apply')",
+            timeout=4000,
+        )
         self._random_pause(1, 2)
 
         uploaded = self._fill_identity_fields(
@@ -36,33 +40,16 @@ class PersonioApplier(BaseApplier):
         )
         if resume_pdf_path and not uploaded:
             return ApplyResult(success=False, needs_review=True, error_message="Personio CV upload failed")
-        if cover_letter_text:
-            ta = self.page.query_selector("textarea")
-            if ta and ta.is_visible():
-                ta.fill(cover_letter_text)
+        self._fill_cover_letter(cover_letter_text, ["textarea"])
 
-        unknown = []
-        for el in self.page.query_selector_all("input[required], textarea[required], select[required]"):
-            name = (el.get_attribute("name") or el.get_attribute("id") or "field").lower()
-            if any(k in name for k in ("first", "last", "email", "phone", "file", "cv", "resume")):
-                continue
-            try:
-                if el.input_value():
-                    continue
-            except Exception:
-                pass
-            answered = False
-            for key, val in profile.answers.items():
-                if key.lower() in name and val:
-                    self._safe_fill(f"[name='{el.get_attribute('name')}']", val)
-                    answered = True
-                    break
-            if not answered:
-                unknown.append(name)
+        unknown = self._unknown_required_fields(profile)
         if unknown:
             return ApplyResult(
                 success=False,
                 needs_review=True,
                 error_message=f"Unknown Personio fields: {', '.join(unknown[:5])}",
             )
-        return self._maybe_submit("button[type='submit'], input[type='submit'], button:has-text('Senden'), button:has-text('Submit')")
+        return self._maybe_submit(
+            "button[type='submit'], input[type='submit'], "
+            "button:has-text('Senden'), button:has-text('Submit')"
+        )

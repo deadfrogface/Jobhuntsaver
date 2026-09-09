@@ -19,7 +19,7 @@ from core.config import (
     QualificationsConfig,
     parse_qualifications,
 )
-from core.cv_extract import SUPPORTED_EXTENSIONS, extract_text
+from core.cv_extract import extract_text
 
 logger = logging.getLogger("jobhuntsaver")
 

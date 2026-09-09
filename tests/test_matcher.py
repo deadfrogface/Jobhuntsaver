@@ -2,7 +2,6 @@
 
 from core.config import (
     AppConfig,
-    EducationEntry,
     EmploymentConfig,
     ExperienceEntry,
     FiltersConfig,

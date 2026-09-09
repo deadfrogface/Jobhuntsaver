@@ -48,8 +48,5 @@ class StepstoneApplier(BaseApplier):
             last_name="input[name*='last'], input[id*='lastName']",
             resume_pdf_path=resume_pdf_path,
         )
-        if cover_letter_text:
-            ta = self.page.query_selector("textarea")
-            if ta and ta.is_visible():
-                ta.fill(cover_letter_text)
+        self._fill_cover_letter(cover_letter_text, ["textarea"])
         return self._maybe_submit("button[type='submit'], button:has-text('Bewerbung absenden')")

@@ -1,6 +1,5 @@
 """CV import replace vs merge — two distinct fixtures must not mix."""
 
-from copy import deepcopy
 from pathlib import Path
 
 from core.config import ApplicationProfile, LanguageEntry, QualificationsConfig, SourcedText

@@ -7,10 +7,6 @@ from typing import Any, Literal
 
 from core.config import (
     ApplicationProfile,
-    CertificateEntry,
-    EducationEntry,
-    ExperienceEntry,
-    LanguageEntry,
     QualificationsConfig,
     SourcedText,
 )

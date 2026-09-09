@@ -67,4 +67,4 @@ Jobhuntsaver.exe
 | Dry run | Settings toggle → `settings.dry_run` |
 | Automatic runs | ScheduleService + GUI |
 | Tray | QSystemTrayIcon |
-| No YAML/terminal/Streamlit | Desktop is primary entry; Streamlit kept optional legacy |
+| No YAML/terminal/Streamlit | Desktop is primary entry; Streamlit UI removed from the product |

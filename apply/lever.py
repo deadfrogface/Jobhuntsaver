@@ -45,10 +45,10 @@ class LeverApplier(BaseApplier):
             resume_pdf_path=resume_pdf_path,
             file_selectors=["input[type='file'][name='resume']", "input[type='file']"],
         )
-        if cover_letter_text:
-            ta = self.page.query_selector("textarea[name='comments'], textarea[name*='cover']")
-            if ta and ta.is_visible():
-                ta.fill(cover_letter_text)
+        self._fill_cover_letter(
+            cover_letter_text,
+            ["textarea[name='comments'], textarea[name*='cover']"],
+        )
         return self._maybe_submit(
             "button.postings-btn[type='submit'], button[type='submit'], input[type='submit']"
         )

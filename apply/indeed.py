@@ -54,11 +54,15 @@ class IndeedApplier(BaseApplier):
         for _ in range(8):
             if self._detect_captcha():
                 return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
-            self._safe_fill("input[name*='name'], input[id*='name']", profile.full_name)
-            self._safe_fill("input[name*='email'], input[id*='email']", profile.email)
-            self._safe_fill("input[name*='phone'], input[id*='phone']", profile.phone_full)
-            if resume_pdf_path:
-                self._safe_upload(resume_pdf_path, ["input[type='file']"])
+            self._fill_identity_fields(
+                profile,
+                first_name="",
+                last_name="",
+                full_name="input[name*='name'], input[id*='name']",
+                email="input[name*='email'], input[id*='email']",
+                phone="input[name*='phone'], input[id*='phone']",
+                resume_pdf_path=resume_pdf_path,
+            )
             submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
             if submit:
                 # Central hard guard — never click submit outside _maybe_submit.

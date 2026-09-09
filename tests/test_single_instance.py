@@ -7,7 +7,7 @@ import uuid
 from PySide6.QtCore import QSharedMemory
 from PySide6.QtWidgets import QApplication
 
-from desktop.app import _INSTANCE_KEY, acquire_single_instance_lock
+from desktop.app import acquire_single_instance_lock
 
 
 def test_acquire_single_instance_lock_exclusive(qapp=None):

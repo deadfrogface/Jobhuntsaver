@@ -49,13 +49,18 @@ class LinkedInApplier(BaseApplier):
         for _ in range(10):
             if self._detect_captcha():
                 return ApplyResult(success=False, captcha_detected=True, error_message="CAPTCHA detected")
-            self._safe_fill("input[name*='phone'], input[id*='phone']", profile.phone_full)
-            if resume_pdf_path:
-                self._safe_upload(resume_pdf_path, ["input[type='file']"])
-            if cover_letter_text:
-                ta = self.page.query_selector("textarea[name*='cover'], textarea[id*='cover']")
-                if ta and ta.is_visible():
-                    ta.fill(cover_letter_text)
+            self._fill_identity_fields(
+                profile,
+                first_name="",
+                last_name="",
+                email="",
+                phone="input[name*='phone'], input[id*='phone']",
+                resume_pdf_path=resume_pdf_path,
+            )
+            self._fill_cover_letter(
+                cover_letter_text,
+                ["textarea[name*='cover'], textarea[id*='cover']"],
+            )
             submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
             if submit:
                 return self._maybe_submit(_SUBMIT_SEL)

@@ -191,6 +191,84 @@ class BaseApplier(ABC):
             return True
         return False
 
+    def _fill_cover_letter(
+        self,
+        text: str,
+        selectors: str | list[str] | None = None,
+    ) -> bool:
+        """Fill the first visible cover-letter textarea matching ``selectors``."""
+        if not text:
+            return False
+        if selectors is None:
+            selectors = [
+                "textarea[name*='cover_letter']",
+                "textarea[id*='cover_letter']",
+                "textarea[name*='cover']",
+                "textarea[id*='cover']",
+                "#cover_letter",
+                "textarea",
+            ]
+        if isinstance(selectors, str):
+            selectors = [selectors]
+        for selector in selectors:
+            ta = self.page.query_selector(selector)
+            if not ta or not ta.is_visible():
+                continue
+            try:
+                if ta.input_value():
+                    return False
+            except Exception:
+                pass
+            ta.fill(text)
+            return True
+        return False
+
+    def _unknown_required_fields(
+        self,
+        profile: ApplicationProfile,
+        *,
+        skip_tokens: tuple[str, ...] = (
+            "first",
+            "last",
+            "email",
+            "phone",
+            "resume",
+            "cover",
+            "file",
+            "cv",
+        ),
+    ) -> list[str]:
+        """Return required empty fields that are not identity/CV and not in profile.answers."""
+        unknown: list[str] = []
+        for el in self.page.query_selector_all(
+            "input[required], textarea[required], select[required]"
+        ):
+            try:
+                name = (el.get_attribute("name") or el.get_attribute("id") or "").lower()
+                if not name:
+                    continue
+                if any(k in name for k in skip_tokens):
+                    continue
+                answered = False
+                for key, val in profile.answers.items():
+                    if key.lower() in name and val:
+                        attr_name = el.get_attribute("name")
+                        if attr_name:
+                            self._safe_fill(f"[name='{attr_name}']", val)
+                        answered = True
+                        break
+                if answered:
+                    continue
+                try:
+                    if el.input_value():
+                        continue
+                except Exception:
+                    pass
+                unknown.append(name)
+            except Exception:
+                continue
+        return unknown
+
     def _maybe_submit(self, submit_selector: str) -> ApplyResult:
         """Central hard guard: never click final submit in dry_run / non-submit mode."""
         if self.dry_run or not self.submit:

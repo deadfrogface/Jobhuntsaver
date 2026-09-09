@@ -61,7 +61,7 @@ Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapt
 
 Follow-up (2026-09-09 b): Shared `search/jsonld.py`; SuccessFactors via `_maybe_submit`; `BaseApplier._fill_identity_fields`; CV text in `core/cv_extract.py`.
 
-Follow-up (2026-09-09 c): Canonical `SearchPreferences` dataclass (`ProfileConfig` alias); Profile UI split into `desktop/pages/profile_sections.py`.
+Follow-up (2026-09-09 d): Greenhouse/Indeed/LinkedIn via `_fill_identity_fields`; shared `_fill_cover_letter` / `_unknown_required_fields`; F401 cleanup; profile section smoke tests.
 
 ## PRIVACY
 

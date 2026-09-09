@@ -37,10 +37,10 @@ class AshbyApplier(BaseApplier):
             linkedin='input[name*="linkedin"], input[placeholder*="LinkedIn"]',
             resume_pdf_path=resume_pdf_path,
         )
-        if cover_letter_text:
-            ta = self.page.query_selector('textarea[name*="cover"], textarea[placeholder*="cover"]')
-            if ta and ta.is_visible():
-                ta.fill(cover_letter_text)
+        self._fill_cover_letter(
+            cover_letter_text,
+            ['textarea[name*="cover"], textarea[placeholder*="cover"]'],
+        )
         # Custom questions: only fill known answers; otherwise needs_review
         unknown = []
         for label in self.page.query_selector_all("label"):
