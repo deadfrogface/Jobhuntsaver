@@ -1,6 +1,7 @@
-"""CV / document text extraction and structured profile parsing.
+"""Structured German CV profile parsing.
 
-No paid AI. Never invents qualifications that are not present in the text.
+Text extraction lives in ``core.cv_extract``; this module never invents
+qualifications that are not present in the text. No paid AI.
 """
 
 from __future__ import annotations
@@ -18,10 +19,9 @@ from core.config import (
     QualificationsConfig,
     parse_qualifications,
 )
+from core.cv_extract import SUPPORTED_EXTENSIONS, extract_text
 
 logger = logging.getLogger("jobhuntsaver")
-
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
 
 _DATE = r"(?:\d{1,2}\.\d{1,2}\.\d{2,4}|\d{2}\.\d{4}|\d{4})"
 _PERIOD = re.compile(
@@ -134,43 +134,6 @@ _LICENSE_CLASS = re.compile(
     r"\b(AM|A1|A2|A|B1|B|BE|C1|C1E|C|CE|D1|D1E|D|DE|L|T)\b",
     re.IGNORECASE,
 )
-
-
-def extract_text(file_path: Path) -> str:
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-    ext = file_path.suffix.lower()
-    if ext not in SUPPORTED_EXTENSIONS:
-        raise ValueError(f"Unsupported file type: {ext}")
-    if ext == ".pdf":
-        return _extract_from_pdf(file_path)
-    if ext in (".docx", ".doc"):
-        return _extract_from_docx(file_path)
-    return file_path.read_text(encoding="utf-8", errors="replace")
-
-
-def _extract_from_pdf(file_path: Path) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError:
-        try:
-            from PyPDF2 import PdfReader  # type: ignore
-        except ImportError as exc:
-            raise RuntimeError("Install pypdf for PDF extraction") from exc
-    reader = PdfReader(str(file_path))
-    pages = []
-    for page in reader.pages:
-        text = page.extract_text() or ""
-        if text.strip():
-            pages.append(text.strip())
-    return "\n\n".join(pages)
-
-
-def _extract_from_docx(file_path: Path) -> str:
-    from docx import Document
-
-    doc = Document(str(file_path))
-    return "\n\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
 
 
 def _normalize_bullet(line: str) -> str:
