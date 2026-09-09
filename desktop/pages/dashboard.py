@@ -45,12 +45,15 @@ class DashboardPage(QWidget):
     test_requested = Signal()
     pause_requested = Signal()
     review_requested = Signal()
+    cancel_requested = Signal()
+    clear_jobs_requested = Signal()
 
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
         self.config_service = config_service
 
         self.cards = {
+            "this_run": StatCard("dash.this_run"),
             "jobs_found_today": StatCard("dash.found_today"),
             "new_today": StatCard("dash.new"),
             "matches_ge_75": StatCard("dash.matches"),
@@ -77,6 +80,9 @@ class DashboardPage(QWidget):
 
         self.btn_search = QPushButton()
         self.btn_search.setObjectName("PrimaryButton")
+        self.btn_cancel = QPushButton()
+        self.btn_cancel.setObjectName("SecondaryButton")
+        self.btn_cancel.setEnabled(False)
         self.btn_apply = QPushButton()
         self.btn_apply.setObjectName("SecondaryButton")
         self.btn_test = QPushButton()
@@ -85,18 +91,24 @@ class DashboardPage(QWidget):
         self.btn_pause.setObjectName("SecondaryButton")
         self.btn_review = QPushButton()
         self.btn_review.setObjectName("SecondaryButton")
+        self.btn_clear_jobs = QPushButton()
+        self.btn_clear_jobs.setObjectName("SecondaryButton")
         self.btn_search.clicked.connect(self.search_requested.emit)
+        self.btn_cancel.clicked.connect(self.cancel_requested.emit)
         self.btn_apply.clicked.connect(self.apply_requested.emit)
         self.btn_test.clicked.connect(self.test_requested.emit)
         self.btn_pause.clicked.connect(self.pause_requested.emit)
         self.btn_review.clicked.connect(self.review_requested.emit)
+        self.btn_clear_jobs.clicked.connect(self.clear_jobs_requested.emit)
 
         actions = QHBoxLayout()
         actions.addWidget(self.btn_search)
+        actions.addWidget(self.btn_cancel)
         actions.addWidget(self.btn_apply)
         actions.addWidget(self.btn_test)
         actions.addWidget(self.btn_pause)
         actions.addWidget(self.btn_review)
+        actions.addWidget(self.btn_clear_jobs)
         actions.addStretch()
 
         layout = QVBoxLayout(self)
@@ -113,12 +125,19 @@ class DashboardPage(QWidget):
         for card in self.cards.values():
             card.retranslate()
         self.btn_search.setText(tr("btn.search_now"))
+        self.btn_cancel.setText(tr("btn.cancel_search"))
         self.btn_apply.setText(tr("btn.start_apply"))
         self.btn_test.setText(tr("btn.apply_test"))
         self.btn_pause.setText(tr("btn.pause_automation"))
         self.btn_review.setText(tr("btn.review_queue"))
+        self.btn_clear_jobs.setText(tr("btn.clear_jobs"))
         self.status_label.setText(tr("status.ready"))
         self.refresh()
+
+    def set_pipeline_running(self, running: bool) -> None:
+        self.btn_search.setEnabled(not running)
+        self.btn_cancel.setEnabled(running)
+        self.btn_clear_jobs.setEnabled(not running)
 
     def refresh(self) -> None:
         cfg = self.config_service.load()

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 
 from apply.detector import ATSDetector
@@ -11,12 +13,15 @@ from browser.browser_manager import BrowserManager
 from core.config import AppConfig, load_config
 from core.database import Database
 from core.deduplicator import deduplicate
-from core.location import LocationService
+from core.location import LocationService, enrich_job_locations
 from core.logging import RunLogger
 from core.matcher import score_job
 from core.models import JobStatus, OperatingMode
 from search.base import SearchQuery
 from search.registry import build_sources
+
+# Hard ceiling per job board so one hung source cannot freeze the whole run.
+SOURCE_SEARCH_TIMEOUT_S = 120
 
 
 def _search_location(home_address: str) -> str:
@@ -71,24 +76,27 @@ def build_queries(config: AppConfig) -> list[SearchQuery]:
     return queries
 
 
-def enrich_locations(jobs, location: LocationService):
-    for job in jobs:
-        if job.remote_type == "remote":
-            job.distance_km = None
-            continue
-        lat, lon, dist = location.distance_for_job_location(
-            address=job.address,
-            city=job.city,
-            postal_code=job.postal_code,
-            latitude=job.latitude,
-            longitude=job.longitude,
-        )
-        if lat is not None:
-            job.latitude = lat
-            job.longitude = lon
-        if dist is not None:
-            job.distance_km = dist
-    return jobs
+def enrich_locations(jobs, location: LocationService, progress_callback=None, should_stop=None):
+    """Backward-compatible wrapper around ``enrich_job_locations``."""
+    return enrich_job_locations(
+        jobs,
+        location,
+        progress_callback=progress_callback,
+        should_stop=should_stop,
+    )
+
+
+def _search_source_with_timeout(source, queries, timeout_s: float = SOURCE_SEARCH_TIMEOUT_S):
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(source.safe_search, queries)
+        try:
+            return fut.result(timeout=timeout_s)
+        except FuturesTimeout:
+            return (
+                [],
+                f"Timeout after {int(timeout_s)}s",
+                None,
+            )
 
 
 def run_pipeline(
@@ -115,35 +123,30 @@ def run_pipeline(
         config.settings.mode = mode
 
     run = RunLogger(config.root / config.settings.logs_dir)
-    run.info("Run started")
+    run_id = uuid.uuid4().hex
+    run.info(f"Run started id={run_id}")
     progress("Suche gestartet…")
     db = Database(config.db_path)
+    db.start_search_run(run_id)
     location = LocationService(db, config)
     location.ensure_home_coords()
 
+    cancelled = False
     queries = build_queries(config)
     sources = build_sources(config.settings.enabled_sources)
     all_jobs = []
+    source_errors: list[str] = []
     for source in sources:
         if stopped():
+            cancelled = True
             run.info("Pipeline cancelled during search")
             progress("Abgebrochen.")
-            return {
-                "total": 0,
-                "duplicates": 0,
-                "outside": 0,
-                "new": 0,
-                "matches": 0,
-                "applied": 0,
-                "needs_review": 0,
-                "captcha": 0,
-                "failed": 0,
-                "cancelled": True,
-            }
+            break
         progress(f"Suche {source.source_id}…")
-        jobs, err, detail = source.safe_search(queries)
+        jobs, err, detail = _search_source_with_timeout(source, queries)
         if err:
             run.error(f"{source.source_id}: {err}")
+            source_errors.append(f"{source.source_id}: {err}")
             if detail:
                 run.error(detail.detail())
                 db.set_source_status(
@@ -154,17 +157,32 @@ def run_pipeline(
                 )
             else:
                 db.set_source_status(source.source_id, "error", err, 0)
-            progress(f"{source.source_id}-Suche fehlgeschlagen. Andere Quellen laufen weiter.")
+            progress(
+                f"{source.source_id} fehlgeschlagen — andere Quellen laufen weiter."
+            )
             continue
         run.info(f"{source.source_id}: {len(jobs)} jobs")
         db.set_source_status(source.source_id, "ok", "", len(jobs))
+        for job in jobs:
+            job.run_id = run_id
         all_jobs.extend(jobs)
 
     total = len(all_jobs)
     run.info(f"{total} total results")
 
-    progress("Standorte anreichern…")
-    all_jobs = enrich_locations(all_jobs, location)
+    if not cancelled and not stopped():
+        progress("Standorte anreichern: 0/? …")
+        all_jobs = enrich_job_locations(
+            all_jobs,
+            location,
+            progress_callback=progress_callback,
+            should_stop=should_stop,
+        )
+        if stopped():
+            cancelled = True
+    else:
+        cancelled = cancelled or stopped()
+
     progress("Duplikate entfernen…")
     all_jobs = deduplicate(all_jobs)
     primary = [j for j in all_jobs if not j.duplicate_of]
@@ -177,12 +195,20 @@ def run_pipeline(
     new_count = 0
     known = 0
     for job in primary:
-        existing = db.find_existing_by_source(job.source, job.source_job_id) if job.source_job_id else None
+        if stopped():
+            cancelled = True
+            break
+        existing = (
+            db.find_existing_by_source(job.source, job.source_job_id)
+            if job.source_job_id
+            else None
+        )
         if existing and existing.status == JobStatus.APPLIED.value:
             known += 1
             continue
         already = db.has_applied(job)
         job.ats_type = ATSDetector.detect(job.application_url or job.url)
+        job.run_id = run_id
         result = score_job(job, config, already_applied=already)
         job.match_score = result.score
         job.match_reasons = result.match_reasons
@@ -196,17 +222,22 @@ def run_pipeline(
             if not existing:
                 new_count += 1
         db.upsert_job(job)
-        # also store duplicate markers
         scored.append(job)
 
     for job in all_jobs:
         if job.duplicate_of:
+            job.run_id = run_id
             db.upsert_job(job)
 
     run.info(f"{outside} outside {config.profile.location.max_distance_km} km removed/ignored")
     run.info(f"{known} already known/applied skipped")
     run.info(f"{new_count} new jobs")
-    matches = [j for j in scored if j.match_score >= config.settings.minimum_match_for_auto_apply and j.status != JobStatus.IGNORED.value]
+    matches = [
+        j
+        for j in scored
+        if j.match_score >= config.settings.minimum_match_for_auto_apply
+        and j.status != JobStatus.IGNORED.value
+    ]
     run.info(f"{len(matches)} matches ≥{config.settings.minimum_match_for_auto_apply}%")
 
     stats = {
@@ -219,11 +250,25 @@ def run_pipeline(
         "needs_review": 0,
         "captcha": 0,
         "failed": 0,
+        "run_id": run_id,
+        "cancelled": cancelled,
+        "source_errors": source_errors,
+        "geocode_resolved": location.stats.resolved,
+        "geocode_cached": location.stats.cached,
+        "geocode_failed": location.stats.failed,
+        "home_updated": location.home_updated,
     }
+
+    if cancelled:
+        db.finish_search_run(run_id, "cancelled", stats)
+        progress("Abgebrochen.")
+        run.info("Finished (cancelled)")
+        return stats
 
     if config.settings.mode == OperatingMode.SEARCH_ONLY.value:
         run.info("Mode search_only — no applications")
         run.info("Finished")
+        db.finish_search_run(run_id, "ok", stats)
         progress("Suche abgeschlossen.")
         return stats
 
@@ -240,6 +285,7 @@ def run_pipeline(
             if stopped():
                 run.info("Pipeline cancelled during applications")
                 progress("Abgebrochen.")
+                cancelled = True
                 break
             if manager.failed_this_run >= config.settings.max_failed_applications_per_run:
                 run.info("Failure limit reached — stopping AutoApply (search already done)")
@@ -274,11 +320,13 @@ def run_pipeline(
         if browser:
             browser.close()
 
+    stats["cancelled"] = cancelled
+    db.finish_search_run(run_id, "cancelled" if cancelled else "ok", stats)
     run.info(
         f"Finished: {stats['applied']} applications successful, "
         f"{stats['needs_review']} Needs Review, {stats['captcha']} CAPTCHA, {stats['failed']} Failed"
     )
-    progress("Lauf abgeschlossen.")
+    progress("Lauf abgeschlossen." if not cancelled else "Abgebrochen.")
     return stats
 
 

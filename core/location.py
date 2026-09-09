@@ -1,11 +1,16 @@
-"""Geocoding cache and Haversine distance helpers."""
+"""Geocoding cache and Haversine distance helpers.
+
+Nominatim calls are rate-limited, timed out, negatively cached, and must never
+block a search run indefinitely.
+"""
 
 from __future__ import annotations
 
 import logging
 import math
 import time
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable
 
 import httpx
 
@@ -14,6 +19,12 @@ if TYPE_CHECKING:
     from core.database import Database
 
 logger = logging.getLogger("jobhuntsaver")
+
+# Sentinel display_name for failed lookups (persisted so we do not retry forever).
+UNRESOLVED_MARKER = "__unresolved__"
+DEFAULT_GEOCODE_TIMEOUT_S = 5.0
+MIN_REQUEST_INTERVAL_S = 1.05
+DE_FALLBACK = (51.1657, 10.4515)  # geographic center of Germany
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -29,49 +40,114 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-class LocationService:
-    """Geocode once, cache in SQLite, compute Haversine locally."""
+def location_cache_key(
+    *,
+    address: str = "",
+    city: str = "",
+    postal_code: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> str:
+    """Stable key for deduplicating geocode work within a run."""
+    if latitude is not None and longitude is not None:
+        return f"ll:{latitude:.5f},{longitude:.5f}"
+    parts = [p.strip().lower() for p in (address, postal_code, city) if p and str(p).strip()]
+    if not parts:
+        return ""
+    return "|".join(parts)
 
-    def __init__(self, db: "Database", config: "AppConfig") -> None:
-        self.db = db
-        self.config = config
-        self._home: tuple[float, float] | None = None
-        self._last_request = 0.0
+
+@dataclass
+class EnrichStats:
+    total: int = 0
+    remote_skipped: int = 0
+    resolved: int = 0
+    cached: int = 0
+    failed: int = 0
+    unique_queries: int = 0
+
+
+@dataclass
+class LocationService:
+    """Geocode once, cache in SQLite (incl. misses), compute Haversine locally."""
+
+    db: "Database"
+    config: "AppConfig"
+    timeout_s: float = DEFAULT_GEOCODE_TIMEOUT_S
+    _home: tuple[float, float] | None = field(default=None, init=False, repr=False)
+    _last_request: float = field(default=0.0, init=False, repr=False)
+    _memory_hits: dict[str, tuple[float, float, str] | None] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    home_updated: bool = field(default=False, init=False, repr=False)
+    stats: EnrichStats = field(default_factory=EnrichStats, init=False)
 
     def ensure_home_coords(self) -> tuple[float, float]:
+        """Resolve home coordinates once per process/run; never re-hit network on miss."""
+        if self._home is not None:
+            return self._home
         loc = self.config.profile.location
         if loc.home_latitude is not None and loc.home_longitude is not None:
-            self._home = (loc.home_latitude, loc.home_longitude)
+            self._home = (float(loc.home_latitude), float(loc.home_longitude))
             return self._home
-        coords = self.geocode(loc.home_address)
+
+        address = (loc.home_address or "").strip()
+        coords = self.geocode(address) if address else None
+        if not coords and address:
+            # Soften to city/PLZ tokens before DE fallback
+            cityish = _city_from_address(address)
+            if cityish and cityish.lower() != address.lower():
+                coords = self.geocode(f"{cityish}, Germany")
         if not coords:
-            # Approximate DE city-center fallback only if geocode fails
-            logger.warning("Home geocode failed; using generic DE fallback coordinates")
-            self._home = (51.1657, 10.4515)
+            logger.warning(
+                "Home geocode failed for %r; using DE fallback once (cached for this run)",
+                address,
+            )
+            self._home = DE_FALLBACK
             return self._home
+
         self._home = (coords[0], coords[1])
+        loc.home_latitude = coords[0]
+        loc.home_longitude = coords[1]
+        self.home_updated = True
         return self._home
 
     def geocode(self, query: str) -> tuple[float, float, str] | None:
         query = (query or "").strip()
         if not query:
             return None
+        key = query.lower()
+        if key in self._memory_hits:
+            self.stats.cached += 1
+            return self._memory_hits[key]
+
         cached = self.db.get_geocode(query)
-        if cached:
+        if cached is not None:
+            lat, lon, display = cached
+            if display == UNRESOLVED_MARKER:
+                self._memory_hits[key] = None
+                self.stats.cached += 1
+                return None
+            self._memory_hits[key] = cached
+            self.stats.cached += 1
             return cached
+
         # Respect Nominatim usage policy (~1 req/s)
         elapsed = time.time() - self._last_request
-        if elapsed < 1.1:
-            time.sleep(1.1 - elapsed)
+        if elapsed < MIN_REQUEST_INTERVAL_S:
+            time.sleep(MIN_REQUEST_INTERVAL_S - elapsed)
+
         try:
-            with httpx.Client(timeout=20.0) as client:
+            with httpx.Client(timeout=self.timeout_s) as client:
                 resp = client.get(
                     "https://nominatim.openstreetmap.org/search",
                     params={
                         "q": query,
                         "format": "json",
                         "limit": 1,
-                        "countrycodes": self.config.profile.location.country.lower(),
+                        "countrycodes": (
+                            self.config.profile.location.country or "DE"
+                        ).lower(),
                     },
                     headers={"User-Agent": "Jobhuntsaver/1.0 (local personal use)"},
                 )
@@ -79,15 +155,30 @@ class LocationService:
                 data = resp.json()
             self._last_request = time.time()
             if not data:
+                self._store_unresolved(query)
+                self.stats.failed += 1
                 return None
             lat = float(data[0]["lat"])
             lon = float(data[0]["lon"])
-            display = data[0].get("display_name", "")
+            display = data[0].get("display_name", "") or ""
             self.db.set_geocode(query, lat, lon, display)
-            return lat, lon, display
+            result = (lat, lon, display)
+            self._memory_hits[key] = result
+            self.stats.resolved += 1
+            return result
         except Exception as exc:
-            logger.warning("Geocode failed for '%s': %s", query, exc)
+            logger.warning("Geocode failed for %r: %s", query, exc)
+            self._store_unresolved(query)
+            self.stats.failed += 1
             return None
+
+    def _store_unresolved(self, query: str) -> None:
+        key = query.lower().strip()
+        self._memory_hits[key] = None
+        try:
+            self.db.set_geocode(query, 0.0, 0.0, UNRESOLVED_MARKER)
+        except Exception as exc:
+            logger.debug("Could not persist unresolved geocode for %r: %s", query, exc)
 
     def distance_for_job_location(
         self,
@@ -98,21 +189,131 @@ class LocationService:
         latitude: float | None = None,
         longitude: float | None = None,
     ) -> tuple[float | None, float | None, float | None]:
-        """Return (lat, lon, distance_km)."""
+        """Return (lat, lon, distance_km). Never raises; unresolved → (None, None, None)."""
         home = self.ensure_home_coords()
         if latitude is not None and longitude is not None:
-            return latitude, longitude, round(haversine_km(home[0], home[1], latitude, longitude), 2)
+            return (
+                latitude,
+                longitude,
+                round(haversine_km(home[0], home[1], latitude, longitude), 2),
+            )
 
         query_parts = [p for p in (address, postal_code, city, "Germany") if p]
         query = ", ".join(query_parts) if any([address, city, postal_code]) else ""
         if not query:
             return None, None, None
         result = self.geocode(query)
-        if not result:
-            # Try city only
-            if city:
-                result = self.geocode(f"{city}, Germany")
+        if not result and city:
+            result = self.geocode(f"{city}, Germany")
+        if not result and postal_code:
+            result = self.geocode(f"{postal_code}, Germany")
         if not result:
             return None, None, None
         lat, lon, _ = result
         return lat, lon, round(haversine_km(home[0], home[1], lat, lon), 2)
+
+
+def _city_from_address(home_address: str) -> str:
+    parts = [p.strip() for p in home_address.split(",") if p.strip()]
+    for part in reversed(parts):
+        low = part.lower()
+        if low in {"germany", "deutschland", "de"}:
+            continue
+        tokens = part.split()
+        words = [t for t in tokens if not any(c.isdigit() for c in t)]
+        if not words:
+            continue
+        if tokens and tokens[0].isdigit():
+            return " ".join(words)
+        if any(c.isdigit() for c in part):
+            continue
+        return " ".join(words)
+    return ""
+
+
+def enrich_job_locations(
+    jobs: list,
+    location: LocationService,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> list:
+    """Enrich jobs with coordinates/distance. Dedupes identical location queries.
+
+    Remote jobs skip workplace geocoding. Progress reports unique-query progress.
+    """
+
+    def progress(msg: str) -> None:
+        if progress_callback:
+            try:
+                progress_callback(msg)
+            except Exception:
+                pass
+
+    def stopped() -> bool:
+        try:
+            return bool(should_stop and should_stop())
+        except Exception:
+            return False
+
+    location.stats = EnrichStats(total=len(jobs))
+    # Resolve home once before the loop
+    location.ensure_home_coords()
+
+    # Group non-remote jobs by location key
+    groups: dict[str, list] = {}
+    order: list[str] = []
+    for job in jobs:
+        if getattr(job, "remote_type", "") == "remote":
+            job.distance_km = None
+            location.stats.remote_skipped += 1
+            continue
+        key = location_cache_key(
+            address=getattr(job, "address", "") or "",
+            city=getattr(job, "city", "") or "",
+            postal_code=getattr(job, "postal_code", "") or "",
+            latitude=getattr(job, "latitude", None),
+            longitude=getattr(job, "longitude", None),
+        )
+        if not key:
+            # Nothing to geocode
+            continue
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(job)
+
+    location.stats.unique_queries = len(order)
+    total_q = max(len(order), 1)
+
+    for idx, key in enumerate(order, start=1):
+        if stopped():
+            progress(f"Standorte anreichern abgebrochen ({idx - 1}/{len(order)}).")
+            break
+        group = groups[key]
+        sample = group[0]
+        progress(
+            f"Standorte anreichern: {idx}/{len(order)} "
+            f"(gelöst {location.stats.resolved}, Cache {location.stats.cached}, "
+            f"offen {location.stats.failed})"
+        )
+        lat, lon, dist = location.distance_for_job_location(
+            address=getattr(sample, "address", "") or "",
+            city=getattr(sample, "city", "") or "",
+            postal_code=getattr(sample, "postal_code", "") or "",
+            latitude=getattr(sample, "latitude", None),
+            longitude=getattr(sample, "longitude", None),
+        )
+        for job in group:
+            if lat is not None:
+                job.latitude = lat
+                job.longitude = lon
+            if dist is not None:
+                job.distance_km = dist
+
+    progress(
+        f"Standorte fertig: {len(order)}/{total_q} Orte — "
+        f"gelöst {location.stats.resolved}, Cache {location.stats.cached}, "
+        f"ungeklärt {location.stats.failed}, Remote übersprungen {location.stats.remote_skipped}"
+    )
+    return jobs

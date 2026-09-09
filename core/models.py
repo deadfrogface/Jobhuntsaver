@@ -68,6 +68,7 @@ class Job:
     status: str = JobStatus.NEW.value
     duplicate_of: str | None = None
     alt_sources: list[str] = field(default_factory=list)
+    run_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

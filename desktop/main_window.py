@@ -115,6 +115,8 @@ class MainWindow(QMainWindow):
         self.dashboard.test_requested.connect(self.run_application_test)
         self.dashboard.pause_requested.connect(lambda: self.set_automation_paused(True))
         self.dashboard.review_requested.connect(self.open_review_queue)
+        self.dashboard.cancel_requested.connect(self.cancel_pipeline)
+        self.dashboard.clear_jobs_requested.connect(self.clear_job_data)
         self.settings.appearance_changed.connect(self.apply_appearance_from_settings)
 
         self.tray = AppTray(self)
@@ -222,6 +224,7 @@ class MainWindow(QMainWindow):
         cfg = config_override or self.config_service.load()
         self.progress_label.setText(tr("status.running"))
         self.dashboard.set_status(tr("status.running"))
+        self.dashboard.set_pipeline_running(True)
         worker = PipelineWorker(cfg, mode=mode)
         thread = start_worker(worker)
 
@@ -230,20 +233,32 @@ class MainWindow(QMainWindow):
             self.dashboard.set_status(msg)
 
         def on_finished(stats: dict) -> None:
+            self.dashboard.set_pipeline_running(False)
             self.progress_label.setText(tr("status.done"))
             self.dashboard.set_status(tr("status.done"))
+            # Persist home coords resolved during this run (avoids re-geocoding forever).
+            if stats.get("home_updated") and getattr(worker, "config", None) is not None:
+                try:
+                    self.config_service.save(worker.config)
+                except Exception:
+                    pass
             self.config_service.set_last_search(
                 datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             )
             self.refresh_all()
+            extra = ""
+            if stats.get("source_errors"):
+                extra = "\n" + "\n".join(stats.get("source_errors") or [])
             QMessageBox.information(
                 self,
                 tr("msg.run_done"),
                 f"{tr('msg.new')}: {stats.get('new', 0)} | {tr('msg.matches')}: {stats.get('matches', 0)} | "
-                f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}",
+                f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}"
+                f"{extra}",
             )
 
         def on_failed(err: str) -> None:
+            self.dashboard.set_pipeline_running(False)
             self.progress_label.setText(tr("status.error"))
             self.dashboard.set_status(tr("status.error"))
             QMessageBox.warning(
@@ -258,6 +273,33 @@ class MainWindow(QMainWindow):
         worker.failed.connect(on_failed)
         self._worker = worker
         self._thread = thread
+
+    def cancel_pipeline(self) -> None:
+        worker = getattr(self, "_worker", None)
+        if worker is not None and hasattr(worker, "request_cancel"):
+            worker.request_cancel()
+            self.progress_label.setText(tr("btn.cancel_search") + "…")
+            self.dashboard.set_status(tr("btn.cancel_search") + "…")
+
+    def clear_job_data(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            tr("msg.clear_jobs_title"),
+            tr("msg.clear_jobs_body"),
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        cfg = self.config_service.load()
+        from core.database import Database
+
+        Database(cfg.db_path).clear_job_data(
+            clear_applications=True,
+            clear_source_status=True,
+            clear_search_runs=True,
+            clear_geocode_cache=False,
+        )
+        self.refresh_all()
+        QMessageBox.information(self, tr("msg.clear_jobs_title"), tr("msg.clear_jobs_done"))
 
     def open_review_queue(self) -> None:
         self._navigate(2)

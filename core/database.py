@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT DEFAULT 'new',
     duplicate_of TEXT,
     alt_sources TEXT DEFAULT '[]',
+    run_id TEXT DEFAULT '',
     updated_at TEXT
 );
 
@@ -76,6 +77,14 @@ CREATE TABLE IF NOT EXISTS source_status (
     jobs_found INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS search_runs (
+    id TEXT PRIMARY KEY,
+    started_at TEXT,
+    finished_at TEXT,
+    status TEXT,
+    stats_json TEXT DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_company_title ON jobs(company, title);
 CREATE INDEX IF NOT EXISTS idx_jobs_match ON jobs(match_score DESC);
@@ -84,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_apps_job ON applications(job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_source_job_id ON jobs(source, source_job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
+CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id);
 CREATE INDEX IF NOT EXISTS idx_apps_date ON applications(application_date);
 CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
 """
@@ -116,6 +126,24 @@ class Database:
     def _init_schema(self) -> None:
         with self.connection() as conn:
             conn.executescript(SCHEMA)
+            # Migrate older DBs that predate run_id / search_runs.
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "run_id" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN run_id TEXT DEFAULT ''")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS search_runs (
+                    id TEXT PRIMARY KEY,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    status TEXT,
+                    stats_json TEXT DEFAULT '{}'
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id)"
+            )
 
     def upsert_job(self, job: Job) -> None:
         data = job.to_dict()
@@ -414,7 +442,7 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def dashboard_stats(self) -> dict[str, int]:
+    def dashboard_stats(self, run_id: str | None = None) -> dict[str, int]:
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         with self.connection() as conn:
             found = conn.execute(
@@ -441,6 +469,14 @@ class Database:
             captcha = conn.execute(
                 "SELECT COUNT(*) AS c FROM jobs WHERE status = 'captcha'"
             ).fetchone()["c"]
+            this_run = 0
+            rid = run_id or self.latest_run_id()
+            if rid:
+                this_run = conn.execute(
+                    "SELECT COUNT(*) AS c FROM jobs WHERE run_id = ? AND duplicate_of IS NULL",
+                    (rid,),
+                ).fetchone()["c"]
+            total_jobs = conn.execute("SELECT COUNT(*) AS c FROM jobs").fetchone()["c"]
         return {
             "jobs_found_today": int(found),
             "new_today": int(new),
@@ -449,7 +485,66 @@ class Database:
             "needs_review": int(needs),
             "errors": int(errors),
             "captcha": int(captcha),
+            "this_run": int(this_run),
+            "total_jobs": int(total_jobs),
         }
+
+    def start_search_run(self, run_id: str | None = None) -> str:
+        rid = run_id or uuid.uuid4().hex
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO search_runs (id, started_at, finished_at, status, stats_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (rid, utc_now_iso(), "", "running", "{}"),
+            )
+        return rid
+
+    def finish_search_run(self, run_id: str, status: str, stats: dict[str, Any] | None = None) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE search_runs SET finished_at = ?, status = ?, stats_json = ? WHERE id = ?",
+                (utc_now_iso(), status, json.dumps(stats or {}, ensure_ascii=False), run_id),
+            )
+
+    def latest_run_id(self) -> str | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM search_runs ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+        return str(row["id"]) if row else None
+
+    def clear_job_data(
+        self,
+        *,
+        clear_applications: bool = True,
+        clear_source_status: bool = True,
+        clear_search_runs: bool = True,
+        clear_geocode_cache: bool = False,
+    ) -> dict[str, int]:
+        """Remove job search data; never touches applicant profile files."""
+        counts: dict[str, int] = {}
+        with self.connection() as conn:
+            if clear_applications:
+                counts["applications"] = conn.execute("SELECT COUNT(*) AS c FROM applications").fetchone()["c"]
+                conn.execute("DELETE FROM applications")
+            counts["jobs"] = conn.execute("SELECT COUNT(*) AS c FROM jobs").fetchone()["c"]
+            conn.execute("DELETE FROM jobs")
+            if clear_source_status:
+                counts["source_status"] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM source_status"
+                ).fetchone()["c"]
+                conn.execute("DELETE FROM source_status")
+            if clear_search_runs:
+                counts["search_runs"] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM search_runs"
+                ).fetchone()["c"]
+                conn.execute("DELETE FROM search_runs")
+            if clear_geocode_cache:
+                counts["geocode_cache"] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM geocode_cache"
+                ).fetchone()["c"]
+                conn.execute("DELETE FROM geocode_cache")
+        return {k: int(v) for k, v in counts.items()}
 
     def find_existing_by_source(self, source: str, source_job_id: str) -> Job | None:
         with self.connection() as conn:
