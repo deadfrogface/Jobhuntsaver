@@ -7,5 +7,5 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 call .venv\Scripts\activate.bat
 set PYTHONPATH=%cd%
-echo Streamlit-UI ist entfernt. Starte Desktop-App...
+echo Starte Jobhuntsaver Desktop-App...
 python -m desktop.app

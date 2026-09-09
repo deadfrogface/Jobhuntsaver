@@ -89,6 +89,15 @@ Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapt
 
 ## TESTS
 
-- `pytest`: **56 passed**
+- `pytest`: **60+** (incl. search adapter, captcha stop, hard filter, reset helpers)
 - Privacy scan: **OK**
-- Packaged smoke: **SMOKE_OK**
+- Packaged smoke: **SMOKE_OK** (`scripts/smoke_onefile_exe.py`)
+- GitHub artifact verified: only `Jobhuntsaver.exe`
+
+## FOLLOW-UPS (2026-09-09)
+
+- CAPTCHA stops AutoApply loop
+- Reset-all uses `reset_to_empty_profile`
+- Deleted dead `packaging/prepare_browsers.py`
+- Browser smoke → AppData path
+- `boot.log` gated behind `JOBHUNTSAVER_BOOT_DIAG`

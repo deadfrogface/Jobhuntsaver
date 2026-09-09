@@ -68,3 +68,19 @@ def test_get_shutdown_manager_singleton():
     a = get_shutdown_manager()
     b = get_shutdown_manager()
     assert a is b
+
+
+def test_shutdown_closes_registered_browsers():
+    mgr = ApplicationShutdownManager()
+
+    class DummyBrowser:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    browser = DummyBrowser()
+    mgr.register_browser(browser)
+    mgr.shutdown(reason="browser-test")
+    assert browser.closed is True

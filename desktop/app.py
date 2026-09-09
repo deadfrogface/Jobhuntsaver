@@ -6,8 +6,12 @@ import os
 import sys
 from pathlib import Path
 
-# Early frozen diagnostics (before Qt) — helps debug onefile boot issues.
-if getattr(sys, "frozen", False):
+# Early frozen diagnostics (before Qt) — opt-in only.
+if getattr(sys, "frozen", False) and os.environ.get("JOBHUNTSAVER_BOOT_DIAG", "").strip() in {
+    "1",
+    "true",
+    "yes",
+}:
     try:
         _diag = Path(os.environ.get("LOCALAPPDATA") or ".") / "Jobhuntsaver" / "logs"
         _diag.mkdir(parents=True, exist_ok=True)

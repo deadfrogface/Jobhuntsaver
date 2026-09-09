@@ -24,8 +24,6 @@ from desktop.services import ConfigService
 from desktop.widgets import ListEditor
 from desktop.services.profile_merge import (
     SOURCE_MANUAL,
-    clear_all_qualifications,
-    clear_complete_application,
     clear_cv_personal,
     keep_manual_qualifications,
     preserve_sourced_on_edit,
@@ -412,11 +410,7 @@ class ProfilePage(QWidget):
             )
             if confirm != QMessageBox.StandardButton.Yes:
                 return
-            self.config_service.clear_cv_storage()
-            cfg = self.config_service.load()
-            cfg.profile.qualifications = clear_all_qualifications()
-            cfg.application = clear_complete_application(cfg.application)
-            self.config_service.save(cfg)
+            self.config_service.reset_to_empty_profile(clear_search_prefs=False)
         elif clicked is cv_btn:
             confirm = QMessageBox.question(
                 self,

@@ -55,8 +55,8 @@ Hotspots:
 | README Streamlit start line | Removed |
 | `requirements-dev.txt` streamlit pin | Removed |
 | Docs still mentioning Streamlit historically | `docs/source-analysis.md`, `docs/ui-reuse-analysis.md`, `docs/desktop-conversion.md` (historical — leave or update later) |
-
-Empty `ui/` package may remain with `__init__.py` only; no runtime import.
+| Empty `ui/` package | Removed entirely |
+| `packaging/prepare_browsers.py` | Deleted (Chromium on-demand in AppData) |
 
 ## Database indexes
 
@@ -69,6 +69,8 @@ See `core/database.py` SCHEMA. Added for existing query patterns:
 
 ## Remaining technical debt (post follow-up)
 
-- Search adapters: `SearchAdapter` alias + `normalize`/`health_check` hooks added on `JobSource`; BA/Indeed implement `health_check`. Full mapper rename (`_map_*` → `normalize`) still optional.
-- ATS: Indeed/LinkedIn/SuccessFactors now route final submit through `_maybe_submit`.
+- Search adapters: `SearchAdapter` alias + `normalize`/`health_check` hooks on `JobSource`; BA/Indeed implement `health_check`. Full mapper rename (`_map_*` → `normalize`) still optional.
+- ATS: Indeed/LinkedIn/SuccessFactors route final submit through `_maybe_submit`.
+- CAPTCHA stops AutoApply in `app/main.py`; Reset-all uses `reset_to_empty_profile`.
+- `boot.log` only with `JOBHUNTSAVER_BOOT_DIAG=1`.
 - Further split of large `cv_parser` / profile page still open.

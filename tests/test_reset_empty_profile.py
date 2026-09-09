@@ -156,3 +156,28 @@ def test_config_service_clear_cv_storage(tmp_path: Path, monkeypatch):
     svc.clear_cv_storage()
     assert list(cvs.iterdir()) == []
     assert svc.load_meta().get("cv_variants") == []
+
+
+def test_config_service_reset_to_empty_profile(tmp_path, monkeypatch):
+    from desktop.services import ConfigService
+    from core.config import EMPTY_PROFILE
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    svc = ConfigService()
+    cfg = svc.load()
+    cfg.application.first_name = "Anna"
+    cfg.application.email = "anna.alpha@example.com"
+    cfg.application.cv_path = str(tmp_path / "cvs" / "x.pdf")
+    (svc.dirs["cvs"] / "x.pdf").write_bytes(b"%PDF")
+    svc.save(cfg)
+
+    emptied = svc.reset_to_empty_profile()
+    assert emptied.application.first_name == EMPTY_PROFILE.first_name
+    assert emptied.application.email == ""
+    assert emptied.application.cv_path == ""
+    assert emptied.profile.qualifications.skills == []
+    assert list(svc.dirs["cvs"].iterdir()) == []
+
+    again = svc.load()
+    assert again.application.first_name == ""
+    assert again.application.email == ""

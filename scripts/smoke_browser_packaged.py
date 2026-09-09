@@ -1,4 +1,4 @@
-"""Smoke-test bundled Chromium next to a packaged dist folder."""
+"""Smoke-test optional Playwright Chromium under AppData browsers path."""
 
 from __future__ import annotations
 
@@ -14,31 +14,41 @@ from desktop.services.browser_install import (  # noqa: E402
     check_browser,
     configure_playwright_browsers_path,
     find_chromium_executable,
+    preferred_browsers_dir,
     repair_browser,
 )
 from browser.browser_manager import BrowserManager  # noqa: E402
 
 
 def main() -> int:
-    dist_browsers = ROOT / "dist" / "Jobhuntsaver" / "ms-playwright"
-    if not dist_browsers.exists():
-        print(f"SKIP: {dist_browsers} missing — run build.bat first")
-        return 0
+    """Verify browser component in AppData (or PLAYWRIGHT_BROWSERS_PATH).
 
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(dist_browsers)
+    Does NOT expect Chromium next to the EXE. Pass --install to download once.
+    """
     configure_playwright_browsers_path()
-    exe = find_chromium_executable(dist_browsers)
+    target = preferred_browsers_dir()
+    exe = find_chromium_executable()
     if not exe:
-        print("FAIL: chrome.exe not found in dist ms-playwright")
-        return 1
+        if "--install" in sys.argv:
+            print(f"Installing Chromium into {target} …")
+            ok, msg = repair_browser()
+            print(msg)
+            if not ok:
+                return 1
+            exe = find_chromium_executable()
+        else:
+            print(f"SKIP: no Chromium under {target} (pass --install to download)")
+            return 0
+
     print("FOUND", exe)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(exe.parent.parent.parent)
+    configure_playwright_browsers_path()
 
     ok, msg = check_browser()
     print("CHECK", ok, msg.replace("\n", " | "))
     if not ok:
         return 1
 
-    # Ensure repair does not think it needs sys.executable when already present
     ok2, msg2 = repair_browser()
     print("REPAIR_NOOP", ok2, msg2.replace("\n", " | ")[:200])
     if not ok2:
@@ -49,12 +59,11 @@ def main() -> int:
         try:
             page = mgr.get_page()
             page.goto("about:blank")
-            title = page.title()
-            print("LAUNCH_OK title=", repr(title), "url=", page.url)
+            print("LAUNCH_OK title=", repr(page.title()), "url=", page.url)
         finally:
             mgr.close()
 
-    print("OK: packaged Chromium dry-run passed")
+    print("OK: AppData browser dry-run passed")
     return 0
 
 
