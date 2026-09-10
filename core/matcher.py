@@ -11,24 +11,9 @@ import re
 from core.config import AppConfig, LanguageEntry
 from core.hard_filter import hard_exclude
 from core.models import Job, MatchResult, RemoteType
+from core.salary import job_annual_salary, meets_minimum
 
 _CEFR_ORDER = {"a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "muttersprache": 6, "native": 6}
-
-
-def _extract_salary_number(salary_str: str) -> int | None:
-    cleaned = salary_str.replace(",", ".").replace("€", "").replace("EUR", "").strip().lower()
-    numbers = re.findall(r"[\d.]+", cleaned)
-    if not numbers:
-        return None
-    try:
-        value = float(numbers[0].replace(",", "."))
-    except ValueError:
-        return None
-    if "k" in cleaned and value < 1000:
-        value *= 1000
-    if value < 10000:
-        value *= 12
-    return int(value)
 
 
 def _distance_points(distance_km: float | None, remote_type: str) -> tuple[int, str | None, str | None]:
@@ -298,19 +283,24 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     if min_sal is None:
         score += 5
     else:
-        salary_num = None
-        if job.salary_min is not None:
-            salary_num = int(job.salary_min)
-        elif job.salary_text:
-            salary_num = _extract_salary_number(job.salary_text)
-        if salary_num is None:
+        annual, sal_note = job_annual_salary(job)
+        verdict = meets_minimum(annual, min_sal)
+        if verdict is None:
+            # Unknown / ambiguous — keep points, do not exclude.
             score += 4
-            issues.append("Salary not listed")
-        elif salary_num >= min_sal:
+            issues.append(sal_note or "Salary not listed")
+        elif verdict:
             score += 10
-            reasons.append(f"Salary meets minimum ({salary_num})")
+            reasons.append(f"Salary meets minimum ({annual})")
         else:
-            issues.append(f"Salary below minimum ({salary_num} < {min_sal})")
+            reason = f"Salary below minimum ({annual} < {int(min_sal)})"
+            return MatchResult(
+                score=0,
+                match_reasons=reasons,
+                rejection_reasons=[reason],
+                excluded=True,
+                exclude_reason=reason,
+            )
 
     for preferred in profile.filters.preferred_companies:
         if preferred.lower() in job.company.lower():

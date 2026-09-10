@@ -58,6 +58,7 @@ def source_rank(job: Job) -> int:
 def deduplicate(jobs: list[Job]) -> list[Job]:
     """Keep one main entry per vacancy; attach alt sources on the winner."""
     by_hard: dict[str, Job] = {}
+    hard_losers: list[Job] = []
     for job in jobs:
         hard_key = job.url.strip().lower() or job.application_url.strip().lower() or job.id
         existing = by_hard.get(hard_key)
@@ -67,10 +68,12 @@ def deduplicate(jobs: list[Job]) -> list[Job]:
         if source_rank(job) > source_rank(existing):
             job.alt_sources = list({*existing.alt_sources, existing.source, *job.alt_sources})
             existing.duplicate_of = job.id
+            hard_losers.append(existing)
             by_hard[hard_key] = job
         else:
             existing.alt_sources = list({*existing.alt_sources, job.source})
             job.duplicate_of = existing.id
+            hard_losers.append(job)
 
     # Soft fingerprint grouping across different URLs
     groups: dict[str, list[Job]] = defaultdict(list)
@@ -91,7 +94,8 @@ def deduplicate(jobs: list[Job]) -> list[Job]:
             primary.alt_sources = list({*primary.alt_sources, other.source, *other.alt_sources})
             winners.append(other)  # keep internally, marked duplicate
         winners.append(primary)
-    return winners
+    # Preserve hard-URL losers so callers can count duplicates_removed.
+    return winners + hard_losers
 
 
 def is_likely_same_job(a: Job, b: Job) -> bool:

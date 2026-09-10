@@ -1,0 +1,41 @@
+name: Live Sources (manual)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  live-source-health:
+    name: live-source-health
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-runtime.txt
+      - name: Safe source-health only (no apply / no submit)
+        shell: pwsh
+        run: |
+          python scripts/live_source_health.py | Tee-Object -FilePath live_sources.txt
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-source-diagnostics
+          path: live_sources.txt
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY "## LIVE SOURCES (diagnostic, non-blocking)`n"
+          if (Test-Path live_sources.txt) { Get-Content live_sources.txt | Add-Content $env:GITHUB_STEP_SUMMARY }

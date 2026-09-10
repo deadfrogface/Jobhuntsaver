@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         self.dashboard.search_requested.connect(self.start_search)
         self.dashboard.apply_requested.connect(self.start_apply_run)
         self.dashboard.test_requested.connect(self.run_application_test)
-        self.dashboard.pause_requested.connect(lambda: self.set_automation_paused(True))
+        self.dashboard.pause_requested.connect(self.toggle_automation_paused)
         self.dashboard.review_requested.connect(self.open_review_queue)
         self.dashboard.cancel_requested.connect(self.cancel_pipeline)
         self.dashboard.clear_jobs_requested.connect(self.clear_job_data)
@@ -312,6 +312,10 @@ class MainWindow(QMainWindow):
     def open_review_queue(self) -> None:
         self._navigate(2)
         self.applications.show_review_only()
+
+    def toggle_automation_paused(self) -> None:
+        cfg = self.config_service.load()
+        self.set_automation_paused(not bool(cfg.settings.automation_paused))
 
     def set_automation_paused(self, paused: bool) -> None:
         cfg = self.config_service.load()

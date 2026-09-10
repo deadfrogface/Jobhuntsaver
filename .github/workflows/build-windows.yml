@@ -10,30 +10,39 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  validate:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Privacy scan
+        run: python scripts/privacy_scan.py
+      - name: Full pytest
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q -m "not network"
 
+  build:
+    needs: [validate]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-runtime.txt
           pip install -r requirements-dev.txt
-
-      - name: Run tests
-        run: python -m pytest -q
-
-      - name: Privacy scan
-        run: python scripts/privacy_scan.py
-
       - name: Build onefile EXE (no bundled Chromium)
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
@@ -41,13 +50,31 @@ jobs:
             Write-Error "Onefile EXE missing at dist\Jobhuntsaver.exe"
             exit 1
           }
+          $item = Get-Item "dist\Jobhuntsaver.exe"
+          if ($item.Length -lt 1000000) { Write-Error "EXE too small"; exit 1 }
+          $hash = (Get-FileHash "dist\Jobhuntsaver.exe" -Algorithm SHA256).Hash
+          @"
+          commit=$env:GITHUB_SHA
+          size=$($item.Length)
+          sha256=$hash
+          "@ | Set-Content dist\build_metadata.txt
           Get-Item "dist\Jobhuntsaver.exe" | Format-List FullName, Length
         shell: pwsh
-
+      - name: EXE smoke-test
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-rel-$([guid]::NewGuid())"
+          $env:LOCALAPPDATA = $tmp.FullName
+          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & "dist\Jobhuntsaver.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Jobhuntsaver.exe
         uses: actions/upload-artifact@v4
         with:
           name: Jobhuntsaver-Windows
-          path: dist/Jobhuntsaver.exe
+          path: |
+            dist/Jobhuntsaver.exe
+            dist/build_metadata.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

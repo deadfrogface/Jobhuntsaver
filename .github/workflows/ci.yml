@@ -8,8 +8,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  privacy:
+    name: privacy
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +28,133 @@ jobs:
           pip install -r requirements.txt
       - name: Privacy scan
         run: python scripts/privacy_scan.py
-      - name: Tests
-        run: python -m pytest -q
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY "## privacy`nPASS"
+
+  unit-tests:
+    name: unit-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Pytest (exclude network + cv corpus dedicated job)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >
+          python -m pytest -q
+          --ignore=tests/test_cv_corpus.py
+          -m "not network"
+          --junitxml=junit-unit.xml
+      - name: Upload junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-unit
+          path: junit-unit.xml
+          if-no-files-found: ignore
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY "## unit-tests`nSee job log / junit-unit artifact"
+
+  cv-regression:
+    name: cv-regression
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: CV corpus script
+        run: python scripts/run_cv_corpus.py | Tee-Object -FilePath cv_corpus_matrix.txt
+      - name: CV corpus pytest
+        run: python -m pytest -q tests/test_cv_corpus.py tests/test_cv_parser_generic.py tests/test_cv_sections.py
+      - name: Upload corpus matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cv-corpus-matrix
+          path: cv_corpus_matrix.txt
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY "## cv-regression`n"
+          if (Test-Path cv_corpus_matrix.txt) { Get-Content cv_corpus_matrix.txt | Add-Content $env:GITHUB_STEP_SUMMARY }
+
+  database-migration-tests:
+    name: database-migration-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: DB / reset / dashboard tests
+        run: >
+          python -m pytest -q
+          tests/test_database.py
+          tests/test_db_migration_run_id.py
+          tests/test_dashboard_run_id.py
+          tests/test_reset_empty_profile.py
+          tests/test_windows_paths.py
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: Add-Content $env:GITHUB_STEP_SUMMARY "## database-migration-tests`nPASS (if job green)"
+
+  static-smoke:
+    name: static-smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Salary / profile / pause / pipeline / dry-run / sources
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >
+          python -m pytest -q
+          tests/test_salary.py
+          tests/test_profile_canonical.py
+          tests/test_pause_resume.py
+          tests/test_pipeline_integration.py
+          tests/test_dry_run_all_adapters.py
+          tests/test_source_contracts.py
+          tests/test_source_health_ats.py
+          tests/test_apply_preview.py
+          tests/test_location.py
+          tests/test_shutdown.py
+          tests/test_maybe_submit.py
+          tests/test_captcha_stop.py
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: Add-Content $env:GITHUB_STEP_SUMMARY "## static-smoke`nPASS (if job green)"

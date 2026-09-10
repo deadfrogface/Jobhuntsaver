@@ -135,7 +135,6 @@ class DashboardPage(QWidget):
         self.btn_cancel.setText(tr("btn.cancel_search"))
         self.btn_apply.setText(tr("btn.start_apply"))
         self.btn_test.setText(tr("btn.apply_test"))
-        self.btn_pause.setText(tr("btn.pause_automation"))
         self.btn_review.setText(tr("btn.review_queue"))
         self.btn_clear_jobs.setText(tr("btn.clear_jobs"))
         self.status_label.setText(tr("status.ready"))
@@ -154,11 +153,16 @@ class DashboardPage(QWidget):
             card.set_value(stats.get(key, 0))
         mode = cfg.settings.mode
         dry = tr("dash.on") if cfg.settings.dry_run else tr("dash.off")
-        paused = tr("dash.paused") if cfg.settings.automation_paused else tr("dash.active")
+        paused = bool(cfg.settings.automation_paused)
+        paused_label = tr("dash.paused") if paused else tr("dash.active")
         auto = tr("dash.on") if cfg.settings.run_automatically else tr("dash.off")
         self.mode_label.setText(
             f"{tr('dash.mode')}: {mode}  |  {tr('dash.dry_run')}: {dry}  |  "
-            f"{tr('dash.automation')}: {auto} ({paused})"
+            f"{tr('dash.automation')}: {auto} ({paused_label})"
+        )
+        # Toggle label: pause when active, resume when paused
+        self.btn_pause.setText(
+            tr("btn.resume_automation") if paused else tr("btn.pause_automation")
         )
         meta = self.config_service.load_meta()
         self.last_run_label.setText(

@@ -1,0 +1,136 @@
+name: Windows Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qt-smoke:
+    name: qt-smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Offscreen Qt MainWindow smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_qt_smoke.py tests/test_pause_resume.py
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: Add-Content $env:GITHUB_STEP_SUMMARY "## QT SMOKE`nSee job result"
+
+  build-and-exe-smoke:
+    name: build-and-exe-smoke
+    runs-on: windows-latest
+    needs: [qt-smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-runtime.txt
+          pip install -r requirements-dev.txt
+      - name: Privacy scan
+        run: python scripts/privacy_scan.py
+      - name: Build onefile EXE
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
+          if (!(Test-Path "dist\Jobhuntsaver.exe")) { Write-Error "EXE missing"; exit 1 }
+          $item = Get-Item "dist\Jobhuntsaver.exe"
+          if ($item.Length -lt 1000000) { Write-Error "EXE too small: $($item.Length)"; exit 1 }
+          $hash = (Get-FileHash "dist\Jobhuntsaver.exe" -Algorithm SHA256).Hash
+          @"
+          commit=$env:GITHUB_SHA
+          size=$($item.Length)
+          sha256=$hash
+          python=3.12
+          "@ | Set-Content dist\build_metadata.txt
+          Get-Content dist\build_metadata.txt
+        shell: pwsh
+      - name: Packaged EXE smoke-test (isolated LOCALAPPDATA)
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-smoke-$([guid]::NewGuid())"
+          $env:LOCALAPPDATA = $tmp.FullName
+          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & "dist\Jobhuntsaver.exe"
+          if ($LASTEXITCODE -ne 0) { Write-Error "EXE smoke exit $LASTEXITCODE"; exit $LASTEXITCODE }
+          Get-Content "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
+      - name: Packaged legacy DB migration (library + EXE smoke)
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-legacy-$([guid]::NewGuid())"
+          $app = Join-Path $tmp.FullName "Jobhuntsaver"
+          $data = Join-Path $app "data"
+          New-Item -ItemType Directory -Force -Path $data, (Join-Path $app "logs"), (Join-Path $app "config") | Out-Null
+          python -c @"
+          from pathlib import Path
+          from tests.test_db_migration_run_id import _make_legacy_db
+          _make_legacy_db(Path(r'$data') / 'jobs.db')
+          print('legacy db written')
+          "@
+          $env:LOCALAPPDATA = $tmp.FullName
+          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & "dist\Jobhuntsaver.exe"
+          if ($LASTEXITCODE -ne 0) { Write-Error "legacy EXE smoke failed"; exit $LASTEXITCODE }
+          python -c @"
+          import sqlite3
+          from pathlib import Path
+          db = Path(r'$data') / 'jobs.db'
+          cols = {r[1] for r in sqlite3.connect(db).execute('PRAGMA table_info(jobs)')}
+          assert 'run_id' in cols, cols
+          # second start must remain ok
+          print('legacy migration verified')
+          "@
+          & "dist\Jobhuntsaver.exe"
+          if ($LASTEXITCODE -ne 0) { Write-Error "legacy second start failed"; exit $LASTEXITCODE }
+      - name: Packaged reset preserves profile
+        shell: pwsh
+        run: |
+          $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-reset-$([guid]::NewGuid())"
+          $env:LOCALAPPDATA = $tmp.FullName
+          python scripts/ci_packaged_reset_check.py
+      - name: Upload EXE + metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jobhuntsaver-Windows-Smoke
+          path: |
+            dist/Jobhuntsaver.exe
+            dist/build_metadata.txt
+            dist/smoke_test_result.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          @"
+          ## WINDOWS BUILD / EXE
+          - build: see job
+          - EXE startup smoke: see job
+          - legacy DB EXE: see job
+          - reset: see job
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY

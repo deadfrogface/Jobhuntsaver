@@ -159,11 +159,88 @@ def run() -> int:
 
 
 def main() -> int:
+    if os.environ.get("JOBHUNTSAVER_SMOKE_TEST", "").strip().lower() in {"1", "true", "yes"}:
+        return _smoke_test()
+    if "--smoke-test" in sys.argv:
+        return _smoke_test()
     if "--smoke-browser" in sys.argv:
         return _smoke_browser()
     if "--smoke-cv-corpus" in sys.argv:
         return _smoke_cv_corpus()
     return run()
+
+
+def _smoke_test() -> int:
+    """Packaged/CI smoke: offscreen Qt + MainWindow + DB schema, then exit 0.
+
+    Uses LOCALAPPDATA from the environment when provided (isolated CI dirs).
+    Never submits applications. Never touches a developer's real profile unless
+    LOCALAPPDATA was left at the process default (CI must always override it).
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    lines: list[str] = []
+    log_path = Path(sys.executable).resolve().parent / "smoke_test_result.txt"
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        from core.database import Database
+        from desktop.i18n import i18n
+        from desktop.main_window import MainWindow
+        from desktop.services import ConfigService
+        from desktop.theme import stylesheet_for
+
+        app = QApplication.instance() or QApplication(sys.argv)
+        cfg_service = ConfigService()
+        cfg = cfg_service.load()
+        i18n.set_language(cfg.settings.language or "de")
+        app.setStyleSheet(stylesheet_for(cfg.settings.theme or "system"))
+
+        db = Database(cfg.db_path)
+        # Force schema init
+        _ = db.dashboard_stats()
+        with db.connection() as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        if "run_id" not in cols:
+            raise RuntimeError("jobs.run_id missing after init")
+
+        window = MainWindow(cfg_service)
+        # Navigate all pages
+        for idx in range(window.stack.count()):
+            window.stack.setCurrentIndex(idx)
+            page = window.stack.widget(idx)
+            if hasattr(page, "refresh"):
+                try:
+                    page.refresh()
+                except Exception:
+                    pass
+            if hasattr(page, "load_from_config"):
+                try:
+                    page.load_from_config()
+                except Exception:
+                    pass
+        # Theme / language smoke
+        for theme in ("system", "light", "dark"):
+            app.setStyleSheet(stylesheet_for(theme))
+        for lang in ("en", "de"):
+            i18n.set_language(lang)
+            window.retranslate_ui()
+
+        lines.append(f"db={cfg.db_path}")
+        lines.append(f"pages={window.stack.count()}")
+        lines.append("SMOKE_TEST_OK")
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+        print("\n".join(lines), flush=True)
+        window.close()
+        app.quit()
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"FAIL: {exc}")
+        try:
+            log_path.write_text("\n".join(lines), encoding="utf-8")
+        except Exception:
+            pass
+        print("\n".join(lines), flush=True)
+        return 1
 
 
 def _smoke_cv_corpus() -> int:

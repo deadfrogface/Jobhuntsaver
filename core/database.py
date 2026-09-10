@@ -522,7 +522,7 @@ class Database:
     def latest_run_id(self) -> str | None:
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT id FROM search_runs ORDER BY started_at DESC LIMIT 1"
+                "SELECT id FROM search_runs ORDER BY started_at DESC, rowid DESC LIMIT 1"
             ).fetchone()
         return str(row["id"]) if row else None
 
