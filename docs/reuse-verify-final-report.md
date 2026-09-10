@@ -2,18 +2,19 @@
 
 Date: 2026-09-10  
 Branch: `cursor/safe-reuse-verify-d85b`  
-Final commit SHA: `f91381654ebd321eba3eed82be9c3ef1875181e6`
+Final commit SHA: `f1eec249c3468dfd89b991fba21068bbe88e9cdc`
 
 ## 1. FINAL COMMIT SHA
 
-`f91381654ebd321eba3eed82be9c3ef1875181e6`
+`f1eec249c3468dfd89b991fba21068bbe88e9cdc`
 
 Commits on branch:
 
 1. `702b26f` — baseline matrix + green test snapshot  
 2. `bc5fe06` — StepStone/XING JobRadar fallback adaptation + LinkedIn cleanup  
 3. `287d5d2` — DE ATS partially_supported + German profile field helper  
-4. `4fd13ee` — final report + NOTICE attribution update  
+4. `4fd13ee` — final report + NOTICE attribution update
+5. `f1eec24` — pin final report SHA to HEAD  
 
 ## 2. BASELINE SUMMARY
 
