@@ -111,11 +111,12 @@ Germany-specific rules (radius/remote/salary/profile) remain custom by design.
 
 ## 9. REAL PACKAGED APP RESULTS
 
-Linux cloud agent cannot open Windows EXE. Evidence deferred to GitHub Actions:
+Linux cloud agent cannot open Windows EXE.
 
-- Workflow: `.github/workflows/windows-smoke.yml`  
-- Prior CI on this branch: run `34539000493` **success** (unit CI)  
-- Windows Smoke: re-triggered after ATS push (`34539393931`); see Actions for artifact SHA256/size  
+- **CI unit suite** on HEAD: success (`34539697999` — privacy, static-smoke, unit-tests, database-migration, cv-regression).
+- **Windows Smoke qt-smoke**: success.
+- **Windows Smoke build-and-exe-smoke**: failed on packaged EXE smoke with empty `$LASTEXITCODE` — **same failure already on `main`** (`34537119429`). Root cause: `console=False` windowed onefile so PowerShell does not reliably receive exit codes (`$null -ne 0` → false failure).
+- **Fix in this branch:** CI builds set `JOBHUNTSAVER_CI_CONSOLE=1` (console subsystem for runners only) and smoke steps require `SMOKE_TEST_OK` in `dist/smoke_test_result.txt` instead of trusting a null exit code. End-user builds remain windowed.
 
 ## 10. REAL SEARCH-ONLY RESULT
 
@@ -143,8 +144,9 @@ Pipeline cancel + source timeout tests remain in green full suite (KEEP).
 
 ## 16. GITHUB ACTIONS RESULT
 
-- CI success on search commit: `34539000493`  
-- CI + Windows Smoke re-run after ATS commit: see branch Actions for terminal status  
+- CI success (search era): `34539000493`
+- CI success (HEAD `f4a2346`): `34539697999` (all jobs green)
+- Windows Smoke qt-smoke green; EXE smoke historically red on main — packaging CI fix landed on this branch (console-for-CI + `SMOKE_TEST_OK` gate)
 
 ## 17. WINDOWS BUILD PATH
 
