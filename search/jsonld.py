@@ -10,19 +10,70 @@ from core.deduplicator import make_job_id
 from core.models import Job, RemoteType
 
 
+def _is_job_posting_type(type_value: Any) -> bool:
+    if type_value == "JobPosting":
+        return True
+    if isinstance(type_value, list) and "JobPosting" in type_value:
+        return True
+    return False
+
+
 def iter_job_postings(payload: Any) -> list[dict]:
-    """Extract JobPosting dicts from a parsed JSON-LD document."""
+    """Extract JobPosting dicts from a parsed JSON-LD document.
+
+    Supports bare JobPosting objects, ``@graph`` arrays, and schema.org
+    ``ItemList`` wrappers (common on StepStone/XING list pages).
+    """
     items = payload if isinstance(payload, list) else [payload]
     out: list[dict] = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        if item.get("@type") in ("JobPosting", ["JobPosting"]) or item.get("@type") == "JobPosting":
+        if _is_job_posting_type(item.get("@type")):
             out.append(item)
+        if item.get("@type") == "ItemList":
+            for elem in item.get("itemListElement") or []:
+                if not isinstance(elem, dict):
+                    continue
+                candidate = elem.get("item", elem)
+                if isinstance(candidate, dict) and _is_job_posting_type(candidate.get("@type")):
+                    out.append(candidate)
         for g in item.get("@graph") or []:
-            if isinstance(g, dict) and g.get("@type") == "JobPosting":
+            if isinstance(g, dict) and _is_job_posting_type(g.get("@type")):
                 out.append(g)
     return out
+
+
+def job_from_list_card(
+    *,
+    source: str,
+    title: str,
+    url: str,
+    company: str = "",
+    city: str = "",
+    min_title_len: int = 5,
+) -> Job | None:
+    """Build a Job from HTML card/link fallbacks when JSON-LD is absent."""
+    title = (title or "").strip()
+    url = (url or "").strip()
+    if len(title) < min_title_len or not url:
+        return None
+    company = (company or "").strip()
+    city = (city or "").strip()
+    return Job(
+        id=make_job_id(source, url, url, title, company),
+        source=source,
+        source_job_id=url,
+        title=title,
+        company=company,
+        description="",
+        city=city,
+        address=city,
+        remote_type=RemoteType.ONSITE.value,
+        published_at="",
+        url=url,
+        application_url=url,
+    )
 
 
 def job_from_job_posting(

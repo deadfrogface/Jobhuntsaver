@@ -143,10 +143,3 @@ class IndeedSource(JobSource):
         )
 
 
-class LinkedInSearchSource(IndeedSource):
-    source_id = "linkedin"
-    board = "linkedin"
-
-    def search(self, queries: list[SearchQuery]) -> list[Job]:
-        # LinkedIn via JobSpy benefits from description fetch; handled inside jobspy when supported
-        return super().search(queries)
