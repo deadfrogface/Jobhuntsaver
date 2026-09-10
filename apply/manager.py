@@ -8,12 +8,13 @@ from pathlib import Path
 
 from apply.ashby import AshbyApplier
 from apply.base import ApplyResult, BaseApplier
-from apply.detector import ATSDetector
+from apply.detector import ATSDetector, classify_ats_support
 from apply.greenhouse import GreenhouseApplier
 from apply.indeed import IndeedApplier
 from apply.lever import LeverApplier
 from apply.linkedin import LinkedInApplier
 from apply.personio import PersonioApplier
+from apply.preview import build_application_preview
 from apply.smartrecruiters import SmartRecruitersApplier
 from apply.stepstone import StepstoneApplier
 from apply.successfactors import SuccessFactorsApplier
@@ -92,14 +93,40 @@ class ApplicationManager:
 
         ats = ATSDetector.detect(job.application_url or job.url)
         job.ats_type = ats
+        preview = build_application_preview(job, self.config)
         if ats == "unknown" or ats not in APPLIERS:
+            support, note = classify_ats_support(ats, job.application_url or job.url)
             job.status = JobStatus.NEEDS_REVIEW.value
+            job.rejection_reasons = list(
+                {
+                    *job.rejection_reasons,
+                    f"ATS {ats}: {note}",
+                    f"URL: {job.application_url or job.url or '—'}",
+                }
+            )
             self.db.upsert_job(job)
+            self.db.save_application(
+                ApplicationRecord(
+                    job_id=job.id,
+                    company=job.company,
+                    position=job.title,
+                    application_date=utc_now_iso(),
+                    platform=ats,
+                    status=JobStatus.NEEDS_REVIEW.value,
+                    cv_used=str(self.config.application.cv_path or ""),
+                    cover_letter_used="",
+                    result="manual_required",
+                    error_message=(
+                        f"Unsupported ATS: {ats} ({support}). {note}\n\n"
+                        f"--- PREVIEW ---\n{preview.text_report()}"
+                    ),
+                )
+            )
             return ApplyResult(
                 success=False,
                 needs_review=True,
                 manual_required=True,
-                error_message=f"Unsupported ATS: {ats}",
+                error_message=f"Unsupported ATS: {ats} — open URL manually",
             )
 
         if self.page is None:
@@ -135,6 +162,16 @@ class ApplicationManager:
             self.page, dry_run=effective_dry_run, submit=effective_submit
         )
         result = applier.apply(job, cv_path if cv_path and cv_path.exists() else None, cover, self.config.application)
+
+        # Always attach intended preview for dry-run / review inspection.
+        preview_blob = preview.text_report()
+        if result.dry_run_stopped or result.needs_review or not result.submitted:
+            extra = (result.error_message or "").strip()
+            result.error_message = (
+                f"{extra}\n\n--- PREVIEW ---\n{preview_blob}".strip()
+                if extra
+                else f"--- PREVIEW ---\n{preview_blob}"
+            )
 
         status = JobStatus.NEEDS_REVIEW.value
         if result.captcha_detected:

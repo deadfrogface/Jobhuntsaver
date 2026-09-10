@@ -348,16 +348,33 @@ class SettingsPage(QWidget):
             st = row.get("status") or "unknown"
             label = {
                 "ok": tr("settings.source_active"),
+                "OK_WITH_RESULTS": tr("settings.source_ok_results"),
+                "OK_EMPTY": tr("settings.source_ok_empty"),
+                "TIMEOUT": tr("settings.source_timeout"),
+                "BLOCKED": tr("settings.source_blocked"),
+                "PARSER_ERROR": tr("settings.source_parser"),
+                "NETWORK_ERROR": tr("settings.source_network"),
+                "AUTH_REQUIRED": tr("settings.source_login"),
+                "RATE_LIMITED": tr("settings.source_rate"),
+                "DISABLED": tr("settings.source_unavailable"),
+                "PLACEHOLDER": tr("settings.source_placeholder"),
+                "CANCELLED": tr("settings.source_cancelled"),
+                "ERROR": tr("settings.source_error"),
                 "error": tr("settings.source_error"),
                 "login_required": tr("settings.source_login"),
                 "unavailable": tr("settings.source_unavailable"),
             }.get(st, st)
             msg = (row.get("message") or "").strip()
-            if st == "error" and msg:
-                lines.append(f"{row.get('source')}: {label}")
+            jobs_n = row.get("jobs_found")
+            suffix = f" ({jobs_n} Jobs)" if jobs_n is not None else ""
+            if st in {"error", "ERROR", "TIMEOUT", "NETWORK_ERROR", "PARSER_ERROR", "BLOCKED"} and msg:
+                lines.append(f"{row.get('source')}: {label}{suffix}")
                 lines.append(f"  {msg[:240]}")
             else:
-                lines.append(f"{row.get('source')}: {label}" + (f" – {msg[:80]}" if msg else ""))
+                lines.append(
+                    f"{row.get('source')}: {label}{suffix}"
+                    + (f" – {msg[:80]}" if msg else "")
+                )
         self.source_status.setText("\n".join(lines) if lines else tr("settings.no_source_status"))
         self.browser_status.setText(
             tr("settings.browser_ok") if playwright_available() else tr("settings.browser_missing")

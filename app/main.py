@@ -7,7 +7,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 
-from apply.detector import ATSDetector
+from apply.detector import ATSDetector, ats_coverage_bucket
 from apply.manager import ApplicationManager
 from browser.browser_manager import BrowserManager
 from core.config import AppConfig, load_config
@@ -17,11 +17,34 @@ from core.location import LocationService, enrich_job_locations
 from core.logging import RunLogger
 from core.matcher import score_job
 from core.models import JobStatus, OperatingMode
+from core.source_health import SourceHealthStatus
 from search.base import SearchQuery
 from search.registry import build_sources
 
 # Hard ceiling per job board so one hung source cannot freeze the whole run.
 SOURCE_SEARCH_TIMEOUT_S = 120
+
+# Track live executors so shutdown/cancel can stop accepting new work.
+_active_executors: list[ThreadPoolExecutor] = []
+_executors_lock = __import__("threading").Lock()
+
+
+def cancel_active_searches() -> None:
+    """Best-effort: stop accepting futures; running JobSpy work may still finish."""
+    with _executors_lock:
+        pools = list(_active_executors)
+        _active_executors.clear()
+    for pool in pools:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            # Python <3.9 cancel_futures
+            try:
+                pool.shutdown(wait=False)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 def _search_location(home_address: str) -> str:
@@ -86,17 +109,49 @@ def enrich_locations(jobs, location: LocationService, progress_callback=None, sh
     )
 
 
-def _search_source_with_timeout(source, queries, timeout_s: float = SOURCE_SEARCH_TIMEOUT_S):
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        fut = pool.submit(source.safe_search, queries)
+def _search_source_with_timeout(
+    source,
+    queries,
+    timeout_s: float = SOURCE_SEARCH_TIMEOUT_S,
+    should_stop=None,
+):
+    pool = ThreadPoolExecutor(max_workers=1)
+    with _executors_lock:
+        _active_executors.append(pool)
+    fut = pool.submit(source.safe_search, queries)
+    try:
+        deadline = __import__("time").monotonic() + timeout_s
+        while True:
+            if should_stop and should_stop():
+                try:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                except TypeError:
+                    pool.shutdown(wait=False)
+                return [], "cancelled", None
+            remaining = deadline - __import__("time").monotonic()
+            if remaining <= 0:
+                try:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                except TypeError:
+                    pool.shutdown(wait=False)
+                return [], f"Timeout after {int(timeout_s)}s", None
+            try:
+                return fut.result(timeout=min(0.5, remaining))
+            except FuturesTimeout:
+                continue
+    finally:
+        with _executors_lock:
+            if pool in _active_executors:
+                _active_executors.remove(pool)
         try:
-            return fut.result(timeout=timeout_s)
-        except FuturesTimeout:
-            return (
-                [],
-                f"Timeout after {int(timeout_s)}s",
-                None,
-            )
+            pool.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            try:
+                pool.shutdown(wait=False)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 def run_pipeline(
@@ -129,13 +184,17 @@ def run_pipeline(
     db = Database(config.db_path)
     db.start_search_run(run_id)
     location = LocationService(db, config)
-    location.ensure_home_coords()
+    home = location.resolve_home()
+    if home.warning:
+        progress(home.warning)
+        run.info(home.warning)
 
     cancelled = False
     queries = build_queries(config)
     sources = build_sources(config.settings.enabled_sources)
     all_jobs = []
     source_errors: list[str] = []
+    source_results: dict[str, dict] = {}
     for source in sources:
         if stopped():
             cancelled = True
@@ -143,26 +202,50 @@ def run_pipeline(
             progress("Abgebrochen.")
             break
         progress(f"Suche {source.source_id}…")
-        jobs, err, detail = _search_source_with_timeout(source, queries)
+        placeholder = source.source_id == "company_sites"
+        jobs, err, detail = _search_source_with_timeout(
+            source, queries, should_stop=stopped
+        )
         if err:
             run.error(f"{source.source_id}: {err}")
             source_errors.append(f"{source.source_id}: {err}")
+            status = SourceHealthStatus.from_outcome(
+                jobs_found=0,
+                error=err,
+                detail_stage=getattr(detail, "stage", None) if detail else None,
+                source_id=source.source_id,
+                placeholder=placeholder,
+            )
+            msg = detail.short_message() if detail else err
             if detail:
                 run.error(detail.detail())
-                db.set_source_status(
-                    source.source_id,
-                    "error",
-                    detail.short_message(),
-                    0,
-                )
-            else:
-                db.set_source_status(source.source_id, "error", err, 0)
+            db.set_source_status(source.source_id, status.value, msg, 0)
+            source_results[source.source_id] = {
+                "status": status.value,
+                "jobs": 0,
+                "error": msg,
+            }
             progress(
-                f"{source.source_id} fehlgeschlagen — andere Quellen laufen weiter."
+                f"{source.source_id}: {status.value} — andere Quellen laufen weiter."
             )
             continue
-        run.info(f"{source.source_id}: {len(jobs)} jobs")
-        db.set_source_status(source.source_id, "ok", "", len(jobs))
+        status = SourceHealthStatus.from_outcome(
+            jobs_found=len(jobs),
+            source_id=source.source_id,
+            placeholder=placeholder,
+        )
+        run.info(f"{source.source_id}: {len(jobs)} jobs [{status.value}]")
+        note = ""
+        if status == SourceHealthStatus.OK_EMPTY:
+            note = "0 Treffer (Quelle antwortete, aber leer — nicht als kaputt werten, prüfen)"
+        elif status == SourceHealthStatus.PLACEHOLDER:
+            note = "Placeholder — absichtlich keine Jobs in v1"
+        db.set_source_status(source.source_id, status.value, note, len(jobs))
+        source_results[source.source_id] = {
+            "status": status.value,
+            "jobs": len(jobs),
+            "error": note,
+        }
         for job in jobs:
             job.run_id = run_id
         all_jobs.extend(jobs)
@@ -194,6 +277,7 @@ def run_pipeline(
     outside = 0
     new_count = 0
     known = 0
+    ats_counts = {"supported": 0, "detected_unsupported": 0, "unknown": 0}
     for job in primary:
         if stopped():
             cancelled = True
@@ -208,6 +292,8 @@ def run_pipeline(
             continue
         already = db.has_applied(job)
         job.ats_type = ATSDetector.detect(job.application_url or job.url)
+        bucket = ats_coverage_bucket(job.ats_type)
+        ats_counts[bucket] = ats_counts.get(bucket, 0) + 1
         job.run_id = run_id
         result = score_job(job, config, already_applied=already)
         job.match_score = result.score
@@ -242,9 +328,12 @@ def run_pipeline(
 
     stats = {
         "total": total,
+        "raw_results": total,
         "duplicates": duplicates_removed,
+        "distance_removed": outside,
         "outside": outside,
         "new": new_count,
+        "new_jobs": new_count,
         "matches": len(matches),
         "applied": 0,
         "needs_review": 0,
@@ -253,10 +342,20 @@ def run_pipeline(
         "run_id": run_id,
         "cancelled": cancelled,
         "source_errors": source_errors,
+        "source_results": source_results,
         "geocode_resolved": location.stats.resolved,
         "geocode_cached": location.stats.cached,
         "geocode_failed": location.stats.failed,
+        "geocode_failures": location.stats.failed,
         "home_updated": location.home_updated,
+        "home_resolved": location.home_resolved,
+        "home_warning": location.home_warning,
+        "ats_supported": ats_counts.get("supported", 0),
+        "ats_detected_unsupported": ats_counts.get("detected_unsupported", 0),
+        "ats_unknown": ats_counts.get("unknown", 0),
+        "ats_attempted": 0,
+        "ats_review_required": 0,
+        "ats_completed": 0,
     }
 
     if cancelled:
@@ -295,6 +394,7 @@ def run_pipeline(
                 break
             ats = job.ats_type or "ATS"
             progress(f"Öffne {ats}: {job.company} – {job.title[:40]}")
+            stats["ats_attempted"] = int(stats.get("ats_attempted") or 0) + 1
             result = manager.prepare_and_apply(job)
             label = job.title[:40]
             if result.captcha_detected:
@@ -304,11 +404,13 @@ def run_pipeline(
                 break
             elif result.submitted:
                 stats["applied"] += 1
+                stats["ats_completed"] = int(stats.get("ats_completed") or 0) + 1
                 run.info(f"{label} → application successful")
             elif result.needs_review or result.dry_run_stopped or result.manual_required:
                 stats["needs_review"] += 1
+                stats["ats_review_required"] = int(stats.get("ats_review_required") or 0) + 1
                 if result.dry_run_stopped:
-                    progress("Dry Run: vor dem Absenden gestoppt.")
+                    progress("Dry Run: vor dem Absenden gestoppt — Vorschau in Bewerbungen.")
                 run.info(f"{label} → needs_review ({result.error_message})")
             else:
                 stats["failed"] += 1

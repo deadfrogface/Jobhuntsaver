@@ -71,12 +71,19 @@ class DashboardPage(QWidget):
         self.last_run_label = QLabel()
         self.next_run_label = QLabel()
         self.status_label = QLabel()
+        self.home_warning_label = QLabel()
+        self.home_warning_label.setWordWrap(True)
+        self.home_warning_label.setObjectName("WarningLabel")
+        self.run_detail_label = QLabel()
+        self.run_detail_label.setWordWrap(True)
 
         info = QVBoxLayout()
         info.addWidget(self.mode_label)
         info.addWidget(self.last_run_label)
         info.addWidget(self.next_run_label)
         info.addWidget(self.status_label)
+        info.addWidget(self.home_warning_label)
+        info.addWidget(self.run_detail_label)
 
         self.btn_search = QPushButton()
         self.btn_search.setObjectName("PrimaryButton")
@@ -160,6 +167,41 @@ class DashboardPage(QWidget):
         self.next_run_label.setText(
             f"{tr('dash.next_run')}: {meta.get('next_scheduled_run') or '—'}"
         )
+
+        # Home / distance warning + last-run accounting
+        loc = cfg.profile.location
+        if not (loc.home_address or "").strip() and loc.home_latitude is None:
+            self.home_warning_label.setText(tr("dash.home_missing"))
+            self.home_warning_label.setVisible(True)
+        else:
+            self.home_warning_label.clear()
+            self.home_warning_label.setVisible(False)
+
+        run_id = db.latest_run_id()
+        detail = ""
+        if run_id:
+            with db.connection() as conn:
+                row = conn.execute(
+                    "SELECT status, stats_json, started_at, finished_at FROM search_runs WHERE id = ?",
+                    (run_id,),
+                ).fetchone()
+            if row:
+                import json
+
+                try:
+                    st = json.loads(row["stats_json"] or "{}")
+                except Exception:
+                    st = {}
+                if st.get("home_warning"):
+                    self.home_warning_label.setText(str(st["home_warning"]))
+                    self.home_warning_label.setVisible(True)
+                detail = (
+                    f"{tr('dash.run_stats')}: raw={st.get('raw_results', st.get('total', '—'))} | "
+                    f"dup={st.get('duplicates', '—')} | dist={st.get('distance_removed', st.get('outside', '—'))} | "
+                    f"neu={st.get('new_jobs', st.get('new', '—'))} | match={st.get('matches', '—')} | "
+                    f"ATS unknown={st.get('ats_unknown', '—')} / supported={st.get('ats_supported', '—')}"
+                )
+        self.run_detail_label.setText(detail)
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)

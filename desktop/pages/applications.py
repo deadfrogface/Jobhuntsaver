@@ -55,6 +55,9 @@ class ApplicationsPage(QWidget):
         self.open_btn = QPushButton()
         self.open_btn.setObjectName("SecondaryButton")
         self.open_btn.clicked.connect(self.open_selected)
+        self.preview_btn = QPushButton()
+        self.preview_btn.setObjectName("SecondaryButton")
+        self.preview_btn.clicked.connect(self.preview_selected)
         self.review_btn = QPushButton()
         self.review_btn.setObjectName("SecondaryButton")
         self.review_btn.clicked.connect(self.show_review_only)
@@ -65,6 +68,7 @@ class ApplicationsPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.refresh_btn)
         btn_row.addWidget(self.open_btn)
+        btn_row.addWidget(self.preview_btn)
         btn_row.addWidget(self.review_btn)
         btn_row.addStretch()
         filter_form.addRow(btn_row)
@@ -90,6 +94,7 @@ class ApplicationsPage(QWidget):
         self.status.setItemText(0, tr("jobs.all"))
         self.refresh_btn.setText(tr("btn.refresh"))
         self.open_btn.setText(tr("btn.open_manual"))
+        self.preview_btn.setText(tr("btn.preview_apply"))
         self.review_btn.setText(tr("btn.review_only"))
         self.table.setHorizontalHeaderLabels(
             [
@@ -158,3 +163,40 @@ class ApplicationsPage(QWidget):
             QMessageBox.information(
                 self, tr("nav.applications"), "Keine Bewerbungs-URL vorhanden."
             )
+
+    def preview_selected(self) -> None:
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self._records):
+            return
+        rec = self._records[row]
+        cfg = self.config_service.load()
+        db = Database(cfg.db_path)
+        job = db.get_job(rec.job_id) if rec.job_id else None
+        if job is None:
+            # Fallback: show stored error/preview text from application record
+            from desktop.widgets.apply_preview_dialog import ApplyPreviewDialog
+            from apply.preview import ApplicationPreview
+
+            preview = ApplicationPreview(
+                job_id=rec.job_id,
+                company=rec.company,
+                title=rec.position,
+                application_url="",
+                ats=rec.platform or "unknown",
+                ats_support="unknown",
+                ats_note=rec.error_message or "",
+                dry_run=bool(cfg.settings.dry_run),
+                mode=cfg.settings.mode,
+                will_submit=False,
+                form_values={},
+                documents={"CV": rec.cv_used, "Anschreiben": rec.cover_letter_used},
+                cover_letter_preview=rec.error_message or "",
+                warnings=["Job-Datensatz nicht gefunden — gespeicherte Notiz wird angezeigt."],
+            )
+            ApplyPreviewDialog(preview, self).exec()
+            return
+        from apply.preview import build_application_preview
+        from desktop.widgets.apply_preview_dialog import ApplyPreviewDialog
+
+        preview = build_application_preview(job, cfg)
+        ApplyPreviewDialog(preview, self).exec()

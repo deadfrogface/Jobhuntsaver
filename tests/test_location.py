@@ -149,13 +149,55 @@ def test_ensure_home_coords_only_once_on_failure(monkeypatch, tmp_path):
     monkeypatch.setattr("httpx.Client", _Client)
     h1 = svc.ensure_home_coords()
     h2 = svc.ensure_home_coords()
-    assert h1 == h2
+    assert h1 is None
+    assert h2 is None
+    assert not svc.home_resolved
+    assert "Distanzfilter" in svc.home_warning or "geocodiert" in svc.home_warning
     # First failure may try address + city fallback (=2), never again per job
     assert calls["n"] <= 3
     # Simulate many jobs calling ensure_home_coords
     for _ in range(50):
         svc.ensure_home_coords()
     assert calls["n"] <= 3
+    # Must never invent Germany-center fallback coordinates
+    assert svc._home is None
+
+
+def test_home_failure_does_not_distort_distance(monkeypatch, tmp_path):
+    db = Database(tmp_path / "t.db")
+    cfg = AppConfig(
+        profile=SearchPreferences(
+            location=LocationConfig(home_address="Nowhere Street 1, 00000 Nirgends")
+        )
+    )
+    svc = LocationService(db, cfg, timeout_s=0.5)
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, *a, **k):
+            class _Resp:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return []
+
+            return _Resp()
+
+    monkeypatch.setattr("httpx.Client", _Client)
+    jobs = [_FakeJob(city="Berlin"), _FakeJob(city="Hamburg")]
+    enrich_job_locations(jobs, svc)
+    assert all(j.distance_km is None for j in jobs)
+    assert svc.stats.skipped_distance_no_home is True
+    assert not svc.home_resolved
 
 
 def test_remote_job_skips_geocode(monkeypatch, tmp_path):

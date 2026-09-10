@@ -26,6 +26,12 @@ class PipelineWorker(QObject):
 
     def request_cancel(self) -> None:
         self._cancel.set()
+        try:
+            from app.main import cancel_active_searches
+
+            cancel_active_searches()
+        except Exception:
+            pass
 
     def run(self) -> None:
         try:
@@ -92,10 +98,24 @@ def start_worker(worker: QObject, slot_name: str = "run") -> QThread:
     worker.finished.connect(thread.quit)
     if hasattr(worker, "failed"):
         worker.failed.connect(thread.quit)
-    # Ensure thread/worker objects are deleted after finish
-    thread.finished.connect(thread.deleteLater)
+
     mgr = get_shutdown_manager()
     mgr.register_thread(thread)
     mgr.register_worker(worker)
+
+    def _unregister() -> None:
+        # Avoid double-ownership: do not call methods on this thread from shutdown
+        # after it has finished. deleteLater only after unregister.
+        with mgr._lock:
+            if thread in mgr._threads:
+                mgr._threads.remove(thread)
+            if worker in mgr._workers:
+                mgr._workers.remove(worker)
+        try:
+            thread.deleteLater()
+        except RuntimeError:
+            pass
+
+    thread.finished.connect(_unregister)
     thread.start()
     return thread

@@ -249,6 +249,14 @@ class MainWindow(QMainWindow):
             extra = ""
             if stats.get("source_errors"):
                 extra = "\n" + "\n".join(stats.get("source_errors") or [])
+            if stats.get("home_warning"):
+                extra += "\n\n" + str(stats.get("home_warning"))
+            if stats.get("ats_unknown") is not None:
+                extra += (
+                    f"\nATS: supported={stats.get('ats_supported', 0)} "
+                    f"unknown={stats.get('ats_unknown', 0)} "
+                    f"unsupported={stats.get('ats_detected_unsupported', 0)}"
+                )
             QMessageBox.information(
                 self,
                 tr("msg.run_done"),

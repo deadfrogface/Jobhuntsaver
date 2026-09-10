@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 logger = logging.getLogger("jobhuntsaver.shutdown")
 
-_DEFAULT_THREAD_WAIT_MS = 4000
+_DEFAULT_THREAD_WAIT_MS = 15000
 _DEFAULT_PROCESS_WAIT_S = 3.0
 
 
@@ -125,6 +125,13 @@ class ApplicationShutdownManager:
                 self._stopping = False
 
     def _cancel_workers(self) -> None:
+        # Ask pipeline to abandon hung JobSpy executors first.
+        try:
+            from app.main import cancel_active_searches
+
+            cancel_active_searches()
+        except Exception as exc:  # noqa: BLE001
+            self._log.debug("cancel_active_searches: %s", exc)
         with self._lock:
             workers = list(self._workers)
         for worker in workers:
@@ -139,23 +146,43 @@ class ApplicationShutdownManager:
     def _stop_threads(self) -> None:
         with self._lock:
             threads = list(self._threads)
+            self._threads.clear()
         for thread in threads:
             try:
-                if hasattr(thread, "isRunning") and not thread.isRunning():
+                # Guard against already-deleted C++ QThread wrappers.
+                if thread is None:
+                    continue
+                try:
+                    running = bool(hasattr(thread, "isRunning") and thread.isRunning())
+                except RuntimeError:
+                    # Internal C++ object already deleted
+                    continue
+                if not running:
                     continue
                 if hasattr(thread, "requestInterruption"):
-                    thread.requestInterruption()
+                    try:
+                        thread.requestInterruption()
+                    except RuntimeError:
+                        continue
                 if hasattr(thread, "quit"):
-                    thread.quit()
+                    try:
+                        thread.quit()
+                    except RuntimeError:
+                        continue
                 if hasattr(thread, "wait"):
-                    if not thread.wait(_DEFAULT_THREAD_WAIT_MS):
-                        self._log.warning(
-                            "Thread did not finish within %sms: %s",
-                            _DEFAULT_THREAD_WAIT_MS,
-                            thread,
-                        )
+                    try:
+                        if not thread.wait(_DEFAULT_THREAD_WAIT_MS):
+                            self._log.warning(
+                                "Thread did not finish within %sms — abandoning (no further calls)",
+                                _DEFAULT_THREAD_WAIT_MS,
+                            )
+                    except RuntimeError:
+                        continue
             except Exception as exc:  # noqa: BLE001
                 self._log.warning("Thread stop failed: %s", exc)
+        # Drop worker refs after threads are asked to stop — avoid double ownership.
+        with self._lock:
+            self._workers.clear()
 
     def _close_browsers(self) -> None:
         with self._lock:

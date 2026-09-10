@@ -398,15 +398,21 @@ class Database:
             )
         return record.id
 
-    def get_geocode(self, query: str) -> tuple[float, float, str] | None:
+    def get_geocode(self, query: str) -> tuple[float, float, str, str] | None:
+        """Return (lat, lon, display_name, cached_at) or None."""
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT latitude, longitude, display_name FROM geocode_cache WHERE query = ?",
+                "SELECT latitude, longitude, display_name, cached_at FROM geocode_cache WHERE query = ?",
                 (query.lower().strip(),),
             ).fetchone()
         if not row:
             return None
-        return float(row["latitude"]), float(row["longitude"]), row["display_name"] or ""
+        return (
+            float(row["latitude"]),
+            float(row["longitude"]),
+            row["display_name"] or "",
+            row["cached_at"] or "",
+        )
 
     def set_geocode(
         self, query: str, latitude: float, longitude: float, display_name: str = ""
