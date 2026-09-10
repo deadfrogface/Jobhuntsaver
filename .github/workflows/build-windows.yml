@@ -44,6 +44,8 @@ jobs:
           pip install -r requirements-runtime.txt
           pip install -r requirements-dev.txt
       - name: Build onefile EXE (no bundled Chromium)
+        env:
+          JOBHUNTSAVER_CI_CONSOLE: "1"
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
           if (!(Test-Path "dist\Jobhuntsaver.exe")) {
@@ -67,8 +69,13 @@ jobs:
           $env:LOCALAPPDATA = $tmp.FullName
           $env:JOBHUNTSAVER_SMOKE_TEST = "1"
           $env:QT_QPA_PLATFORM = "offscreen"
+          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
           & "dist\Jobhuntsaver.exe"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $code = $LASTEXITCODE
+          if (Test-Path "dist\smoke_test_result.txt") { Get-Content "dist\smoke_test_result.txt" }
+          if ($null -ne $code -and $code -ne 0) { exit $code }
+          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
+          if ($result -notmatch "SMOKE_TEST_OK") { Write-Error "EXE smoke missing SMOKE_TEST_OK"; exit 1 }
       - name: Upload Jobhuntsaver.exe
         uses: actions/upload-artifact@v4
         with:

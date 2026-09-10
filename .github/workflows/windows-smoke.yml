@@ -54,6 +54,8 @@ jobs:
       - name: Privacy scan
         run: python scripts/privacy_scan.py
       - name: Build onefile EXE
+        env:
+          JOBHUNTSAVER_CI_CONSOLE: "1"
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
           if (!(Test-Path "dist\Jobhuntsaver.exe")) { Write-Error "EXE missing"; exit 1 }
@@ -75,9 +77,17 @@ jobs:
           $env:LOCALAPPDATA = $tmp.FullName
           $env:JOBHUNTSAVER_SMOKE_TEST = "1"
           $env:QT_QPA_PLATFORM = "offscreen"
+          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
           & "dist\Jobhuntsaver.exe"
-          if ($LASTEXITCODE -ne 0) { Write-Error "EXE smoke exit $LASTEXITCODE"; exit $LASTEXITCODE }
-          Get-Content "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
+          $code = $LASTEXITCODE
+          if (Test-Path "dist\smoke_test_result.txt") { Get-Content "dist\smoke_test_result.txt" }
+          # Windowed EXEs can leave $LASTEXITCODE as $null; only fail on real non-zero codes.
+          if ($null -ne $code -and $code -ne 0) { Write-Error "EXE smoke exit $code"; exit $code }
+          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
+          if ($result -notmatch "SMOKE_TEST_OK") {
+            Write-Error "EXE smoke missing SMOKE_TEST_OK marker (exit=$code)"
+            exit 1
+          }
       - name: Packaged legacy DB migration (library + EXE smoke)
         shell: pwsh
         run: |
@@ -94,19 +104,26 @@ jobs:
           $env:LOCALAPPDATA = $tmp.FullName
           $env:JOBHUNTSAVER_SMOKE_TEST = "1"
           $env:QT_QPA_PLATFORM = "offscreen"
+          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
           & "dist\Jobhuntsaver.exe"
-          if ($LASTEXITCODE -ne 0) { Write-Error "legacy EXE smoke failed"; exit $LASTEXITCODE }
+          $code = $LASTEXITCODE
+          if ($null -ne $code -and $code -ne 0) { Write-Error "legacy EXE smoke failed ($code)"; exit $code }
+          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
+          if ($result -notmatch "SMOKE_TEST_OK") { Write-Error "legacy EXE smoke missing SMOKE_TEST_OK"; exit 1 }
           python -c @"
           import sqlite3
           from pathlib import Path
           db = Path(r'$data') / 'jobs.db'
           cols = {r[1] for r in sqlite3.connect(db).execute('PRAGMA table_info(jobs)')}
           assert 'run_id' in cols, cols
-          # second start must remain ok
           print('legacy migration verified')
           "@
+          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
           & "dist\Jobhuntsaver.exe"
-          if ($LASTEXITCODE -ne 0) { Write-Error "legacy second start failed"; exit $LASTEXITCODE }
+          $code2 = $LASTEXITCODE
+          if ($null -ne $code2 -and $code2 -ne 0) { Write-Error "legacy second start failed ($code2)"; exit $code2 }
+          $result2 = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
+          if ($result2 -notmatch "SMOKE_TEST_OK") { Write-Error "legacy second start missing SMOKE_TEST_OK"; exit 1 }
       - name: Packaged reset preserves profile
         shell: pwsh
         run: |

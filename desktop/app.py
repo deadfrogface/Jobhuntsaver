@@ -178,8 +178,13 @@ def _smoke_test() -> int:
     LOCALAPPDATA was left at the process default (CI must always override it).
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    lines: list[str] = []
+    lines: list[str] = ["SMOKE_START"]
     log_path = Path(sys.executable).resolve().parent / "smoke_test_result.txt"
+    try:
+        # Write early so CI can distinguish boot crash vs later failure.
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+    except Exception:
+        pass
     try:
         from PySide6.QtWidgets import QApplication
 
