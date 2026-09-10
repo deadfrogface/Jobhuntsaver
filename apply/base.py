@@ -144,10 +144,21 @@ class BaseApplier(ABC):
         self,
         profile: ApplicationProfile,
         *,
-        first_name: str = "input[name*='first'], input[id*='first']",
-        last_name: str = "input[name*='last'], input[id*='last']",
-        email: str = "input[type='email']",
-        phone: str = "input[type='tel']",
+        first_name: str = (
+            "input[name*='first'], input[id*='first'], "
+            "input[name*='vorname' i], input[id*='vorname' i], "
+            "input[placeholder*='Vorname' i]"
+        ),
+        last_name: str = (
+            "input[name*='last'], input[id*='last'], "
+            "input[name*='nachname' i], input[id*='nachname' i], "
+            "input[placeholder*='Nachname' i]"
+        ),
+        email: str = "input[type='email'], input[name*='email' i], input[id*='email' i]",
+        phone: str = (
+            "input[type='tel'], input[name*='phone' i], input[id*='phone' i], "
+            "input[name*='telefon' i], input[placeholder*='Telefon' i]"
+        ),
         full_name: str | None = None,
         linkedin: str | None = None,
         resume_pdf_path: Path | None = None,
@@ -169,6 +180,65 @@ class BaseApplier(ABC):
         if resume_pdf_path and file_selectors:
             return self._safe_upload(resume_pdf_path, file_selectors)
         return True
+
+    def _fill_german_profile_fields(self, profile: ApplicationProfile) -> None:
+        """Best-effort DE/EN profile extras used by Personio-like forms."""
+        pairs: list[tuple[str, str]] = [
+            (
+                "input[name*='street' i], input[id*='street' i], "
+                "input[name*='strasse' i], input[name*='straße' i], "
+                "input[placeholder*='Straße' i]",
+                profile.street or profile.address,
+            ),
+            (
+                "input[name*='postal' i], input[id*='postal' i], "
+                "input[name*='plz' i], input[placeholder*='PLZ' i]",
+                profile.postal_code,
+            ),
+            (
+                "input[name*='city' i], input[id*='city' i], "
+                "input[name*='ort' i], input[placeholder*='Ort' i]",
+                profile.city,
+            ),
+            (
+                "input[name*='salary' i], input[id*='salary' i], "
+                "input[name*='gehalt' i], input[placeholder*='Gehalt' i], "
+                "input[name*='compensation' i]",
+                profile.salary_expectation,
+            ),
+            (
+                "input[name*='notice' i], input[name*='kuendigung' i], "
+                "input[name*='kündigung' i], input[placeholder*='Kündigungsfrist' i]",
+                profile.notice_period,
+            ),
+            (
+                "input[name*='start' i], input[name*='eintritt' i], "
+                "input[placeholder*='Eintritt' i]",
+                profile.earliest_start_date,
+            ),
+            (
+                "input[name*='authorization' i], input[name*='work_permit' i], "
+                "input[name*='arbeitserlaubnis' i], "
+                "textarea[name*='authorization' i]",
+                profile.work_authorization,
+            ),
+        ]
+        for selector, value in pairs:
+            if value:
+                self._safe_fill(selector, value)
+        # Consent / privacy checkboxes — only when clearly required.
+        for sel in (
+            "input[type='checkbox'][required]",
+            "input[type='checkbox'][name*='privacy' i]",
+            "input[type='checkbox'][name*='consent' i], "
+            "input[type='checkbox'][name*='datenschutz' i]",
+        ):
+            try:
+                for box in self.page.query_selector_all(sel):
+                    if box.is_visible() and not box.is_checked():
+                        box.check()
+            except Exception:
+                continue
 
     def _safe_upload(self, resume_path: Path, selectors: str | list[str]) -> bool:
         if isinstance(selectors, str):

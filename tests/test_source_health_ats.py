@@ -41,8 +41,13 @@ def test_ats_detect_extended():
 def test_ats_classify_and_buckets():
     support, note = classify_ats_support("greenhouse", "https://boards.greenhouse.io/x")
     assert support == "supported"
+    support, note = classify_ats_support("personio", "https://acme.jobs.personio.de/job/1")
+    assert support == "partially_supported"
+    assert "teilweise" in note.lower() or "partial" in note.lower()
     support, note = classify_ats_support("bamboohr", "https://x.bamboohr.com")
     assert support == "known_unsupported"
     assert "manuell" in note.lower() or "manual" in note.lower()
     assert ats_coverage_bucket("unknown") == "unknown"
     assert ats_coverage_bucket("greenhouse") == "supported"
+    assert ats_coverage_bucket("personio") == "partially_supported"
+    assert ats_coverage_bucket("taleo") == "detected_unsupported"

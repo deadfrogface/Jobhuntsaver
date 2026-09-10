@@ -35,21 +35,56 @@ class PersonioApplier(BaseApplier):
 
         uploaded = self._fill_identity_fields(
             profile,
-            phone="input[type='tel'], input[name*='phone']",
+            phone=(
+                "input[type='tel'], input[name*='phone' i], "
+                "input[name*='telefon' i], input[placeholder*='Telefon' i]"
+            ),
             resume_pdf_path=resume_pdf_path,
         )
         if resume_pdf_path and not uploaded:
             return ApplyResult(success=False, needs_review=True, error_message="Personio CV upload failed")
+        self._fill_german_profile_fields(profile)
         self._fill_cover_letter(cover_letter_text, ["textarea"])
 
-        unknown = self._unknown_required_fields(profile)
+        unknown = self._unknown_required_fields(
+            profile,
+            skip_tokens=(
+                "first",
+                "last",
+                "email",
+                "phone",
+                "telefon",
+                "vorname",
+                "nachname",
+                "resume",
+                "cover",
+                "file",
+                "cv",
+                "street",
+                "strasse",
+                "postal",
+                "plz",
+                "city",
+                "ort",
+                "salary",
+                "gehalt",
+                "privacy",
+                "consent",
+                "datenschutz",
+            ),
+        )
         if unknown:
             return ApplyResult(
                 success=False,
                 needs_review=True,
                 error_message=f"Unknown Personio fields: {', '.join(unknown[:5])}",
             )
-        return self._maybe_submit(
+        # Partial support: prefer review even when fill looks complete.
+        result = self._maybe_submit(
             "button[type='submit'], input[type='submit'], "
             "button:has-text('Senden'), button:has-text('Submit')"
         )
+        result.needs_review = True
+        if not result.error_message:
+            result.error_message = "Personio partially supported — review before final submit"
+        return result

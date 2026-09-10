@@ -45,7 +45,7 @@ ATS_FINGERPRINTS: list[tuple[str, str]] = [
     ("greenhouse-support", "greenhouse"),
 ]
 
-# ATS keys that have a Jobhuntsaver adapter.
+# Mature adapters: safe field fill + dry-run/submit guard.
 SUPPORTED_ATS = {
     "greenhouse",
     "lever",
@@ -53,11 +53,18 @@ SUPPORTED_ATS = {
     "indeed",
     "linkedin",
     "workday",
+}
+
+# Thin DE / multi-page adapters: fill what we can, prefer review before submit.
+PARTIALLY_SUPPORTED_ATS = {
     "personio",
     "stepstone",
     "smartrecruiters",
     "successfactors",
 }
+
+# Any ATS with an applier module (full or partial).
+APPLIER_ATS = SUPPORTED_ATS | PARTIALLY_SUPPORTED_ATS
 
 
 class ATSDetector:
@@ -75,12 +82,17 @@ class ATSDetector:
 def classify_ats_support(ats: str, application_url: str = "") -> tuple[str, str]:
     """Return (support_class, human_note).
 
-    support_class: supported | known_unsupported | unknown | empty_url
+    support_class: supported | partially_supported | known_unsupported | unknown | empty_url
     """
     if not (application_url or "").strip() and ats in {"", "unknown"}:
         return "empty_url", "Keine Bewerbungs-URL — bitte manuell recherchieren."
     if ats in SUPPORTED_ATS:
         return "supported", "Automatisierung verfügbar (Dry-Run-Guard bleibt aktiv)."
+    if ats in PARTIALLY_SUPPORTED_ATS:
+        return (
+            "partially_supported",
+            "Teilweise Automatisierung — Formular vorausfüllen, Abschluss prüfen/manuell.",
+        )
     if ats != "unknown":
         return (
             "known_unsupported",
@@ -95,6 +107,8 @@ def classify_ats_support(ats: str, application_url: str = "") -> tuple[str, str]
 def ats_coverage_bucket(ats: str) -> str:
     if ats in SUPPORTED_ATS:
         return "supported"
+    if ats in PARTIALLY_SUPPORTED_ATS:
+        return "partially_supported"
     if ats and ats != "unknown":
         return "detected_unsupported"
     return "unknown"
