@@ -2,11 +2,11 @@
 
 Date: 2026-09-10  
 Branch: `cursor/safe-reuse-verify-d85b`  
-Final commit SHA: `bdea74172337b12ddbc33ed3220dc06db060c5c0`
+Final commit SHA: `8cd528adcda78f9ef7e620015ae7e03b7510235f`
 
 ## 1. FINAL COMMIT SHA
 
-`bdea74172337b12ddbc33ed3220dc06db060c5c0`
+`8cd528adcda78f9ef7e620015ae7e03b7510235f`
 
 Commits on branch:
 
@@ -146,7 +146,7 @@ Pipeline cancel + source timeout tests remain in green full suite (KEEP).
 
 - CI success (search era): `34539000493`
 - CI success (HEAD `f4a2346`): `34539697999` (all jobs green)
-- Windows Smoke qt-smoke green; EXE smoke historically red on main — packaging CI fix landed on this branch (console-for-CI + `SMOKE_TEST_OK` gate)
+- Windows Smoke **fully green** on packaging fix (`34540449642`): qt-smoke + build-and-exe-smoke (EXE smoke, legacy DB, reset, artifact upload). Prior EXE smoke false-fail on main fixed via CI console + `SMOKE_TEST_OK` gate.
 
 ## 17. WINDOWS BUILD PATH
 
@@ -157,13 +157,13 @@ Pipeline cancel + source timeout tests remain in green full suite (KEEP).
 
 ## 18. FILE SIZE
 
-No new EXE built in this Linux environment. Spec SHA256:  
-`f786a50d587a6ebf751e634df618025674cd9bad23c7b6c5efba93c5e08d1983` (`packaging/Jobhuntsaver.spec`)  
-Site-packages audit (~1039 MB venv) documented in `docs/package-size-audit.md`. Packaged onefile historically ~160 MB class (Chromium not bundled).
+Windows Smoke packaged onefile: **169 271 960 bytes (~161.4 MiB)** (Chromium not bundled).  
+Site-packages audit (~1039 MB venv) documented in `docs/package-size-audit.md`.
 
 ## 19. SHA256
 
-Packaged EXE SHA256: **not produced in this environment** — take from Windows Smoke / build artifact when workflow completes.
+Packaged EXE SHA256 (Windows Smoke artifact `Jobhuntsaver-Windows-Smoke`, run `34540449642`):
+`48E867EEE1F3E0B832FEC469F9C5EB31DE491E111728AE71341C7A72AA849D13`
 
 ## 20. REMAINING TRUE EXTERNAL LIMITATIONS
 
