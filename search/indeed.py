@@ -110,13 +110,33 @@ class IndeedSource(JobSource):
         description = str(row.get("description") or "")
         salary_text = ""
         salary_min = salary_max = None
-        if row.get("min_amount"):
+        interval = str(row.get("interval") or row.get("salary_period") or "").strip().lower()
+        interval_map = {
+            "yearly": "year",
+            "year": "year",
+            "annual": "year",
+            "annually": "year",
+            "monthly": "month",
+            "month": "month",
+            "hourly": "hour",
+            "hour": "hour",
+        }
+        period = interval_map.get(interval, "")
+        if row.get("min_amount") is not None or row.get("max_amount") is not None:
             try:
-                salary_min = float(row.get("min_amount"))
-                salary_max = float(row.get("max_amount")) if row.get("max_amount") else None
-                salary_text = f"{salary_min}-{salary_max or '?'} {row.get('currency') or 'EUR'}"
+                salary_min = float(row.get("min_amount")) if row.get("min_amount") is not None else None
+                salary_max = float(row.get("max_amount")) if row.get("max_amount") is not None else None
+                cur = row.get("currency") or "EUR"
+                if salary_min is not None and salary_max is not None:
+                    salary_text = f"{salary_min}-{salary_max} {cur}"
+                elif salary_min is not None:
+                    salary_text = f"{salary_min} {cur}"
+                elif salary_max is not None:
+                    salary_text = f"{salary_max} {cur}"
+                if period and salary_text:
+                    salary_text = f"{salary_text}/{period}"
             except (TypeError, ValueError):
-                salary_text = str(row.get("min_amount"))
+                salary_text = str(row.get("min_amount") or "")
         dp = row.get("date_posted")
         if isinstance(dp, datetime):
             published = dp.date().isoformat()

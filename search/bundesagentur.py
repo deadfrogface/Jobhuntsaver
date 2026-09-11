@@ -10,6 +10,8 @@ from __future__ import annotations
 import base64
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from core.cancel import register_executor, unregister_executor
 from typing import Any
 
 import httpx
@@ -228,7 +230,9 @@ class BundesagenturSource(JobSource):
 
         order = {job.id: idx for idx, job in enumerate(stubs)}
         enriched: list[Job] = []
-        with ThreadPoolExecutor(max_workers=_DETAIL_WORKERS) as pool:
+        pool = ThreadPoolExecutor(max_workers=_DETAIL_WORKERS)
+        register_executor(pool)
+        try:
             futures = {pool.submit(enrich, job): job for job in stubs}
             for fut in as_completed(futures):
                 try:
@@ -236,5 +240,8 @@ class BundesagenturSource(JobSource):
                 except Exception as exc:
                     logger.warning("Enrichment error: %s", exc)
                     enriched.append(futures[fut])
+        finally:
+            unregister_executor(pool)
+            pool.shutdown(wait=False, cancel_futures=True)
         enriched.sort(key=lambda j: order.get(j.id, 9999))
         return enriched

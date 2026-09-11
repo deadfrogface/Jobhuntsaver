@@ -24,7 +24,11 @@ from desktop.pages.profile_sections import (
     QualificationsSection,
 )
 from desktop.services import ConfigService
-from desktop.services.profile_merge import clear_cv_personal, keep_manual_qualifications
+from desktop.services.profile_merge import (
+    clear_cv_personal,
+    keep_manual_qualifications,
+    sync_application_summaries,
+)
 from desktop.widgets.cv_import_dialog import CvImportDialog
 from desktop.widgets.scroll_page import wrap_scrollable
 
@@ -207,6 +211,8 @@ class ProfilePage(QWidget):
             if parts:
                 p.location.home_address = ", ".join(parts)
                 self.location_work.home_address.setText(p.location.home_address)
+
+        sync_application_summaries(a, p.qualifications)
 
         errors = self.config_service.validate(cfg)
         if errors:
