@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 _active_executors: list[ThreadPoolExecutor] = []
 _executors_lock = threading.Lock()
+_cancel_generation = 0
 
 
 def register_executor(pool: ThreadPoolExecutor) -> None:
@@ -25,9 +26,21 @@ def unregister_executor(pool: ThreadPoolExecutor) -> None:
             _active_executors.remove(pool)
 
 
+def current_cancel_generation() -> int:
+    with _executors_lock:
+        return _cancel_generation
+
+
+def searches_cancelled(generation: int) -> bool:
+    with _executors_lock:
+        return generation != _cancel_generation
+
+
 def cancel_active_searches() -> None:
     """Best-effort: stop accepting futures; running work may still finish."""
+    global _cancel_generation
     with _executors_lock:
+        _cancel_generation += 1
         pools = list(_active_executors)
         _active_executors.clear()
     for pool in pools:
