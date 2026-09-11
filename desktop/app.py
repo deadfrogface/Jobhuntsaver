@@ -167,7 +167,21 @@ def main() -> int:
         return _smoke_browser()
     if "--smoke-cv-corpus" in sys.argv:
         return _smoke_cv_corpus()
+    if "--once" in sys.argv:
+        return _run_once_headless()
     return run()
+
+
+def _run_once_headless() -> int:
+    """Scheduler entrypoint: one pipeline pass using AppData config, no Qt UI."""
+    from app.main import run_pipeline
+    from desktop.services import ConfigService
+
+    cfg = ConfigService().load()
+    if bool(getattr(cfg.settings, "automation_paused", False)):
+        return 0
+    run_pipeline(cfg)
+    return 0
 
 
 def _smoke_test() -> int:

@@ -434,8 +434,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Override operating mode",
     )
     parser.add_argument("--config-dir", type=Path, default=None)
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run a single headless pipeline pass and exit (scheduler entrypoint).",
+    )
     args = parser.parse_args(argv)
-    config = load_config()
+    # Prefer AppData config when scheduled/packaged so GUI and task share profile.
+    try:
+        from desktop.services import ConfigService
+
+        config = ConfigService().load()
+    except Exception:
+        config = load_config()
     run_pipeline(config, mode=args.mode)
     return 0
 

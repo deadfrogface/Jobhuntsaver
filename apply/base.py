@@ -145,7 +145,7 @@ class BaseApplier(ABC):
         profile: ApplicationProfile,
         *,
         first_name: str = "input[name*='first'], input[id*='first']",
-        last_name: str = "input[name*='last'], input[id*='last']",
+        last_name: str = "input[name*='last_name' i], input[name*='lastName'], input[name*='nachname' i], input[id*='last']",
         email: str = "input[type='email']",
         phone: str = "input[type='tel']",
         full_name: str | None = None,

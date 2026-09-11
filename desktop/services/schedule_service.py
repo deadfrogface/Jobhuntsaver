@@ -19,10 +19,10 @@ class ScheduleService:
         self.config = config
 
     def _python_command(self) -> list[str]:
-        root = project_root()
+        # Always schedule a one-shot headless pipeline run (never bare GUI EXE).
         if getattr(sys, "frozen", False):
-            return [str(Path(sys.executable).resolve())]
-        return [sys.executable, "-m", "app.main"]
+            return [str(Path(sys.executable).resolve()), "--once"]
+        return [sys.executable, "-m", "app.main", "--once"]
 
     def sync_from_config(self) -> tuple[bool, str]:
         settings = self.config.settings

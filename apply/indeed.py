@@ -58,7 +58,7 @@ class IndeedApplier(BaseApplier):
                 profile,
                 first_name="",
                 last_name="",
-                full_name="input[name*='name'], input[id*='name']",
+                full_name="input[name='name'], input[id='name'], input[autocomplete='name']",
                 email="input[name*='email'], input[id*='email']",
                 phone="input[name*='phone'], input[id*='phone']",
                 resume_pdf_path=resume_pdf_path,
@@ -75,6 +75,14 @@ class IndeedApplier(BaseApplier):
             submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)
             if submit:
                 # Central hard guard — never click submit outside _maybe_submit.
+                unknown = self._unknown_required_fields(profile)
+                if unknown:
+                    return ApplyResult(
+                        success=False,
+                        needs_review=True,
+                        manual_required=True,
+                        error_message=f"Unknown required fields: {', '.join(unknown)}",
+                    )
                 return self._maybe_submit(_SUBMIT_SEL)
             if not self._safe_click(_CONTINUE_SEL, timeout=2000):
                 break

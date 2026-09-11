@@ -80,7 +80,8 @@ class ApplicationManager:
         mode = settings.mode
         submit = False
         if force_submit is not None:
-            submit = force_submit
+            # Force may request submit only when dry_run is off (safety never overridden).
+            submit = bool(force_submit) and not bool(settings.dry_run)
         elif (
             mode == OperatingMode.FULLY_AUTOMATIC.value
             and not settings.dry_run
