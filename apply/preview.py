@@ -103,6 +103,7 @@ def build_application_preview(job: Job, config: AppConfig) -> ApplicationPreview
     will_submit = (
         settings.mode == "fully_automatic"
         and not dry_run
+        and bool(getattr(settings, "automatic_submission", False))
         and support == "supported"
     )
 
@@ -123,6 +124,8 @@ def build_application_preview(job: Job, config: AppConfig) -> ApplicationPreview
         )
     if dry_run:
         warnings.append("Dry-Run aktiv: finaler Submit-Klick ist blockiert.")
+    if settings.mode == "fully_automatic" and not bool(getattr(settings, "automatic_submission", False)):
+        warnings.append("Vollautomatik ohne automatische Abgabe: finaler Submit bleibt blockiert.")
     if not cv_path or not cv_path.exists():
         warnings.append("CV-Datei fehlt oder Pfad ungültig.")
     if not app.email or not app.first_name:
