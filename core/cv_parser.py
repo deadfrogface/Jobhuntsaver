@@ -303,7 +303,8 @@ def _inline_licence_mentions(text: str) -> list[str]:
 
 
 _QUAL_START = re.compile(
-    r"^(Berufsausbildung|Mittlere Reife|Fachhochschulreife|Abitur|Bachelor|Master|"
+    r"^(Berufsausbildung|Ausbildung\s+zum|Ausbildung\s+zur|"
+    r"Kaufmann|Kauffrau|Mittlere Reife|Fachhochschulreife|Abitur|Bachelor|Master|"
     r"Studium|Fachabitur|Realschulabschluss|Hauptschulabschluss|Promotion|"
     r"B\.?\s*A\.?|B\.?\s*Sc\.?|BCom|M\.?\s*A\.?|M\.?\s*Sc\.?|MBA|A\s*Levels?)",
     re.IGNORECASE,
@@ -493,8 +494,52 @@ def _parse_experience(body: str) -> list[ExperienceEntry]:
             if line.startswith(("•", "-", "–", "*")):
                 i += 1
                 continue
-            i += 1
-            continue
+            # Title-/company-first layouts: peek ahead for a date line.
+            look = None
+            look_idx = None
+            for j in range(i + 1, min(i + 4, len(lines))):
+                cand = lines[j].strip()
+                if not cand:
+                    continue
+                if (
+                    _PERIOD.search(cand)
+                    or _SINCE.match(cand)
+                    or _SINCE_INLINE.match(cand)
+                ):
+                    look = cand
+                    look_idx = j
+                    break
+                if _is_heading(cand) or cand.startswith(("•", "-", "–", "*")):
+                    break
+            if look is None or look_idx is None:
+                i += 1
+                continue
+            title = line
+            # Optional company line between title and date
+            company_candidate = ""
+            for j in range(i + 1, look_idx):
+                mid = lines[j].strip()
+                if mid and not mid.startswith(("•", "-", "–", "*")):
+                    company_candidate = mid
+                    break
+            if company_candidate:
+                company = company_candidate
+            sm_inline = _SINCE_INLINE.match(look)
+            pm = _PERIOD.search(look)
+            sm = _SINCE.match(look)
+            if sm_inline and not pm:
+                start = sm_inline.group("start")
+                end = "aktuell"
+                if sm_inline.group("title").strip():
+                    # rare: "Seit DATE title" after company
+                    pass
+            elif pm:
+                start = pm.group("start").replace("Seit ", "").replace("seit ", "").strip()
+                end = pm.group("end").strip()
+            elif sm:
+                start = sm.group("start")
+                end = "aktuell"
+            i = look_idx + 1
 
         def _next_nonempty(idx: int) -> tuple[int, str]:
             while idx < len(lines) and not lines[idx].strip():
@@ -544,6 +589,20 @@ def _parse_experience(body: str) -> list[ExperienceEntry]:
                 continue
             if _PERIOD.search(nxt) or _SINCE.match(nxt) or _SINCE_INLINE.match(nxt) or _is_heading(nxt):
                 break
+            # Next job starting as title/company before its date — leave for outer loop.
+            if not nxt.startswith(("•", "-", "–", "*")):
+                upcoming_date = False
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    cand = lines[j].strip()
+                    if not cand:
+                        continue
+                    if _PERIOD.search(cand) or _SINCE.match(cand) or _SINCE_INLINE.match(cand):
+                        upcoming_date = True
+                        break
+                    if cand.startswith(("•", "-", "–", "*")) or _is_heading(cand):
+                        break
+                if upcoming_date:
+                    break
             cleaned = _normalize_bullet(nxt)
             if cleaned:
                 responsibilities.append(cleaned)
@@ -574,10 +633,15 @@ def _parse_skills(body: str) -> list[str]:
         # Skip long prose / project descriptions
         if len(line) > 120 and not re.search(r"[,;|/]", line):
             continue
+        # CEFR / native language lines under bare "Kenntnisse" belong in languages.
+        if _LEVEL.search(line) and _parse_one_language(line) is not None:
+            continue
         parts = re.split(r"\s*[,;|/]\s*", line)
         for part in parts:
             part = part.strip(" .")
             if part and not _is_heading_value(part) and len(part) < 80:
+                if _LEVEL.search(part) and _parse_one_language(part) is not None:
+                    continue
                 skills.append(part)
     return list(dict.fromkeys(skills))
 
@@ -654,6 +718,19 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         s for s in _parse_software(sections.get("software", "")) if not _is_heading_value(s)
     ]
     skills = _parse_skills(sections.get("skills", ""))
+    # Bare "Kenntnisse" maps to skills — recover only CEFR/native language lines.
+    known = {(lang.language.lower(), (lang.level or "").lower()) for lang in languages}
+    for raw in sections.get("skills", "").splitlines():
+        line = _normalize_bullet(raw)
+        if not line or not _LEVEL.search(line):
+            continue
+        entry = _parse_one_language(line)
+        if entry is None:
+            continue
+        key = (entry.language.lower(), (entry.level or "").lower())
+        if key not in known:
+            languages.append(entry)
+            known.add(key)
     certificates = [
         c for c in _parse_certificates(sections.get("certificates", "")) if not _is_heading_value(c.name)
     ]

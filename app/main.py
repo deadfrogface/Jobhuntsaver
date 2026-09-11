@@ -157,6 +157,19 @@ def run_pipeline(
     if mode:
         config.settings.mode = mode
 
+    if getattr(config.settings, "automation_paused", False):
+        progress("Automatisierung pausiert — Pipeline nicht gestartet.")
+        return {
+            "total": 0,
+            "cancelled": True,
+            "paused": True,
+            "source_errors": [],
+            "source_results": {},
+            "matches": 0,
+            "new": 0,
+            "applied": 0,
+        }
+
     run = RunLogger(config.root / config.settings.logs_dir)
     run_id = uuid.uuid4().hex
     run.info(f"Run started id={run_id}")

@@ -17,14 +17,14 @@ def test_strip_example_keeps_real_mustermann_with_real_email():
     app = ApplicationProfile(
         first_name="Max",
         last_name="Mustermann",
-        email="max.real@firma.de",
+        email="max.real@example.org",
         phone="+491701234567",
         cv_path="cvs/max.pdf",
     )
     kept = strip_example_application(app)
     assert kept.first_name == "Max"
     assert kept.last_name == "Mustermann"
-    assert kept.email == "max.real@firma.de"
+    assert kept.email == "max.real@example.org"
     assert kept.phone == "+491701234567"
     assert kept.cv_path == "cvs/max.pdf"
 
