@@ -10,6 +10,7 @@ from pathlib import Path
 from apply.detector import ATSDetector, ats_coverage_bucket
 from apply.manager import ApplicationManager
 from browser.browser_manager import BrowserManager
+from core.cancel import cancel_active_searches, register_executor, unregister_executor
 from core.config import AppConfig, load_config
 from core.database import Database
 from core.deduplicator import deduplicate
@@ -24,27 +25,7 @@ from search.registry import build_sources
 # Hard ceiling per job board so one hung source cannot freeze the whole run.
 SOURCE_SEARCH_TIMEOUT_S = 120
 
-# Track live executors so shutdown/cancel can stop accepting new work.
-_active_executors: list[ThreadPoolExecutor] = []
-_executors_lock = __import__("threading").Lock()
-
-
-def cancel_active_searches() -> None:
-    """Best-effort: stop accepting futures; running JobSpy work may still finish."""
-    with _executors_lock:
-        pools = list(_active_executors)
-        _active_executors.clear()
-    for pool in pools:
-        try:
-            pool.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            # Python <3.9 cancel_futures
-            try:
-                pool.shutdown(wait=False)
-            except Exception:
-                pass
-        except Exception:
-            pass
+# Executor cancel registry lives in core.cancel (shared with BA detail pools).
 
 
 def _search_location(home_address: str) -> str:
@@ -65,26 +46,27 @@ def _search_location(home_address: str) -> str:
         if any(c.isdigit() for c in part):
             continue
         return " ".join(words)
-    return "Musterstadt"
+    return ""
 
 
 def build_queries(config: AppConfig) -> list[SearchQuery]:
     loc = config.profile.location
     titles = config.profile.jobs.desired_titles + config.profile.jobs.alternative_titles
     if not titles:
-        titles = ["Sachbearbeiter"]
+        return []
     place = _search_location(loc.home_address)
-    queries = []
-    for title in titles:
-        queries.append(
-            SearchQuery(
-                keyword=title,
-                location=place,
-                radius_km=loc.max_distance_km,
-                max_results=40,
-                published_within_days=config.settings.published_within_days,
+    queries: list[SearchQuery] = []
+    if place:
+        for title in titles:
+            queries.append(
+                SearchQuery(
+                    keyword=title,
+                    location=place,
+                    radius_km=loc.max_distance_km,
+                    max_results=40,
+                    published_within_days=config.settings.published_within_days,
+                )
             )
-        )
     if loc.allow_remote_germany:
         for title in titles[:3]:
             queries.append(
@@ -97,6 +79,7 @@ def build_queries(config: AppConfig) -> list[SearchQuery]:
                 )
             )
     return queries
+
 
 
 def enrich_locations(jobs, location: LocationService, progress_callback=None, should_stop=None):
@@ -116,8 +99,7 @@ def _search_source_with_timeout(
     should_stop=None,
 ):
     pool = ThreadPoolExecutor(max_workers=1)
-    with _executors_lock:
-        _active_executors.append(pool)
+    register_executor(pool)
     fut = pool.submit(source.safe_search, queries)
     try:
         deadline = __import__("time").monotonic() + timeout_s
@@ -140,9 +122,7 @@ def _search_source_with_timeout(
             except FuturesTimeout:
                 continue
     finally:
-        with _executors_lock:
-            if pool in _active_executors:
-                _active_executors.remove(pool)
+        unregister_executor(pool)
         try:
             pool.shutdown(wait=False, cancel_futures=True)
         except TypeError:
@@ -176,6 +156,19 @@ def run_pipeline(
     config = config or load_config()
     if mode:
         config.settings.mode = mode
+
+    if getattr(config.settings, "automation_paused", False):
+        progress("Automatisierung pausiert — Pipeline nicht gestartet.")
+        return {
+            "total": 0,
+            "cancelled": True,
+            "paused": True,
+            "source_errors": [],
+            "source_results": {},
+            "matches": 0,
+            "new": 0,
+            "applied": 0,
+        }
 
     run = RunLogger(config.root / config.settings.logs_dir)
     run_id = uuid.uuid4().hex
@@ -441,8 +434,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Override operating mode",
     )
     parser.add_argument("--config-dir", type=Path, default=None)
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run a single headless pipeline pass and exit (scheduler entrypoint).",
+    )
     args = parser.parse_args(argv)
-    config = load_config()
+    # Prefer AppData config when scheduled/packaged so GUI and task share profile.
+    try:
+        from desktop.services import ConfigService
+
+        config = ConfigService().load()
+    except Exception:
+        config = load_config()
     run_pipeline(config, mode=args.mode)
     return 0
 

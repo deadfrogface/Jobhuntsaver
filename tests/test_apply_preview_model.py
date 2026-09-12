@@ -63,7 +63,7 @@ def test_preview_submit_allowed_only_when_auto_and_not_dry():
             last_name="Lovelace",
             email="ada@example.com",
         ),
-        settings=SettingsConfig(dry_run=False, mode="fully_automatic"),
+        settings=SettingsConfig(dry_run=False, mode="fully_automatic", automatic_submission=True),
     )
     job = Job(
         id="j2",
@@ -74,3 +74,27 @@ def test_preview_submit_allowed_only_when_auto_and_not_dry():
     preview = build_application_preview(job, cfg)
     assert preview.will_submit is True
     assert preview.submit_allowed is True
+
+
+def test_preview_submit_blocked_when_auto_submit_disabled():
+    cfg = AppConfig(
+        application=ApplicationProfile(
+            first_name="Ada",
+            last_name="Lovelace",
+            email="ada@example.com",
+        ),
+        settings=SettingsConfig(
+            dry_run=False,
+            mode="fully_automatic",
+            automatic_submission=False,
+        ),
+    )
+    job = Job(
+        id="j3",
+        title="Role",
+        company="Co",
+        application_url="https://boards.greenhouse.io/example/jobs/3",
+    )
+    preview = build_application_preview(job, cfg)
+    assert preview.will_submit is False
+    assert preview.submit_allowed is False

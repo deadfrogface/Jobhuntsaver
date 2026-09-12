@@ -167,7 +167,21 @@ def main() -> int:
         return _smoke_browser()
     if "--smoke-cv-corpus" in sys.argv:
         return _smoke_cv_corpus()
+    if "--once" in sys.argv:
+        return _run_once_headless()
     return run()
+
+
+def _run_once_headless() -> int:
+    """Scheduler entrypoint: one pipeline pass using AppData config, no Qt UI."""
+    from app.main import run_pipeline
+    from desktop.services import ConfigService
+
+    cfg = ConfigService().load()
+    if bool(getattr(cfg.settings, "automation_paused", False)):
+        return 0
+    run_pipeline(cfg)
+    return 0
 
 
 def _smoke_test() -> int:
@@ -178,8 +192,13 @@ def _smoke_test() -> int:
     LOCALAPPDATA was left at the process default (CI must always override it).
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    lines: list[str] = []
+    lines: list[str] = ["SMOKE_START"]
     log_path = Path(sys.executable).resolve().parent / "smoke_test_result.txt"
+    try:
+        # Write early so CI can distinguish boot crash vs later failure.
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+    except Exception:
+        pass
     try:
         from PySide6.QtWidgets import QApplication
 

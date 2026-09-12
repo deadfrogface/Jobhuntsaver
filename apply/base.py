@@ -144,17 +144,22 @@ class BaseApplier(ABC):
         self,
         profile: ApplicationProfile,
         *,
+        # Prefer precise last_name tokens (avoid matching blast_email via name*='last').
+        # Keep DE vorname/nachname/telefon coverage from the reuse branch.
         first_name: str = (
             "input[name*='first'], input[id*='first'], "
             "input[name*='vorname' i], input[id*='vorname' i], "
             "input[placeholder*='Vorname' i]"
         ),
         last_name: str = (
-            "input[name*='last'], input[id*='last'], "
+            "input[name*='last_name' i], input[name*='lastName'], "
+            "input[id*='last_name' i], input[id*='lastName'], "
             "input[name*='nachname' i], input[id*='nachname' i], "
             "input[placeholder*='Nachname' i]"
         ),
-        email: str = "input[type='email'], input[name*='email' i], input[id*='email' i]",
+        email: str = (
+            "input[type='email'], input[name*='email' i], input[id*='email' i]"
+        ),
         phone: str = (
             "input[type='tel'], input[name*='phone' i], input[id*='phone' i], "
             "input[name*='telefon' i], input[placeholder*='Telefon' i]"

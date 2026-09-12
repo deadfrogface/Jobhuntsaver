@@ -569,14 +569,13 @@ EXAMPLE_APPLICATION_MARKERS = {
 
 
 def strip_example_application(application: ApplicationProfile) -> ApplicationProfile:
-    """Clear Mustermann-style demo personal data from production configs."""
-    fn = (application.first_name or "").strip().lower()
-    ln = (application.last_name or "").strip().lower()
+    """Clear Mustermann-style *demo* personal data from production configs.
+
+    Only the exact historical demo email fingerprints a demo profile.
+    Real applicants named Max Mustermann must never be wiped.
+    """
     em = (application.email or "").strip().lower()
-    is_demo = (
-        fn == EXAMPLE_APPLICATION_MARKERS["first_name"]
-        and ln == EXAMPLE_APPLICATION_MARKERS["last_name"]
-    ) or em == EXAMPLE_APPLICATION_MARKERS["email"]
+    is_demo = em == EXAMPLE_APPLICATION_MARKERS["email"]
     if not is_demo:
         return application
     for name in (

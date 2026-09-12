@@ -49,6 +49,14 @@ class LeverApplier(BaseApplier):
             cover_letter_text,
             ["textarea[name='comments'], textarea[name*='cover']"],
         )
+        unknown = self._unknown_required_fields(profile)
+        if unknown:
+            return ApplyResult(
+                success=False,
+                needs_review=True,
+                manual_required=True,
+                error_message=f"Unknown required fields: {', '.join(unknown)}",
+            )
         return self._maybe_submit(
             "button.postings-btn[type='submit'], button[type='submit'], input[type='submit']"
         )

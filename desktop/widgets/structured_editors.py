@@ -25,6 +25,7 @@ from core.config import (
     LanguageEntry,
 )
 from desktop.i18n import tr
+from desktop.services.profile_merge import SOURCE_MANUAL
 
 
 class _EntryListEditor(QWidget):
@@ -184,6 +185,7 @@ class EducationEditor(_EntryListEditor):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         entry = EducationEntry(**{k: w.text().strip() for k, w in fields.items()})
+        entry.source = (existing.source if existing and existing.source else SOURCE_MANUAL)
         if not entry.qualification and not entry.institution:
             return None
         return entry
@@ -240,6 +242,7 @@ class ExperienceEditor(_EntryListEditor):
             start_date=start.text().strip(),
             end_date=end.text().strip(),
             responsibilities=responsibilities,
+            source=(existing.source if existing and existing.source else SOURCE_MANUAL),
         )
         if not entry.title and not entry.company:
             return None
@@ -282,4 +285,5 @@ class CertificateEditor(_EntryListEditor):
             name=name.text().strip(),
             issuer=issuer.text().strip(),
             date=date.text().strip(),
+            source=(existing.source if existing and existing.source else SOURCE_MANUAL),
         )

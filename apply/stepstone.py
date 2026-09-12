@@ -45,8 +45,16 @@ class StepstoneApplier(BaseApplier):
         self._fill_identity_fields(
             profile,
             first_name="input[name*='first'], input[id*='firstName']",
-            last_name="input[name*='last'], input[id*='lastName']",
+            last_name="input[name*='last_name' i], input[name*='lastName'], input[id*='lastName'], input[name*='nachname' i]",
             resume_pdf_path=resume_pdf_path,
         )
-        self._fill_cover_letter(cover_letter_text, ["textarea"])
+        self._fill_cover_letter(cover_letter_text, ["textarea[name*='cover'], textarea[id*='cover'], textarea[name*='anschreiben'], textarea[placeholder*='Anschreiben']"])
+        unknown = self._unknown_required_fields(profile)
+        if unknown:
+            return ApplyResult(
+                success=False,
+                needs_review=True,
+                manual_required=True,
+                error_message=f"Unknown required fields: {', '.join(unknown)}",
+            )
         return self._maybe_submit("button[type='submit'], button:has-text('Bewerbung absenden')")

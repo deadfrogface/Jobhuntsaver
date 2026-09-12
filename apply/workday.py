@@ -62,6 +62,14 @@ class WorkdayApplier(BaseApplier):
                 timeout=1500,
             )
             if submit:
+                unknown = self._unknown_required_fields(profile)
+                if unknown:
+                    return ApplyResult(
+                        success=False,
+                        needs_review=True,
+                        manual_required=True,
+                        error_message=f"Unknown required fields: {', '.join(unknown)}",
+                    )
                 return self._maybe_submit(
                     "button[data-automation-id='pageFooterNextButton']:has-text('Submit'), button:has-text('Submit')"
                 )

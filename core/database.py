@@ -103,6 +103,7 @@ class Database:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
+        self.recover_interrupted_state()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -151,6 +152,28 @@ class Database:
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_jobs_run_id ON jobs(run_id)"
                 )
+
+
+    def recover_interrupted_state(self) -> None:
+        """Heal rows left mid-flight after a crash / force-kill."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE jobs SET status = ?, updated_at = ? WHERE status = ?",
+                ("needs_review", now, "applying"),
+            )
+            # search_runs may use finished_at NULL or empty string
+            try:
+                conn.execute(
+                    "UPDATE search_runs SET status = ?, finished_at = ? "
+                    "WHERE status = ? OR finished_at IS NULL OR finished_at = ''",
+                    ("interrupted", now, "running"),
+                )
+            except Exception:
+                pass
+
 
     def upsert_job(self, job: Job) -> None:
         data = job.to_dict()

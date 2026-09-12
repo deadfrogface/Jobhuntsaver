@@ -81,9 +81,13 @@ jobs:
           & "dist\Jobhuntsaver.exe"
           $code = $LASTEXITCODE
           if (Test-Path "dist\smoke_test_result.txt") { Get-Content "dist\smoke_test_result.txt" }
+          # Windowed EXEs can leave $LASTEXITCODE as $null; only fail on real non-zero codes.
           if ($null -ne $code -and $code -ne 0) { Write-Error "EXE smoke exit $code"; exit $code }
           $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
-          if ($result -notmatch "SMOKE_TEST_OK") { Write-Error "EXE smoke missing SMOKE_TEST_OK marker"; exit 1 }
+          if ($result -notmatch "SMOKE_TEST_OK") {
+            Write-Error "EXE smoke missing SMOKE_TEST_OK marker (exit=$code)"
+            exit 1
+          }
       - name: Packaged legacy DB migration (library + EXE smoke)
         shell: pwsh
         run: |
@@ -112,7 +116,6 @@ jobs:
           db = Path(r'$data') / 'jobs.db'
           cols = {r[1] for r in sqlite3.connect(db).execute('PRAGMA table_info(jobs)')}
           assert 'run_id' in cols, cols
-          # second start must remain ok
           print('legacy migration verified')
           "@
           Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue

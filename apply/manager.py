@@ -80,8 +80,13 @@ class ApplicationManager:
         mode = settings.mode
         submit = False
         if force_submit is not None:
-            submit = force_submit
-        elif mode == OperatingMode.FULLY_AUTOMATIC.value and not settings.dry_run:
+            # Force may request submit only when dry_run is off (safety never overridden).
+            submit = bool(force_submit) and not bool(settings.dry_run)
+        elif (
+            mode == OperatingMode.FULLY_AUTOMATIC.value
+            and not settings.dry_run
+            and bool(getattr(settings, "automatic_submission", False))
+        ):
             submit = True
 
         allowed, reason = self.can_auto_apply(job)
@@ -137,7 +142,7 @@ class ApplicationManager:
             return ApplyResult(success=False, error_message="already applied (safety)")
 
         cover = render_cover_letter(job, self.config)
-        cover_path = self.config.root / "private" / "cover_letters" / f"{job.id}.txt"
+        cover_path = self.config.root / "cover_letters" / f"{job.id}.txt"
         save_cover_letter(cover, cover_path)
         cv_path = Path(self.config.application.cv_path) if self.config.application.cv_path else None
         if cv_path and not cv_path.is_absolute():

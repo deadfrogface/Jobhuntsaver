@@ -222,6 +222,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, tr("app.name"), tr("msg.pipeline_running"))
             return
         cfg = config_override or self.config_service.load()
+        if bool(getattr(cfg.settings, "automation_paused", False)):
+            QMessageBox.information(self, tr("app.name"), tr("msg.automation_paused"))
+            return
         self.progress_label.setText(tr("status.running"))
         self.dashboard.set_status(tr("status.running"))
         self.dashboard.set_pipeline_running(True)

@@ -128,11 +128,24 @@ class BrowserManager:
             browser = getattr(self._context, "browser", None)
             if browser is not None and getattr(browser, "process", None):
                 self._chrome_pid = getattr(browser.process, "pid", None)
+                if self._chrome_pid:
+                    try:
+                        from desktop.services.shutdown import get_shutdown_manager
+                        get_shutdown_manager().register_pid(self._chrome_pid)
+                    except Exception:
+                        pass
         except Exception:
             pass
         return self._page
 
     def close(self) -> None:
+        if self._chrome_pid:
+            try:
+                from desktop.services.shutdown import get_shutdown_manager
+                get_shutdown_manager().unregister_pid(self._chrome_pid)
+            except Exception:
+                pass
+            self._chrome_pid = None
         if self._context:
             try:
                 self._context.close()

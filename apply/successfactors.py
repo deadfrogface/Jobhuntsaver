@@ -51,6 +51,14 @@ class SuccessFactorsApplier(BaseApplier):
 
         # Always use the central submit guard when a submit control is present.
         if self._wait_and_query(_SUBMIT_SEL, timeout=2000):
+            unknown = self._unknown_required_fields(profile)
+            if unknown:
+                return ApplyResult(
+                    success=False,
+                    needs_review=True,
+                    manual_required=True,
+                    error_message=f"Unknown required fields: {', '.join(unknown)}",
+                )
             result = self._maybe_submit(_SUBMIT_SEL)
             result.needs_review = True
             if not result.error_message:

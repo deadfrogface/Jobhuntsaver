@@ -209,14 +209,16 @@ def normalize_to_annual_gross_eur(
 
     if text:
         parsed_val, text_unit, status = _extract_from_text(text)
+        # Ambiguous ranges must never hard-reject — even when salary_min is set
+        # (Indeed/BA often populate min from the range low end).
+        if status == "ambiguous salary range":
+            return None, status
         if parsed_val is None:
             # Fall through to numeric value if provided
             if value is None or value == "":
                 return None, status
         else:
             use_unit = explicit_unit or text_unit
-            if use_unit is None and status == "ambiguous salary range":
-                return None, status
             if use_unit is None:
                 annual, how = _to_annual(parsed_val, None)
                 return annual, how

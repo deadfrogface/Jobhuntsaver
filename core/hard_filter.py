@@ -58,21 +58,19 @@ def hard_exclude(job: Job, config: AppConfig, already_applied: bool = False) -> 
         if ind and ind in combined:
             return f"excluded industry: {ind}"
 
-    # Distance rules
+    # Distance / remote / hybrid rules — allow flags apply even within radius.
     is_remote = job.remote_type == RemoteType.REMOTE.value
     is_hybrid = job.remote_type == RemoteType.HYBRID.value
+    if is_remote and not loc.allow_remote_germany:
+        return "remote not allowed"
+    if is_hybrid and not loc.allow_hybrid:
+        return "hybrid not allowed"
     if is_remote and loc.allow_remote_germany:
-        pass  # ignore distance
-    else:
-        if job.distance_km is not None and job.distance_km > loc.max_distance_km:
-            if is_hybrid and not loc.allow_hybrid:
-                return "hybrid not allowed"
-            if is_remote and not loc.allow_remote_germany:
-                return "remote not allowed"
-            if not is_remote:
-                return f"over {loc.max_distance_km} km away ({job.distance_km} km)"
-            if is_hybrid:
-                return f"hybrid over {loc.max_distance_km} km ({job.distance_km} km)"
+        pass  # remote may ignore physical distance
+    elif job.distance_km is not None and job.distance_km > loc.max_distance_km:
+        if is_hybrid:
+            return f"hybrid over {loc.max_distance_km} km ({job.distance_km} km)"
+        return f"over {loc.max_distance_km} km away ({job.distance_km} km)"
 
     published = _parse_date(job.published_at)
     if published:

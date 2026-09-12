@@ -23,8 +23,13 @@ from desktop.pages.profile_sections import (
     LocationWorkSection,
     QualificationsSection,
 )
+from core.salary import normalize_to_annual_gross_eur
 from desktop.services import ConfigService
-from desktop.services.profile_merge import clear_cv_personal, keep_manual_qualifications
+from desktop.services.profile_merge import (
+    clear_cv_personal,
+    keep_manual_qualifications,
+    sync_application_summaries,
+)
 from desktop.widgets.cv_import_dialog import CvImportDialog
 from desktop.widgets.scroll_page import wrap_scrollable
 
@@ -207,6 +212,15 @@ class ProfilePage(QWidget):
             if parts:
                 p.location.home_address = ", ".join(parts)
                 self.location_work.home_address.setText(p.location.home_address)
+
+        sync_application_summaries(a, p.qualifications)
+
+        # Keep Mindestgehalt and free-text Gehaltsvorstellung from drifting apart.
+        annual, _why = normalize_to_annual_gross_eur(text=a.salary_expectation or "")
+        if annual and not p.employment.minimum_salary:
+            p.employment.minimum_salary = float(annual)
+        elif p.employment.minimum_salary and not (a.salary_expectation or "").strip():
+            a.salary_expectation = f"{int(p.employment.minimum_salary)} EUR brutto/Jahr"
 
         errors = self.config_service.validate(cfg)
         if errors:

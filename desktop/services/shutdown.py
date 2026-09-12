@@ -26,6 +26,7 @@ class ApplicationShutdownManager:
         self._workers: list[Any] = []  # objects with request_cancel/cancel
         self._browsers: list[Any] = []  # BrowserManager-like
         self._processes: list[subprocess.Popen] = []
+        self._pids: list[int] = []
         self._callbacks: list[Callable[[], None]] = []
         self._tray: Any = None
         self._log = logger
@@ -42,6 +43,7 @@ class ApplicationShutdownManager:
             self._workers.clear()
             self._browsers.clear()
             self._processes.clear()
+            self._pids.clear()
             self._callbacks.clear()
             self._tray = None
 
@@ -64,6 +66,23 @@ class ApplicationShutdownManager:
         with self._lock:
             if proc is not None and proc not in self._processes:
                 self._processes.append(proc)
+
+    def register_pid(self, pid: int | None) -> None:
+        """Track a raw PID (e.g. Playwright Chromium) for best-effort kill on exit."""
+        if not pid:
+            return
+        with self._lock:
+            if pid not in self._pids:
+                self._pids.append(int(pid))
+
+    def unregister_pid(self, pid: int | None) -> None:
+        if not pid:
+            return
+        with self._lock:
+            try:
+                self._pids.remove(int(pid))
+            except ValueError:
+                pass
 
     def register_callback(self, callback: Callable[[], None]) -> None:
         with self._lock:
@@ -198,6 +217,17 @@ class ApplicationShutdownManager:
         with self._lock:
             procs = list(self._processes)
             self._processes.clear()
+            pids = list(self._pids)
+            self._pids.clear()
+        for pid in pids:
+            try:
+                import os
+                import signal
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError) as exc:
+                self._log.debug("PID %s already gone: %s", pid, exc)
+            except Exception as exc:  # noqa: BLE001
+                self._log.warning("PID cleanup failed for %s: %s", pid, exc)
         for proc in procs:
             try:
                 if proc.poll() is not None:
