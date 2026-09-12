@@ -17,7 +17,8 @@ Third-party source acknowledgements
 
 Portions of the job discovery adapters (especially Bundesagentur für Arbeit /
 Arbeitsagentur REST client patterns, JobSpy wrapper ideas, StepStone/XING
-scraping approach, and hard-filter patterns) are adapted from:
+scraping approach including JSON-LD ItemList / HTML card fallbacks / pagination,
+and hard-filter patterns) are adapted from:
 
   https://github.com/jason-huanghao/jobradar
   Copyright (C) JobRadar contributors
@@ -27,7 +28,9 @@ scraping approach, and hard-filter patterns) are adapted from:
 
 Portions of the browser automation and ATS application adapters
 (Greenhouse, Lever, Ashby, Indeed, LinkedIn, Workday), browser session
-management, ATS URL detection, and document text extraction are adapted from:
+management, ATS URL detection, document text extraction, and later German
+ATS field-fill patterns (Personio / SmartRecruiters / SuccessFactors) are
+adapted from:
 
   https://github.com/AbhishekMandapmalvi/AutoApply
   Copyright (C) 2026 Abhishek Mandapmalvi
@@ -35,3 +38,7 @@ management, ATS URL detection, and document text extraction are adapted from:
 
 The MIT License permission notice and copyright must be retained for those
 portions. Electron/Flask frontend code from AutoApply is not included.
+
+Auto-Fill-Forms (https://github.com/w4seemdev/Auto-Fill-Forms) was inspected
+for ATS coverage ideas only; no code or playbook text was copied (no license).
+OpenResume and pyresparser were evaluated and not vendored.

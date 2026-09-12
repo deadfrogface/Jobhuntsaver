@@ -118,7 +118,11 @@ def build_application_preview(job: Job, config: AppConfig) -> ApplicationPreview
         cover = f"(Anschreiben konnte nicht gerendert werden: {exc})"
 
     warnings: list[str] = []
-    if support != "supported":
+    if support == "partially_supported":
+        warnings.append(
+            "Teilweise Automatisierung — Felder werden vorausgefüllt; Abschluss prüfen."
+        )
+    elif support != "supported":
         warnings.append(
             "Automatisierung für dieses ATS ist nicht verfügbar — manuell öffnen/abschließen."
         )
