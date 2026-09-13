@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal
 
 from core.config import AppConfig
 from desktop.services.browser_install import check_browser, repair_browser
@@ -91,6 +91,28 @@ class BrowserRepairWorker(QObject):
 BrowserInstallWorker = BrowserRepairWorker
 
 
+
+def thread_is_running(thread: QThread | None) -> bool:
+    """True if *thread* is a live, running QThread (never raises on deleted C++)."""
+    if thread is None:
+        return False
+    try:
+        return bool(thread.isRunning())
+    except RuntimeError:
+        # C++ QThread already destroyed (e.g. after deleteLater).
+        return False
+
+
+def connect_queued(signal, slot) -> None:
+    """Always queue cross-thread UI updates onto the receiver thread.
+
+    Plain Python callables connected without an explicit type can run in the
+    *emitter* thread under PySide6 — which mutates QWidgets off the GUI thread
+    and causes QObject/QTextDocument/QBasicTimer affinity errors.
+    """
+    signal.connect(slot, Qt.ConnectionType.QueuedConnection)
+
+
 def start_worker(worker: QObject, slot_name: str = "run") -> QThread:
     thread = QThread()
     worker.moveToThread(thread)
@@ -111,6 +133,10 @@ def start_worker(worker: QObject, slot_name: str = "run") -> QThread:
                 mgr._threads.remove(thread)
             if worker in mgr._workers:
                 mgr._workers.remove(worker)
+        try:
+            worker.deleteLater()
+        except RuntimeError:
+            pass
         try:
             thread.deleteLater()
         except RuntimeError:

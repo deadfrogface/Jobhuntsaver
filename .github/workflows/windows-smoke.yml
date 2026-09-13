@@ -54,8 +54,6 @@ jobs:
       - name: Privacy scan
         run: python scripts/privacy_scan.py
       - name: Build onefile EXE
-        env:
-          JOBHUNTSAVER_CI_CONSOLE: "1"
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
           if (!(Test-Path "dist\Jobhuntsaver.exe")) { Write-Error "EXE missing"; exit 1 }
@@ -67,8 +65,16 @@ jobs:
           size=$($item.Length)
           sha256=$hash
           python=3.12
+          console=false
           "@ | Set-Content dist\build_metadata.txt
           Get-Content dist\build_metadata.txt
+          # Fail if this is a console subsystem EXE (users must not see a terminal).
+          $bytes = [System.IO.File]::ReadAllBytes("dist\Jobhuntsaver.exe")
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
+          # 2 = WINDOWS_GUI, 3 = WINDOWS_CUI
+          if ($subsystem -ne 2) { Write-Error "EXE subsystem=$subsystem (expected 2=WINDOWS_GUI / noconsole)"; exit 1 }
+          Write-Host "EXE subsystem=WINDOWS_GUI (noconsole) OK"
         shell: pwsh
       - name: Packaged EXE smoke-test (isolated LOCALAPPDATA)
         shell: pwsh

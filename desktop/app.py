@@ -116,9 +116,29 @@ def run() -> int:
     try:
         from desktop.paths import ensure_app_dirs
 
-        setup_logging(ensure_app_dirs()["logs"])
+        _dirs = ensure_app_dirs()
+        setup_logging(_dirs["logs"])
     except Exception:
+        _dirs = {}
         setup_logging()
+
+    # Windowed EXE has no console — uncaught exceptions must hit the log file.
+    import logging
+    import traceback
+
+    _prev_hook = sys.excepthook
+
+    def _excepthook(exc_type, exc, tb) -> None:  # noqa: ANN001
+        try:
+            logging.getLogger("jobhuntsaver").error(
+                "Uncaught exception:\n%s",
+                "".join(traceback.format_exception(exc_type, exc, tb)),
+            )
+        except Exception:
+            pass
+        _prev_hook(exc_type, exc, tb)
+
+    sys.excepthook = _excepthook
 
     shutdown = get_shutdown_manager()
     app.aboutToQuit.connect(lambda: shutdown.shutdown(reason="aboutToQuit"))
