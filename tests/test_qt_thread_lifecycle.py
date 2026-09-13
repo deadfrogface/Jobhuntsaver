@@ -45,8 +45,18 @@ def test_thread_is_running_after_quit(qapp) -> None:
 
 
 def test_connect_queued_delivers_on_gui_thread(qapp) -> None:
+    """Bare callable must run on GUI thread even when signal emits from QThread."""
+
     class Emitter(QObject):
         ping = Signal(str)
+
+    class BackgroundEmitter(QObject):
+        def __init__(self, emitter: Emitter) -> None:
+            super().__init__()
+            self._emitter = emitter
+
+        def run(self) -> None:
+            self._emitter.ping.emit("hello")
 
     emitter = Emitter()
     seen: list[tuple[str, QThread]] = []
@@ -56,16 +66,29 @@ def test_connect_queued_delivers_on_gui_thread(qapp) -> None:
         seen.append((msg, QThread.currentThread()))
 
     connect_queued(emitter.ping, slot)
-    emitter.ping.emit("hello")
-    for _ in range(30):
+
+    worker = BackgroundEmitter(emitter)
+    thread = QThread()
+    worker.moveToThread(thread)
+    # Keep emitter on the worker thread so emit originates off-GUI.
+    emitter.moveToThread(thread)
+    thread.started.connect(worker.run)
+    thread.start()
+
+    for _ in range(100):
         if seen:
             break
         qapp.processEvents()
-        QThread.msleep(5)
+        QThread.msleep(10)
+
+    thread.quit()
+    assert thread.wait(5000)
 
     assert seen, "queued slot was not invoked"
     assert seen[0][0] == "hello"
-    assert seen[0][1] is main_thread
+    assert seen[0][1] is main_thread, (
+        f"slot ran on {seen[0][1]!r}, expected GUI thread {main_thread!r}"
+    )
 
 
 def test_spec_defaults_to_windowed_production_exe() -> None:

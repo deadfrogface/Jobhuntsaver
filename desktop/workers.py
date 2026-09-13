@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 
 from core.config import AppConfig
 from desktop.services.browser_install import check_browser, repair_browser
@@ -91,6 +91,43 @@ class BrowserRepairWorker(QObject):
 BrowserInstallWorker = BrowserRepairWorker
 
 
+class _GuiDispatchHub(QObject):
+    """GUI-thread receiver: QueuedConnection to @Slot has real thread affinity.
+
+    Bare Python callables connected with QueuedConnection alone have *no* receiver
+    QObject, so PySide6 may still invoke them on the emitter (worker) thread.
+    """
+
+    invoke = Signal(object)  # zero-arg callable
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._forwards: list = []
+        self.invoke.connect(self._execute, Qt.ConnectionType.QueuedConnection)
+
+    @Slot(object)
+    def _execute(self, fn: object) -> None:
+        if callable(fn):
+            fn()
+
+
+_gui_hub: _GuiDispatchHub | None = None
+
+
+def _dispatch_hub() -> _GuiDispatchHub:
+    """Return a process-wide hub living on the GUI (QApplication) thread."""
+    global _gui_hub
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if _gui_hub is None:
+        _gui_hub = _GuiDispatchHub()
+        if app is not None:
+            _gui_hub.moveToThread(app.thread())
+    elif app is not None and _gui_hub.thread() is not app.thread():
+        _gui_hub.moveToThread(app.thread())
+    return _gui_hub
+
 
 def thread_is_running(thread: QThread | None) -> bool:
     """True if *thread* is a live, running QThread (never raises on deleted C++)."""
@@ -104,13 +141,21 @@ def thread_is_running(thread: QThread | None) -> bool:
 
 
 def connect_queued(signal, slot) -> None:
-    """Always queue cross-thread UI updates onto the receiver thread.
+    """Always deliver *slot* on the GUI thread.
 
-    Plain Python callables connected without an explicit type can run in the
-    *emitter* thread under PySide6 — which mutates QWidgets off the GUI thread
-    and causes QObject/QTextDocument/QBasicTimer affinity errors.
+    Uses a GUI-affinity QObject hub (signal→@Slot) so plain callables and nested
+    functions cannot run on the worker/emitter thread.
     """
-    signal.connect(slot, Qt.ConnectionType.QueuedConnection)
+    hub = _dispatch_hub()
+
+    def _forward(*args, **kwargs) -> None:
+        # May run on the emitter thread — only package work for the hub.
+        captured_args = args
+        captured_kwargs = kwargs
+        hub.invoke.emit(lambda: slot(*captured_args, **captured_kwargs))
+
+    hub._forwards.append(_forward)
+    signal.connect(_forward)
 
 
 def start_worker(worker: QObject, slot_name: str = "run") -> QThread:
