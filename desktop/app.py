@@ -204,6 +204,43 @@ def _run_once_headless() -> int:
     return 0
 
 
+def _smoke_result_paths() -> list[Path]:
+    """Marker files for packaged smoke (AppData first, then next to EXE).
+
+    Windowed onefile bootloaders may return before the child finishes; CI must
+    poll these markers (and a per-run token) instead of trusting process exit.
+    Writing under LOCALAPPDATA isolates concurrent / overlapping smoke runs.
+    """
+    paths: list[Path] = []
+    local = (os.environ.get("LOCALAPPDATA") or "").strip()
+    if local:
+        paths.append(Path(local) / "Jobhuntsaver" / "smoke_test_result.txt")
+    try:
+        paths.append(Path(sys.executable).resolve().parent / "smoke_test_result.txt")
+    except Exception:
+        pass
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    out: list[Path] = []
+    for p in paths:
+        key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _write_smoke_result(lines: list[str]) -> None:
+    text = "\n".join(lines)
+    for path in _smoke_result_paths():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except Exception:
+            continue
+
+
 def _smoke_test() -> int:
     """Packaged/CI smoke: offscreen Qt + MainWindow + DB schema, then exit 0.
 
@@ -212,13 +249,12 @@ def _smoke_test() -> int:
     LOCALAPPDATA was left at the process default (CI must always override it).
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    token = (os.environ.get("JOBHUNTSAVER_SMOKE_TOKEN") or "").strip()
     lines: list[str] = ["SMOKE_START"]
-    log_path = Path(sys.executable).resolve().parent / "smoke_test_result.txt"
-    try:
-        # Write early so CI can distinguish boot crash vs later failure.
-        log_path.write_text("\n".join(lines), encoding="utf-8")
-    except Exception:
-        pass
+    if token:
+        lines.append(f"token={token}")
+    # Write early so CI can distinguish boot crash vs later failure.
+    _write_smoke_result(lines)
     try:
         from PySide6.QtWidgets import QApplication
 
@@ -267,17 +303,14 @@ def _smoke_test() -> int:
         lines.append(f"db={cfg.db_path}")
         lines.append(f"pages={window.stack.count()}")
         lines.append("SMOKE_TEST_OK")
-        log_path.write_text("\n".join(lines), encoding="utf-8")
+        _write_smoke_result(lines)
         print("\n".join(lines), flush=True)
         window.close()
         app.quit()
         return 0
     except Exception as exc:  # noqa: BLE001
         lines.append(f"FAIL: {exc}")
-        try:
-            log_path.write_text("\n".join(lines), encoding="utf-8")
-        except Exception:
-            pass
+        _write_smoke_result(lines)
         print("\n".join(lines), flush=True)
         return 1
 

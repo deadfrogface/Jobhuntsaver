@@ -64,16 +64,8 @@ jobs:
         shell: pwsh
         run: |
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-rel-$([guid]::NewGuid())"
-          $env:LOCALAPPDATA = $tmp.FullName
-          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
           $env:QT_QPA_PLATFORM = "offscreen"
-          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
-          & "dist\Jobhuntsaver.exe"
-          $code = $LASTEXITCODE
-          if (Test-Path "dist\smoke_test_result.txt") { Get-Content "dist\smoke_test_result.txt" }
-          if ($null -ne $code -and $code -ne 0) { exit $code }
-          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
-          if ($result -notmatch "SMOKE_TEST_OK") { Write-Error "EXE smoke missing SMOKE_TEST_OK"; exit 1 }
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Jobhuntsaver.exe") -LocalAppData $tmp.FullName
       - name: Upload Jobhuntsaver.exe
         uses: actions/upload-artifact@v4
         with:
