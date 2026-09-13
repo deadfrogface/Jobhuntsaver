@@ -70,7 +70,12 @@ class ApplicationManager:
         }.items() if not v]
         if missing:
             return False, f"missing profile fields: {', '.join(missing)}"
-        ats = job.ats_type or ATSDetector.detect(job.application_url or job.url)
+        # Treat stored "unknown" like empty so URL re-detection can still win.
+        ats = (
+            job.ats_type
+            if job.ats_type and job.ats_type != "unknown"
+            else ATSDetector.detect(job.application_url or job.url)
+        )
         if ats == "unknown" or ats not in APPLIERS:
             return False, f"ATS unsupported: {ats}"
         return True, "ok"

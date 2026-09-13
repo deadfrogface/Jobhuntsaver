@@ -94,8 +94,12 @@ class BaseApplier(ABC):
         for selector in (
             "iframe[src*='captcha']",
             "iframe[src*='recaptcha']",
+            "iframe[src*='challenges.cloudflare']",
+            "iframe[src*='turnstile']",
             "#captcha",
             ".g-recaptcha",
+            ".cf-turnstile",
+            "[name='cf-turnstile-response']",
             "[data-sitekey]",
         ):
             if self.page.query_selector(selector):
@@ -339,11 +343,15 @@ class BaseApplier(ABC):
         """Return required empty fields that are not identity/CV and not in profile.answers."""
         unknown: list[str] = []
         for el in self.page.query_selector_all(
-            "input[required], textarea[required], select[required]"
+            "input[required], textarea[required], select[required], "
+            "input[aria-required='true'], textarea[aria-required='true'], "
+            "select[aria-required='true']"
         ):
             try:
                 name = (el.get_attribute("name") or el.get_attribute("id") or "").lower()
                 if not name:
+                    # Nameless required controls still block auto-submit.
+                    unknown.append("unnamed_required")
                     continue
                 if any(k in name for k in skip_tokens):
                     continue

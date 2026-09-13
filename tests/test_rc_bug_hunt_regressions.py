@@ -380,3 +380,74 @@ def test_base_cover_letter_default_selectors_exclude_bare_textarea():
     assert "\n                \"textarea\",\n" not in src
     assert "\n                'textarea',\n" not in src
 
+
+def test_eg10_and_from_salary_are_unknown_not_hourly():
+    from core.salary import normalize_to_annual_gross_eur
+
+    annual, reason = normalize_to_annual_gross_eur(text="EG 10")
+    assert annual is None
+    assert "pay-scale" in reason or "collective" in reason
+    annual2, reason2 = normalize_to_annual_gross_eur(text="ab 14,50 €")
+    assert annual2 is None
+    assert "floor" in reason2 or "from" in reason2
+
+
+def test_ats_marketing_hosts_and_query_strings_are_not_false_positives():
+    from apply.detector import ATSDetector
+
+    assert ATSDetector.detect("https://www.ashbyhq.com/pricing") == "unknown"
+    assert ATSDetector.detect("https://jobs.ashbyhq.com/acme/abc") == "ashby"
+    assert ATSDetector.detect("https://www.successfactors.com/") == "unknown"
+    assert ATSDetector.detect("https://careerxxx.successfactors.eu/career") == "successfactors"
+    assert ATSDetector.detect("https://www.sap.com/careers?utm_source=sapsf.com") == "unknown"
+    assert ATSDetector.detect("https://example.com/?next=https://boards.greenhouse.io/x/jobs/1") == "unknown"
+    assert ATSDetector.detect("https://www.softgarden.de/en/product/") == "unknown"
+    assert ATSDetector.detect("https://join.com/") == "unknown"
+
+
+def test_stored_unknown_ats_type_is_re_detected_from_url(tmp_path: Path):
+    from apply.manager import ApplicationManager
+    from core.config import empty_app_config
+    from core.database import Database
+    from core.models import Job
+
+    cfg = empty_app_config(root=tmp_path)
+    cfg.application.first_name = "Max"
+    cfg.application.last_name = "Mustermann"
+    cfg.application.email = "max@example.com"
+    cfg.application.phone = "0123"
+    cfg.application.cv_path = str(tmp_path / "cv.pdf")
+    (tmp_path / "cv.pdf").write_bytes(b"%PDF")
+    cfg.settings.minimum_match_for_auto_apply = 50
+    db = Database(tmp_path / "t.db", recover=False)
+    mgr = ApplicationManager(cfg, db)
+    job = Job(
+        id="1",
+        title="Dev",
+        company="Acme",
+        url="https://boards.greenhouse.io/acme/jobs/1",
+        application_url="https://boards.greenhouse.io/acme/jobs/1",
+        ats_type="unknown",
+        match_score=90,
+    )
+    ok, reason = mgr.can_auto_apply(job)
+    assert ok is True, reason
+    assert reason == "ok"
+
+
+def test_captcha_detector_includes_turnstile():
+    import inspect
+    from apply.base import BaseApplier
+
+    src = inspect.getsource(BaseApplier._detect_captcha)
+    assert "turnstile" in src.lower() or "cf-turnstile" in src
+
+
+def test_unknown_required_includes_nameless_and_aria_required():
+    import inspect
+    from apply.base import BaseApplier
+
+    src = inspect.getsource(BaseApplier._unknown_required_fields)
+    assert "unnamed_required" in src
+    assert "aria-required" in src
+

@@ -159,8 +159,15 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
     if any(p in low for p in _UNKNOWN_PHRASES):
         return None, None, "salary unknown / negotiable"
     # Collective agreements / pay grades are not convertible to a number.
-    if re.search(r"\b(tv[öo]d|tv\-?l|tv\-?a|eg\s*\d|e\d{1,2}\b|entgeltgruppe|tarif)\b", low):
+    # Use {1,2} so "EG 10"/"EG 13" stay pay-scale (not €10/h).
+    if re.search(
+        r"\b(tv[öo]d|tv\-?l|tv\-?a|eg\s*\d{1,2}\b|e\d{1,2}\b|entgeltgruppe|tarif)\b",
+        low,
+    ):
         return None, None, "pay-scale / collective agreement (unknown amount)"
+    # Floor/"from" amounts ("ab 14,50 €") are not exact salaries.
+    if re.search(r"(?i)\b(ab|from|starting(?:\s+at)?|mindestens)\b", low):
+        return None, None, "salary floor / 'from' amount (unknown exact)"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
     unit = _detect_unit_in_text(cleaned)
