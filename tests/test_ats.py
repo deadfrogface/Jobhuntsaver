@@ -12,4 +12,5 @@ def test_detect_known_ats():
     assert ATSDetector.detect("https://www.stepstone.de/stellenangebote--x") == "stepstone"
     assert ATSDetector.detect("https://jobs.smartrecruiters.com/x") == "smartrecruiters"
     assert ATSDetector.detect("https://careerxxx.successfactors.eu/career") == "successfactors"
+    assert ATSDetector.detect("https://www.sap.com/about/careers.html") == "unknown"
     assert ATSDetector.detect("https://example.com/jobs/1") == "unknown"
