@@ -325,3 +325,15 @@ def test_personio_cover_letter_selectors_are_not_bare_textarea():
     assert '["textarea"]' not in src
     assert "cover" in src.lower() or "anschreiben" in src.lower()
 
+
+def test_base_cover_letter_default_selectors_exclude_bare_textarea():
+    import inspect
+    from apply.base import BaseApplier
+
+    src = inspect.getsource(BaseApplier._fill_cover_letter)
+    assert '"textarea"' not in src.replace("textarea[", "").replace("textarea]", "")
+    # Explicitly ensure bare catch-all is gone
+    assert "Never fall back to bare" in src or "anschreiben" in src.lower()
+    assert "\n                \"textarea\",\n" not in src
+    assert "\n                'textarea',\n" not in src
+

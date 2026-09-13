@@ -69,7 +69,9 @@ class IndeedApplier(BaseApplier):
                     "textarea[name*='cover']",
                     "textarea[id*='cover']",
                     "textarea[aria-label*='cover']",
-                    "textarea",
+                    "textarea[placeholder*='cover']",
+                    "textarea[name*='anschreiben']",
+                    "textarea[placeholder*='Anschreiben']",
                 ],
             )
             submit = self._wait_and_query(_SUBMIT_SEL, timeout=1500)

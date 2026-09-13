@@ -291,13 +291,20 @@ class BaseApplier(ABC):
         if not text:
             return False
         if selectors is None:
+            # Never fall back to bare ``textarea`` — that can overwrite
+            # unknown required questions / notes fields with cover-letter text.
             selectors = [
-                "textarea[name*='cover_letter']",
-                "textarea[id*='cover_letter']",
-                "textarea[name*='cover']",
-                "textarea[id*='cover']",
+                "textarea[name*='cover_letter' i]",
+                "textarea[id*='cover_letter' i]",
+                "textarea[name*='cover' i]",
+                "textarea[id*='cover' i]",
+                "textarea[name*='anschreiben' i]",
+                "textarea[id*='anschreiben' i]",
+                "textarea[placeholder*='cover' i]",
+                "textarea[placeholder*='Anschreiben' i]",
+                "textarea[aria-label*='cover' i]",
+                "textarea[aria-label*='Anschreiben' i]",
                 "#cover_letter",
-                "textarea",
             ]
         if isinstance(selectors, str):
             selectors = [selectors]
