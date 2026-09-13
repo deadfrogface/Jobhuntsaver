@@ -82,18 +82,25 @@ class BundesagenturSource(JobSource):
             return False, str(exc)
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
+        if not queries:
+            raise ValueError("empty query list — refusing Bundesagentur search")
         all_jobs: list[Job] = []
         seen: set[str] = set()
+        errors: list[str] = []
         for query in queries:
             try:
                 batch = self._search_one(query)
             except Exception as exc:
                 logger.error("Bundesagentur query '%s' failed: %s", query.keyword, exc)
+                errors.append(f"{query.keyword}: {exc}")
                 continue
             for job in batch:
                 if job.id not in seen:
                     seen.add(job.id)
                     all_jobs.append(job)
+        # If every query failed, do NOT pretend this was a successful empty result.
+        if not all_jobs and errors and len(errors) == len(queries):
+            raise RuntimeError("; ".join(errors[:3]))
         return all_jobs
 
     def _search_one(self, query: SearchQuery) -> list[Job]:

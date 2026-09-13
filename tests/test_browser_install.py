@@ -50,3 +50,34 @@ def test_check_browser_finds_fake_chrome(monkeypatch, tmp_path):
     ok, msg = bi.check_browser()
     assert ok is True
     assert "chrome.exe" in msg
+
+
+def test_repair_browser_never_uses_frozen_sys_executable(monkeypatch, tmp_path):
+    """Packaged EXE must not relaunch itself via sys.executable -m playwright."""
+    import desktop.services.browser_install as bi
+
+    monkeypatch.setattr(bi, "is_frozen", lambda: True)
+    monkeypatch.setattr(bi, "preferred_browsers_dir", lambda: tmp_path)
+    monkeypatch.setattr(bi.sys, "executable", str(tmp_path / "Jobhuntsaver.exe"))
+
+    calls = []
+
+    def fake_driver():
+        # Legitimate driver path, distinct from the frozen EXE
+        return [str(tmp_path / "playwright_driver"), "cli"]
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        class P:
+            returncode = 0
+            stdout = "ok"
+            stderr = ""
+        return P()
+
+    monkeypatch.setattr(bi, "_playwright_driver_command", fake_driver)
+    monkeypatch.setattr(bi.subprocess, "run", fake_run)
+    monkeypatch.setattr(bi, "find_chromium_executable", lambda *a, **k: tmp_path / "chrome.exe")
+    ok, msg = bi.repair_browser()
+    assert calls, msg
+    assert calls[0][0] != str(tmp_path / "Jobhuntsaver.exe")
+    assert "-m" not in calls[0]

@@ -143,6 +143,8 @@ class DashboardPage(QWidget):
     def set_pipeline_running(self, running: bool) -> None:
         self.btn_search.setEnabled(not running)
         self.btn_cancel.setEnabled(running)
+        self.btn_apply.setEnabled(not running)
+        self.btn_test.setEnabled(not running)
         self.btn_clear_jobs.setEnabled(not running)
 
     def refresh(self) -> None:

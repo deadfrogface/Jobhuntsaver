@@ -53,6 +53,9 @@ class CareerSection(QGroupBox):
         self.lbl_industries_ex = QLabel()
         form.addRow(self.lbl_desired, self.desired_titles)
         form.addRow(self.lbl_alt, self.alt_titles)
+        self.suggest_titles_btn = QPushButton()
+        self.suggest_titles_btn.setObjectName("SecondaryButton")
+        form.addRow("", self.suggest_titles_btn)
         form.addRow(self.lbl_unwanted, self.unwanted_titles)
         form.addRow(self.lbl_industries, self.desired_industries)
         form.addRow(self.lbl_industries_ex, self.excluded_industries)
@@ -278,7 +281,13 @@ class LocationWorkSection(QGroupBox):
         employment: EmploymentConfig,
         filters: FiltersConfig,
     ) -> None:
-        location.home_address = self.home_address.text().strip()
+        new_home = self.home_address.text().strip()
+        if new_home != (location.home_address or "").strip():
+            # Address changed → invalidate cached coordinates so we never keep
+            # stale geocodes (and never silently fall back to generic DE coords).
+            location.home_latitude = None
+            location.home_longitude = None
+        location.home_address = new_home
         location.max_distance_km = float(self.max_distance.value())
         location.allow_remote_germany = self.allow_remote.isChecked()
         location.allow_hybrid = self.allow_hybrid.isChecked()

@@ -188,6 +188,34 @@ def run_pipeline(
     all_jobs = []
     source_errors: list[str] = []
     source_results: dict[str, dict] = {}
+    if not queries:
+        msg = (
+            "Keine Suchanfragen: Bitte Wunschberufe und Wohnort/Remote in den "
+            "Einstellungen setzen. Quellen wurden nicht mit leeren Queries aufgerufen."
+        )
+        progress(msg)
+        run.warning(msg) if hasattr(run, "warning") else run.info(msg)
+        for source in sources:
+            placeholder = source.source_id == "company_sites"
+            status = SourceHealthStatus.PLACEHOLDER if placeholder else SourceHealthStatus.EMPTY_QUERY
+            note = "Nicht ausgeführt — leere Suchanfrage (Konfiguration)."
+            db.set_source_status(source.source_id, status.value, note, 0)
+            source_results[source.source_id] = {
+                "status": status.value,
+                "jobs": 0,
+                "error": note,
+            }
+        return {
+            "total": 0,
+            "cancelled": False,
+            "paused": False,
+            "source_errors": [msg],
+            "source_results": source_results,
+            "matches": 0,
+            "new": 0,
+            "applied": 0,
+            "config_error": "empty_queries",
+        }
     for source in sources:
         if stopped():
             cancelled = True

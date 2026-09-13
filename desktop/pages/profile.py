@@ -48,6 +48,7 @@ class ProfilePage(QWidget):
         outer.addWidget(wrap_scrollable(inner))
 
         self.career = CareerSection()
+        self.career.suggest_titles_btn.clicked.connect(self.suggest_titles_from_cv)
         self.experience = ExperienceSection()
         self.education = EducationSection()
         self.qualifications = QualificationsSection()
@@ -105,6 +106,67 @@ class ProfilePage(QWidget):
             sync_address_to_search=self.config_service.get_sync_address_to_search(),
         )
         self.cv.cv_label.setText(cfg.application.cv_path or tr("profile.no_cv"))
+
+
+    def suggest_titles_from_cv(self) -> None:
+        """Propose job titles from stored CV / qualifications — never overwrite manuals."""
+        from core.cv_parser import parse_cv_text
+        from core.job_title_suggestions import suggest_job_titles
+
+        cfg = self.config_service.load()
+        parsed: dict = {}
+        cv_path = (cfg.application.cv_path or "").strip()
+        if cv_path:
+            try:
+                from core.cv_extract import extract_text
+
+                text = extract_text(Path(cv_path))
+                parsed = parse_cv_text(text or "")
+            except Exception:
+                parsed = {}
+        if not parsed:
+            quals = cfg.profile.qualifications
+            parsed = {
+                "work_experience": [
+                    {
+                        "title": getattr(e, "title", "") or getattr(e, "value", ""),
+                        "description": getattr(e, "description", ""),
+                    }
+                    for e in (getattr(quals, "work_experience", None) or [])
+                ],
+                "education": [
+                    {
+                        "degree": getattr(e, "degree", "") or getattr(e, "value", ""),
+                        "field": getattr(e, "field", ""),
+                    }
+                    for e in (getattr(quals, "education", None) or [])
+                ],
+                "skills": [
+                    getattr(s, "value", s) for s in (getattr(quals, "skills", None) or [])
+                ],
+                "software": [
+                    getattr(s, "value", s) for s in (getattr(quals, "software", None) or [])
+                ],
+                "certificates": [
+                    getattr(s, "name", getattr(s, "value", s))
+                    for s in (getattr(quals, "certificates", None) or [])
+                ],
+            }
+        desired = list(self.career.desired_titles.get_items())
+        alt = list(self.career.alt_titles.get_items())
+        suggestions = suggest_job_titles(
+            parsed, existing_desired=desired, existing_alternative=alt
+        )
+        merged_d = list(dict.fromkeys(desired + suggestions.get("desired", [])))
+        merged_a = list(dict.fromkeys(alt + suggestions.get("alternative", [])))
+        self.career.desired_titles.set_items(merged_d)
+        self.career.alt_titles.set_items(merged_a)
+        unwanted = list(self.career.unwanted_titles.get_items())
+        if not unwanted:
+            self.career.unwanted_titles.set_items(
+                suggestions.get("exclusions_suggested", [])
+            )
+        QMessageBox.information(self, tr("app.name"), tr("msg.titles_suggested"))
 
     def select_cv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

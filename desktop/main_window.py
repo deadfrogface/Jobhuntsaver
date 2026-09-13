@@ -202,22 +202,26 @@ class MainWindow(QMainWindow):
         self.settings.load_from_config()
         self.logs.refresh()
 
-    def start_search(self) -> None:
-        self._start_pipeline(mode="search_only")
-
     def start_apply_run(self) -> None:
         cfg = self.config_service.load()
         mode = cfg.settings.mode
         if mode == "search_only":
             mode = "review_before_submit"
-        self._start_pipeline(mode=mode)
+        self._start_pipeline(mode=mode, action_label=tr("status.apply_starting"))
 
     def run_application_test(self) -> None:
         cfg = self.config_service.load()
         cfg.settings.dry_run = True
-        self._start_pipeline(mode="review_before_submit", config_override=cfg)
+        self._start_pipeline(
+            mode="review_before_submit",
+            config_override=cfg,
+            action_label=tr("status.apply_test_starting"),
+        )
 
-    def _start_pipeline(self, mode: str, config_override=None) -> None:
+    def start_search(self) -> None:
+        self._start_pipeline(mode="search_only", action_label=tr("status.search_starting"))
+
+    def _start_pipeline(self, mode: str, config_override=None, action_label: str | None = None) -> None:
         if self._thread and self._thread.isRunning():
             QMessageBox.information(self, tr("app.name"), tr("msg.pipeline_running"))
             return
@@ -225,8 +229,17 @@ class MainWindow(QMainWindow):
         if bool(getattr(cfg.settings, "automation_paused", False)):
             QMessageBox.information(self, tr("app.name"), tr("msg.automation_paused"))
             return
-        self.progress_label.setText(tr("status.running"))
-        self.dashboard.set_status(tr("status.running"))
+        titles = list(cfg.profile.jobs.desired_titles or []) + list(cfg.profile.jobs.alternative_titles or [])
+        if not titles:
+            QMessageBox.warning(self, tr("app.name"), tr("msg.no_job_titles"))
+            return
+        loc = cfg.profile.location
+        if not (loc.home_address or "").strip() and not loc.allow_remote_germany:
+            QMessageBox.warning(self, tr("app.name"), tr("msg.no_search_location"))
+            return
+        status = action_label or tr("status.running")
+        self.progress_label.setText(status)
+        self.dashboard.set_status(status)
         self.dashboard.set_pipeline_running(True)
         worker = PipelineWorker(cfg, mode=mode)
         thread = start_worker(worker)
@@ -250,8 +263,10 @@ class MainWindow(QMainWindow):
             )
             self.refresh_all()
             extra = ""
+            if stats.get("config_error") == "empty_queries":
+                extra = "\n" + tr("msg.empty_queries")
             if stats.get("source_errors"):
-                extra = "\n" + "\n".join(stats.get("source_errors") or [])
+                extra = (extra + "\n" if extra else "\n") + "\n".join(stats.get("source_errors") or [])
             if stats.get("home_warning"):
                 extra += "\n\n" + str(stats.get("home_warning"))
             if stats.get("ats_unknown") is not None:

@@ -13,8 +13,9 @@ class CompanySitesSource(JobSource):
     source_id = "company_sites"
 
     def health_check(self) -> tuple[bool, str]:
-        return True, "placeholder (no scrape in v1)"
+        return True, "placeholder — Firmenkarriereseiten sind in v1 nicht implementiert"
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         # Intentionally empty in v1 — curated company feeds can be added later.
+        # Callers must treat this source as PLACEHOLDER, never OK_EMPTY.
         return []

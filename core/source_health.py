@@ -8,6 +8,7 @@ from enum import Enum
 class SourceHealthStatus(str, Enum):
     OK_WITH_RESULTS = "OK_WITH_RESULTS"
     OK_EMPTY = "OK_EMPTY"
+    EMPTY_QUERY = "EMPTY_QUERY"
     TIMEOUT = "TIMEOUT"
     BLOCKED = "BLOCKED"
     PARSER_ERROR = "PARSER_ERROR"
@@ -34,6 +35,8 @@ class SourceHealthStatus(str, Enum):
             return cls.DISABLED
         if placeholder:
             return cls.PLACEHOLDER
+        if error and ("empty query" in error.lower() or "no search queries" in error.lower()):
+            return cls.EMPTY_QUERY
         if error:
             low = error.lower()
             if "timeout" in low or "timed out" in low:

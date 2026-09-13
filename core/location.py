@@ -346,7 +346,21 @@ def _age_seconds(cached_at: str | None) -> float | None:
 
 
 def _city_from_address(home_address: str) -> str:
-    parts = [p.strip() for p in home_address.split(",") if p.strip()]
+    """Extract a single usable city token from a home address.
+
+    Multi-city strings like "Berlin / Hamburg" or "Berlin, Hamburg und München"
+    must NOT be geocoded as one absurd query — take the first concrete city.
+    """
+    raw = (home_address or "").strip()
+    if not raw:
+        return ""
+    # Prefer first segment when users list alternatives.
+    for sep in ("/", ";", " und ", " oder ", " | "):
+        if sep in raw:
+            raw = raw.split(sep, 1)[0].strip()
+            break
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+
     for part in reversed(parts):
         low = part.lower()
         if low in {"germany", "deutschland", "de"}:
