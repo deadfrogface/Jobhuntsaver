@@ -393,6 +393,7 @@ def run_pipeline(
         return stats
 
     browser = None
+    apply_error: str | None = None
     try:
         progress("Browser starten…")
         browser = BrowserManager(
@@ -437,6 +438,8 @@ def run_pipeline(
                 stats["failed"] += 1
                 run.info(f"{label} → failed ({result.error_message})")
     except Exception as exc:
+        apply_error = str(exc)
+        stats["apply_error"] = apply_error
         run.error(f"Browser/apply pipeline error: {exc}")
         progress("Bewerbungslauf fehlgeschlagen. Details stehen in den Logs.")
     finally:
@@ -444,12 +447,21 @@ def run_pipeline(
             browser.close()
 
     stats["cancelled"] = cancelled
-    db.finish_search_run(run_id, "cancelled" if cancelled else "ok", stats)
+    if apply_error:
+        finish_status = "error"
+    elif cancelled:
+        finish_status = "cancelled"
+    else:
+        finish_status = "ok"
+    db.finish_search_run(run_id, finish_status, stats)
     run.info(
-        f"Finished: {stats['applied']} applications successful, "
+        f"Finished ({finish_status}): {stats['applied']} applications successful, "
         f"{stats['needs_review']} Needs Review, {stats['captcha']} CAPTCHA, {stats['failed']} Failed"
     )
-    progress("Lauf abgeschlossen." if not cancelled else "Abgebrochen.")
+    if apply_error:
+        progress("Lauf mit Fehler beendet.")
+    else:
+        progress("Lauf abgeschlossen." if not cancelled else "Abgebrochen.")
     return stats
 
 
