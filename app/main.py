@@ -174,7 +174,7 @@ def run_pipeline(
     run_id = uuid.uuid4().hex
     run.info(f"Run started id={run_id}")
     progress("Suche gestartet…")
-    db = Database(config.db_path)
+    db = Database(config.db_path, recover=True)
     db.start_search_run(run_id)
     location = LocationService(db, config)
     home = location.resolve_home()
