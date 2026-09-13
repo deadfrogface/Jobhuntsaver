@@ -104,3 +104,42 @@ def test_fully_automatic_with_auto_submit_can_request_submit(tmp_path: Path, mon
     mgr.prepare_and_apply(job)
     assert captured.get("submit") is True
     assert captured.get("dry_run") is False
+
+
+def test_partial_ats_never_gets_submit_under_full_auto(tmp_path: Path, monkeypatch):
+    """Personio/partial ATS must not receive submit=True even with auto submission."""
+    mgr = _mgr(
+        tmp_path,
+        mode=OperatingMode.FULLY_AUTOMATIC.value,
+        dry_run=False,
+        auto_submit=True,
+    )
+    captured = {}
+
+    class _StubApplier:
+        def __init__(self, page, *, dry_run=True, submit=False):
+            captured["dry_run"] = dry_run
+            captured["submit"] = submit
+
+        def apply(self, job, resume_pdf_path, cover_letter_text, profile):
+            return ApplyResult(success=True, needs_review=True, dry_run_stopped=True)
+
+    monkeypatch.setattr("apply.manager.APPLIERS", {"personio": _StubApplier})
+    monkeypatch.setattr(
+        "apply.manager.ATSDetector.detect",
+        staticmethod(lambda url: "personio"),
+    )
+    job = Job(
+        id="j-partial",
+        source="test",
+        title="Buchhalter",
+        company="ACME",
+        url="https://acme.jobs.personio.de/job/1",
+        application_url="https://acme.jobs.personio.de/job/1",
+        status=JobStatus.NEW.value,
+        ats_type="personio",
+        match_score=90,
+    )
+    mgr.prepare_and_apply(job)
+    assert captured.get("submit") is False
+    assert captured.get("dry_run") is True

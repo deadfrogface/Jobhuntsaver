@@ -98,9 +98,18 @@ class ApplicationManager:
 
         ats = ATSDetector.detect(job.application_url or job.url)
         job.ats_type = ats
+        support, note = classify_ats_support(ats, job.application_url or job.url)
+        # Safety: never final-submit for partial/unknown ATS (Personio etc.),
+        # even under fully_automatic + automatic_submission.
+        if submit and support != "supported":
+            submit = False
+            logger.info(
+                "Submit blocked: ATS %s classified as %s (final submit only when supported)",
+                ats,
+                support,
+            )
         preview = build_application_preview(job, self.config)
         if ats == "unknown" or ats not in APPLIERS:
-            support, note = classify_ats_support(ats, job.application_url or job.url)
             job.status = JobStatus.NEEDS_REVIEW.value
             job.rejection_reasons = list(
                 {
