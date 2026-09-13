@@ -94,8 +94,8 @@ exe = EXE(
     runtime_tmpdir=None,
     # Production GUI app: NEVER attach a Windows console.
     # CI smoke uses SMOKE_TEST_OK file markers (exit codes may be null for windowed EXEs).
-    # Opt-in console only via JOBHUNTSAVER_FORCE_CONSOLE=1 for local debugging.
-    console=bool(os.environ.get("JOBHUNTSAVER_FORCE_CONSOLE", "").strip()),
+    # Opt-in console only via JOBHUNTSAVER_FORCE_CONSOLE=1/true/yes for local debugging.
+    console=(os.environ.get("JOBHUNTSAVER_FORCE_CONSOLE", "").strip().lower() in {"1", "true", "yes"}),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

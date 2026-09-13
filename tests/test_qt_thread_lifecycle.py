@@ -92,11 +92,19 @@ def test_connect_queued_delivers_on_gui_thread(qapp) -> None:
 
 
 def test_spec_defaults_to_windowed_production_exe() -> None:
+    import ast
+    import re
     from pathlib import Path
 
     spec = Path("packaging/Jobhuntsaver.spec").read_text(encoding="utf-8")
     assert "JOBHUNTSAVER_FORCE_CONSOLE" in spec
     assert "JOBHUNTSAVER_CI_CONSOLE" not in spec
-    assert "console=bool(os.environ.get(\"JOBHUNTSAVER_FORCE_CONSOLE\"" in spec.replace(
-        " ", ""
-    ) or 'JOBHUNTSAVER_FORCE_CONSOLE' in spec
+    assert "console=bool(os.environ.get" not in spec.replace(" ", "")
+
+    match = re.search(
+        r"console=\(os\.environ\.get\(\"JOBHUNTSAVER_FORCE_CONSOLE\",\s*\"\"\)\.strip\(\)\.lower\(\)\s+in\s+(\{[^}]+\})\)",
+        spec,
+    )
+    assert match, "FORCE_CONSOLE must use explicit membership check, not bool(non-empty)"
+    allowed = ast.literal_eval(match.group(1))
+    assert allowed == {"1", "true", "yes"}

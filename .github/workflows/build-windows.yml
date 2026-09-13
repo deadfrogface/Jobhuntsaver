@@ -57,8 +57,16 @@ jobs:
           commit=$env:GITHUB_SHA
           size=$($item.Length)
           sha256=$hash
+          console=false
           "@ | Set-Content dist\build_metadata.txt
           Get-Item "dist\Jobhuntsaver.exe" | Format-List FullName, Length
+          # Fail if this is a console subsystem EXE (users must not see a terminal).
+          $bytes = [System.IO.File]::ReadAllBytes("dist\Jobhuntsaver.exe")
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
+          # 2 = WINDOWS_GUI, 3 = WINDOWS_CUI
+          if ($subsystem -ne 2) { Write-Error "EXE subsystem=$subsystem (expected 2=WINDOWS_GUI / noconsole)"; exit 1 }
+          Write-Host "EXE subsystem=WINDOWS_GUI (noconsole) OK"
         shell: pwsh
       - name: EXE smoke-test
         shell: pwsh
