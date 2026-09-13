@@ -6,6 +6,7 @@ Privacy: never log CV/resume body text at INFO. Prefer paths, lengths, counts.
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -42,11 +43,13 @@ class RunLogger:
         self.logger = logging.getLogger("jobhuntsaver")
         if not self.logger.handlers:
             self.logger.setLevel(logging.INFO)
-            handler = logging.StreamHandler()
-            handler.setFormatter(
-                logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S")
-            )
-            self.logger.addHandler(handler)
+            # Frozen/windowed EXE has no console — file logging only.
+            if not getattr(sys, "frozen", False):
+                handler = logging.StreamHandler()
+                handler.setFormatter(
+                    logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S")
+                )
+                self.logger.addHandler(handler)
             _attach_rotating_file(self.logger, self.path)
 
     def info(self, message: str) -> None:
@@ -71,11 +74,12 @@ def setup_logging(logs_dir: Path | None = None) -> logging.Logger:
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
-    stream = logging.StreamHandler()
-    stream.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S")
-    )
-    logger.addHandler(stream)
+    if not getattr(sys, "frozen", False):
+        stream = logging.StreamHandler()
+        stream.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S")
+        )
+        logger.addHandler(stream)
     if logs_dir is None:
         try:
             from desktop.paths import ensure_app_dirs

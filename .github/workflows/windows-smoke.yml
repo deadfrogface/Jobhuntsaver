@@ -54,8 +54,6 @@ jobs:
       - name: Privacy scan
         run: python scripts/privacy_scan.py
       - name: Build onefile EXE
-        env:
-          JOBHUNTSAVER_CI_CONSOLE: "1"
         run: |
           python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
           if (!(Test-Path "dist\Jobhuntsaver.exe")) { Write-Error "EXE missing"; exit 1 }
@@ -67,30 +65,28 @@ jobs:
           size=$($item.Length)
           sha256=$hash
           python=3.12
+          console=false
           "@ | Set-Content dist\build_metadata.txt
           Get-Content dist\build_metadata.txt
+          # Fail if this is a console subsystem EXE (users must not see a terminal).
+          $bytes = [System.IO.File]::ReadAllBytes("dist\Jobhuntsaver.exe")
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
+          # 2 = WINDOWS_GUI, 3 = WINDOWS_CUI
+          if ($subsystem -ne 2) { Write-Error "EXE subsystem=$subsystem (expected 2=WINDOWS_GUI / noconsole)"; exit 1 }
+          Write-Host "EXE subsystem=WINDOWS_GUI (noconsole) OK"
         shell: pwsh
       - name: Packaged EXE smoke-test (isolated LOCALAPPDATA)
         shell: pwsh
         run: |
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-smoke-$([guid]::NewGuid())"
-          $env:LOCALAPPDATA = $tmp.FullName
-          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
           $env:QT_QPA_PLATFORM = "offscreen"
-          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
-          & "dist\Jobhuntsaver.exe"
-          $code = $LASTEXITCODE
-          if (Test-Path "dist\smoke_test_result.txt") { Get-Content "dist\smoke_test_result.txt" }
-          # Windowed EXEs can leave $LASTEXITCODE as $null; only fail on real non-zero codes.
-          if ($null -ne $code -and $code -ne 0) { Write-Error "EXE smoke exit $code"; exit $code }
-          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
-          if ($result -notmatch "SMOKE_TEST_OK") {
-            Write-Error "EXE smoke missing SMOKE_TEST_OK marker (exit=$code)"
-            exit 1
-          }
+          # Windowed onefile: poll tokenized marker (do not trust process exit alone).
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Jobhuntsaver.exe") -LocalAppData $tmp.FullName
       - name: Packaged legacy DB migration (library + EXE smoke)
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-legacy-$([guid]::NewGuid())"
           $app = Join-Path $tmp.FullName "Jobhuntsaver"
           $data = Join-Path $app "data"
@@ -101,15 +97,11 @@ jobs:
           _make_legacy_db(Path(r'$data') / 'jobs.db')
           print('legacy db written')
           "@
-          $env:LOCALAPPDATA = $tmp.FullName
-          $env:JOBHUNTSAVER_SMOKE_TEST = "1"
+          if ($LASTEXITCODE -ne 0) { throw "legacy db seed failed" }
           $env:QT_QPA_PLATFORM = "offscreen"
-          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
-          & "dist\Jobhuntsaver.exe"
-          $code = $LASTEXITCODE
-          if ($null -ne $code -and $code -ne 0) { Write-Error "legacy EXE smoke failed ($code)"; exit $code }
-          $result = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
-          if ($result -notmatch "SMOKE_TEST_OK") { Write-Error "legacy EXE smoke missing SMOKE_TEST_OK"; exit 1 }
+          $exe = (Resolve-Path "dist\Jobhuntsaver.exe").Path
+          # Require marker db= line to point at this isolated legacy jobs.db.
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath $exe -LocalAppData $tmp.FullName -ExpectedDbSubstring $data
           python -c @"
           import sqlite3
           from pathlib import Path
@@ -118,12 +110,8 @@ jobs:
           assert 'run_id' in cols, cols
           print('legacy migration verified')
           "@
-          Remove-Item "dist\smoke_test_result.txt" -ErrorAction SilentlyContinue
-          & "dist\Jobhuntsaver.exe"
-          $code2 = $LASTEXITCODE
-          if ($null -ne $code2 -and $code2 -ne 0) { Write-Error "legacy second start failed ($code2)"; exit $code2 }
-          $result2 = Get-Content "dist\smoke_test_result.txt" -Raw -ErrorAction SilentlyContinue
-          if ($result2 -notmatch "SMOKE_TEST_OK") { Write-Error "legacy second start missing SMOKE_TEST_OK"; exit 1 }
+          if ($LASTEXITCODE -ne 0) { throw "legacy migration assert failed" }
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath $exe -LocalAppData $tmp.FullName -ExpectedDbSubstring $data
       - name: Packaged reset preserves profile
         shell: pwsh
         run: |

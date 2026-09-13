@@ -27,7 +27,12 @@ from desktop.services import ConfigService
 from desktop.services.browser_install import playwright_available
 from desktop.services.schedule_service import ScheduleService
 from desktop.widgets.scroll_page import wrap_scrollable
-from desktop.workers import BrowserCheckWorker, BrowserRepairWorker, start_worker
+from desktop.workers import (
+    BrowserCheckWorker,
+    BrowserRepairWorker,
+    connect_queued,
+    start_worker,
+)
 
 
 SOURCES = [
@@ -445,6 +450,8 @@ class SettingsPage(QWidget):
         thread = start_worker(worker)
 
         def done(ok: bool, msg: str) -> None:
+            self._browser_worker = None
+            self._browser_thread = None
             self._set_browser_busy(False)
             self.browser_status.setText(
                 tr("settings.browser_ok") if ok else tr("settings.browser_missing")
@@ -454,7 +461,7 @@ class SettingsPage(QWidget):
             else:
                 QMessageBox.warning(self, tr("settings.browser"), msg)
 
-        worker.finished.connect(done)
+        connect_queued(worker.finished, done)
         self._browser_worker = worker
         self._browser_thread = thread
 
@@ -467,6 +474,8 @@ class SettingsPage(QWidget):
         thread = start_worker(worker)
 
         def done(ok: bool, msg: str) -> None:
+            self._browser_worker = None
+            self._browser_thread = None
             self._set_browser_busy(False)
             self.browser_status.setText(
                 tr("settings.browser_ok") if ok else tr("settings.browser_missing")
@@ -476,6 +485,6 @@ class SettingsPage(QWidget):
             else:
                 QMessageBox.warning(self, tr("settings.browser"), msg)
 
-        worker.finished.connect(done)
+        connect_queued(worker.finished, done)
         self._browser_worker = worker
         self._browser_thread = thread

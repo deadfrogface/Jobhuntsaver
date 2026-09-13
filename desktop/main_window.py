@@ -33,7 +33,7 @@ from desktop.services.schedule_service import ScheduleService
 from desktop.services.shutdown import get_shutdown_manager
 from desktop.theme import stylesheet_for
 from desktop.tray import AppTray, app_icon
-from desktop.workers import PipelineWorker, start_worker
+from desktop.workers import PipelineWorker, connect_queued, start_worker, thread_is_running
 from desktop.wizard import FirstRunWizard
 
 
@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
         self._start_pipeline(mode="search_only", action_label=tr("status.search_starting"))
 
     def _start_pipeline(self, mode: str, config_override=None, action_label: str | None = None) -> None:
-        if self._thread and self._thread.isRunning():
+        if thread_is_running(self._thread):
             QMessageBox.information(self, tr("app.name"), tr("msg.pipeline_running"))
             return
         cfg = config_override or self.config_service.load()
@@ -249,6 +249,8 @@ class MainWindow(QMainWindow):
             self.dashboard.set_status(msg)
 
         def on_finished(stats: dict) -> None:
+            self._worker = None
+            self._thread = None
             self.dashboard.set_pipeline_running(False)
             self.progress_label.setText(tr("status.done"))
             self.dashboard.set_status(tr("status.done"))
@@ -284,6 +286,8 @@ class MainWindow(QMainWindow):
             )
 
         def on_failed(err: str) -> None:
+            self._worker = None
+            self._thread = None
             self.dashboard.set_pipeline_running(False)
             self.progress_label.setText(tr("status.error"))
             self.dashboard.set_status(tr("status.error"))
@@ -294,9 +298,9 @@ class MainWindow(QMainWindow):
             )
             self.logs.refresh()
 
-        worker.progress.connect(on_progress)
-        worker.finished.connect(on_finished)
-        worker.failed.connect(on_failed)
+        connect_queued(worker.progress, on_progress)
+        connect_queued(worker.finished, on_finished)
+        connect_queued(worker.failed, on_failed)
         self._worker = worker
         self._thread = thread
 
@@ -352,7 +356,7 @@ class MainWindow(QMainWindow):
         self.close()
 
     def _pipeline_running(self) -> bool:
-        return bool(self._thread and self._thread.isRunning())
+        return thread_is_running(self._thread)
 
     def _confirm_exit_while_busy(self) -> bool:
         box = QMessageBox(self)
