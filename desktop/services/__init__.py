@@ -72,9 +72,17 @@ class ConfigService:
         config.settings.browser_profile_dir = str(self.dirs["browser_profile"])
         tpl = Path(config.settings.cover_letter_template)
         if not tpl.is_absolute():
-            bundled = project_root() / tpl
-            if bundled.exists():
-                config.settings.cover_letter_template = str(bundled)
+            from desktop.services.browser_install import meipass_dir
+
+            candidates = []
+            mi = meipass_dir()
+            if mi is not None:
+                candidates.append(mi / tpl)
+            candidates.append(project_root() / tpl)
+            for bundled in candidates:
+                if bundled.exists():
+                    config.settings.cover_letter_template = str(bundled)
+                    break
         self._config = config
         self._apply_shutdown_fix_migration(config)
         # Persist cleaned profile if demo placeholders were stripped

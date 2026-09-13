@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from core.config import AppConfig
@@ -23,11 +24,36 @@ Mit freundlichen Grüßen
 """
 
 
-def render_cover_letter(job: Job, config: AppConfig) -> str:
+def _meipass_dir() -> Path | None:
+    """PyInstaller extract dir when running as a frozen onefile/onedir bundle."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(getattr(sys, "_MEIPASS"))
+    return None
+
+
+def resolve_cover_letter_template(config: AppConfig) -> Path | None:
+    """Locate the cover-letter template on disk, including frozen _MEIPASS."""
     template_path = Path(config.settings.cover_letter_template)
-    if not template_path.is_absolute():
-        template_path = config.root / template_path
-    if template_path.exists():
+    candidates: list[Path] = []
+    if template_path.is_absolute():
+        candidates.append(template_path)
+    else:
+        mi = _meipass_dir()
+        if mi is not None:
+            # Bundled datas land under _MEIPASS, not next to the EXE.
+            candidates.append(mi / template_path)
+        candidates.append(config.root / template_path)
+        # Dev / source-tree fallback next to package root.
+        candidates.append(Path(__file__).resolve().parent.parent / template_path)
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def render_cover_letter(job: Job, config: AppConfig) -> str:
+    template_path = resolve_cover_letter_template(config)
+    if template_path is not None:
         template = template_path.read_text(encoding="utf-8")
     else:
         template = DEFAULT_TEMPLATE
