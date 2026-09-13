@@ -122,6 +122,20 @@ class LocationService:
 
         loc = self.config.profile.location
         address = (loc.home_address or "").strip()
+        current_fp = _address_fingerprint(address)
+        stored_fp = _address_fingerprint(getattr(loc, "home_geocoded_address", "") or "")
+
+        if loc.home_latitude is not None and loc.home_longitude is not None:
+            # Persisted coords are only trusted when they still match the address text.
+            if stored_fp and current_fp and stored_fp != current_fp:
+                loc.home_latitude = None
+                loc.home_longitude = None
+                loc.home_geocoded_address = ""
+                self.home_updated = True
+            elif not stored_fp and current_fp:
+                # Legacy YAML: bind fingerprint so later address edits invalidate.
+                loc.home_geocoded_address = address
+                self.home_updated = True
 
         if loc.home_latitude is not None and loc.home_longitude is not None:
             coords = (float(loc.home_latitude), float(loc.home_longitude))
@@ -182,6 +196,7 @@ class LocationService:
         self._home = coords
         loc.home_latitude = coords[0]
         loc.home_longitude = coords[1]
+        loc.home_geocoded_address = address
         self.home_updated = True
         self._home_resolution = HomeResolution(
             coords=coords,
@@ -343,6 +358,11 @@ def _age_seconds(cached_at: str | None) -> float | None:
         return (datetime.now(timezone.utc) - dt).total_seconds()
     except Exception:
         return None
+
+
+def _address_fingerprint(address: str) -> str:
+    """Normalize address text for comparing persisted geocode provenance."""
+    return " ".join((address or "").strip().lower().split())
 
 
 def _city_from_address(home_address: str) -> str:

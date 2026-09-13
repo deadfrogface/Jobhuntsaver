@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QRect
@@ -210,7 +211,8 @@ class MainWindow(QMainWindow):
         self._start_pipeline(mode=mode, action_label=tr("status.apply_starting"))
 
     def run_application_test(self) -> None:
-        cfg = self.config_service.load()
+        # Deepcopy so dry_run / mode overrides never mutate the cached GUI config.
+        cfg = deepcopy(self.config_service.load())
         cfg.settings.dry_run = True
         self._start_pipeline(
             mode="review_before_submit",
@@ -254,10 +256,10 @@ class MainWindow(QMainWindow):
             self.dashboard.set_pipeline_running(False)
             self.progress_label.setText(tr("status.done"))
             self.dashboard.set_status(tr("status.done"))
-            # Persist home coords resolved during this run (avoids re-geocoding forever).
+            # Persist only home coords (never dry_run/mode overrides from apply-test).
             if stats.get("home_updated") and getattr(worker, "config", None) is not None:
                 try:
-                    self.config_service.save(worker.config)
+                    self.config_service.save_home_coords_from(worker.config)
                 except Exception:
                     pass
             self.config_service.set_last_search(

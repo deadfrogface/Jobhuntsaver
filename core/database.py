@@ -99,11 +99,15 @@ CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
 
 
 class Database:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, recover: bool = False) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
-        self.recover_interrupted_state()
+        # Default off: GUI page opens construct Database() frequently and must not
+        # mark a live search/apply as interrupted. Call with recover=True once at
+        # app/pipeline start (crash heal).
+        if recover:
+            self.recover_interrupted_state()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
@@ -164,11 +168,12 @@ class Database:
                 "UPDATE jobs SET status = ?, updated_at = ? WHERE status = ?",
                 ("needs_review", now, "applying"),
             )
-            # search_runs may use finished_at NULL or empty string
+            # Only status='running' — do not treat empty finished_at alone as interrupted
+            # (live runs insert finished_at='' and must survive GUI Database() opens).
             try:
                 conn.execute(
                     "UPDATE search_runs SET status = ?, finished_at = ? "
-                    "WHERE status = ? OR finished_at IS NULL OR finished_at = ''",
+                    "WHERE status = ?",
                     ("interrupted", now, "running"),
                 )
             except Exception:

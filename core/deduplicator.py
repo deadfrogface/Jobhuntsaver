@@ -50,8 +50,10 @@ def fingerprint(job: Job) -> str:
 
 
 def source_rank(job: Job) -> int:
-    if job.ats_type and job.ats_type in SOURCE_PRIORITY:
-        return SOURCE_PRIORITY[job.ats_type]
+    """Prefer real ATS identity; ignore placeholder ats_type 'unknown'."""
+    ats = (job.ats_type or "").strip().lower()
+    if ats and ats != "unknown" and ats in SOURCE_PRIORITY:
+        return SOURCE_PRIORITY[ats]
     return SOURCE_PRIORITY.get(job.source, 10)
 
 

@@ -29,7 +29,6 @@ ATS_FINGERPRINTS: list[tuple[str, str]] = [
     ("smartrecruiters.com", "smartrecruiters"),
     ("jobs.smartrecruiters.com", "smartrecruiters"),
     ("successfactors", "successfactors"),
-    ("sap.com", "successfactors"),
     ("taleo.net", "taleo"),
     ("icims.com", "icims"),
     ("bamboohr.com", "bamboohr"),

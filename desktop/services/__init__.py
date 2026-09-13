@@ -72,9 +72,17 @@ class ConfigService:
         config.settings.browser_profile_dir = str(self.dirs["browser_profile"])
         tpl = Path(config.settings.cover_letter_template)
         if not tpl.is_absolute():
-            bundled = project_root() / tpl
-            if bundled.exists():
-                config.settings.cover_letter_template = str(bundled)
+            from desktop.services.browser_install import meipass_dir
+
+            candidates = []
+            mi = meipass_dir()
+            if mi is not None:
+                candidates.append(mi / tpl)
+            candidates.append(project_root() / tpl)
+            for bundled in candidates:
+                if bundled.exists():
+                    config.settings.cover_letter_template = str(bundled)
+                    break
         self._config = config
         self._apply_shutdown_fix_migration(config)
         # Persist cleaned profile if demo placeholders were stripped
@@ -142,6 +150,18 @@ class ConfigService:
         )
         self._config = self.load()
         return self._config
+
+    def save_home_coords_from(self, run_config: AppConfig) -> AppConfig:
+        """Persist only home lat/lon from a pipeline run into freshly loaded settings.
+
+        Avoids writing transient overrides (dry_run, mode) from apply-test / worker
+        config back to disk when geocoding updates home coordinates.
+        """
+        fresh = self.load()
+        run_loc = run_config.profile.location
+        fresh.profile.location.home_latitude = run_loc.home_latitude
+        fresh.profile.location.home_longitude = run_loc.home_longitude
+        return self.save(fresh)
 
     def validate(self, config: AppConfig | None = None) -> list[str]:
         config = config or self.config

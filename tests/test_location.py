@@ -357,3 +357,54 @@ def test_clear_job_data_and_run_id(tmp_path):
     assert cleared["jobs"] == 1
     assert db.dashboard_stats()["total_jobs"] == 0
     assert db.latest_run_id() is None
+
+
+def test_resolve_home_invalidates_stale_persisted_coords(monkeypatch, tmp_path):
+    """Persisted lat/lon must not win when home_address text no longer matches."""
+    db = Database(tmp_path / "t.db")
+    cfg = AppConfig(
+        profile=SearchPreferences(
+            location=LocationConfig(
+                home_address="Neue Straße 9, 20095 Hamburg",
+                max_distance_km=20,
+                home_latitude=52.52,
+                home_longitude=13.40,
+                home_geocoded_address="Alte Straße 1, 10115 Berlin",
+            )
+        )
+    )
+    svc = LocationService(db, cfg, timeout_s=0.5)
+    calls = {"n": 0}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, *a, **k):
+            calls["n"] += 1
+
+            class _Resp:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return [{"lat": "53.55", "lon": "9.99", "display_name": "Hamburg"}]
+
+            return _Resp()
+
+    monkeypatch.setattr("httpx.Client", _Client)
+    res = svc.resolve_home()
+    assert res.resolved
+    assert res.source == "geocode"
+    assert res.coords == (53.55, 9.99)
+    assert calls["n"] >= 1
+    assert cfg.profile.location.home_latitude == 53.55
+    assert cfg.profile.location.home_longitude == 9.99
+    assert "Hamburg" in cfg.profile.location.home_geocoded_address
+    assert svc.home_updated is True

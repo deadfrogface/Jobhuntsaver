@@ -698,11 +698,36 @@ _KNOWN_SOFTWARE_TOKENS = (
 
 
 _SOFT_SKILL_HINTS = (
-    "beratung", "orientierung", "management", "kommunikation", "organisation",
+    # Note: bare "management" / "-tion" are intentionally NOT hints — they over-match
+    # (e.g. compound product names, "Automation", "Documentation"). Compounds like
+    # Beschwerdemanagement are handled via _SOFT_SKILL_COMPOUND below.
+    "beratung", "orientierung", "kommunikation", "organisation",
     "teamfähigkeit", "teamfaehigkeit", "belastbarkeit", "zuverlässigkeit",
     "zuverlaessigkeit", "verkauf", "akquise", "verhandlung", "reklamation",
     "beschwerde", "kunden", "serviceorient", "führung", "fuehrung",
 )
+
+# Compounds / phrases that are soft skills without treating bare "management" as a hint.
+_SOFT_SKILL_COMPOUND = re.compile(
+    r"(?i)(?:"
+    r"\w{3,}(?:management|orientierung|beratung)\b"
+    r"|(?<!\w)management(?!\w)\s+\w"
+    r"|\w+\s+(?<!\w)management(?!\w)"
+    r")"
+)
+
+
+def _known_software_token_match(low: str) -> bool:
+    """True when a known software token appears as a whole word (not a substring)."""
+    return any(
+        re.search(rf"(?<!\w){re.escape(tok)}(?!\w)", low)
+        for tok in _KNOWN_SOFTWARE_TOKENS
+    )
+
+
+def _soft_skill_hint_match(low: str) -> bool:
+    """Stem/prefix hint match with a leading word boundary (not mid-token)."""
+    return any(re.search(rf"(?<!\w){re.escape(h)}", low) for h in _SOFT_SKILL_HINTS)
 
 
 def _looks_like_soft_skill(value: str) -> bool:
@@ -710,25 +735,29 @@ def _looks_like_soft_skill(value: str) -> bool:
     low = (value or "").strip().lower()
     if not low or " / " in low or "(" in low:
         return False
-    if any(tok in low for tok in _KNOWN_SOFTWARE_TOKENS):
+    if _known_software_token_match(low):
         return False
     # Product-like tokens (digits, versions, brand-ish single tokens)
     if re.search(r"\d|\b(office|excel|word|sap|datev|sql|linux|windows|notion|asana|jira|slack|trello)\b", low):
         return False
     if len(low) > 60 or len(low) < 4:
         return False
+    hint = _soft_skill_hint_match(low)
+    compound = bool(_SOFT_SKILL_COMPOUND.search(low))
     # Single-token product names (Notion, DocuWare) are NOT soft skills.
-    if " " not in low and not any(h in low for h in _SOFT_SKILL_HINTS):
+    if " " not in low and not hint and not compound:
         return False
-    return any(h in low for h in _SOFT_SKILL_HINTS) or (
-        " " in low and any(low.endswith(suf) for suf in ("keit", "ung", "tion", "ismus"))
-    )
+    if hint or compound:
+        return True
+    # Multi-word competency suffixes — exclude bare "-tion" (too many FPs).
+    return " " in low and any(low.endswith(suf) for suf in ("keit", "ung", "ismus"))
+
 
 def _looks_like_software(value: str) -> bool:
     low = (value or "").lower()
     if " / " in low:
         return True
-    return any(tok in low for tok in _KNOWN_SOFTWARE_TOKENS)
+    return _known_software_token_match(low)
 
 
 def parse_cv_text(text: str) -> dict[str, Any]:
@@ -805,9 +834,13 @@ def parse_cv_text(text: str) -> dict[str, Any]:
             # Remove recovered soft skills from software — keep all real tools,
             # including unknown product names (DocuWare, Microsoft 365, …).
             software = [s for s in software if s.lower() not in soft_drop]
-    # Always strip soft-skill phrases that leaked into software.
+    # Always strip soft-skill phrases that leaked into software and relocate them
+    # into skills — even when the skills list is already nonempty.
     if software:
+        relocated = [s for s in software if _looks_like_soft_skill(s)]
         software = [s for s in software if not _looks_like_soft_skill(s)]
+        if relocated:
+            skills = list(dict.fromkeys([*skills, *relocated]))
     # Bare "Kenntnisse" maps to skills — recover only CEFR/native language lines.
     known = {(lang.language.lower(), (lang.level or "").lower()) for lang in languages}
     for raw in sections.get("skills", "").splitlines():

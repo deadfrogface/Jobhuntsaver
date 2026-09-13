@@ -82,6 +82,36 @@ def test_nearby_score_reasons():
     assert result.match_reasons
 
 
+def test_distance_soft_score_respects_max_distance_km():
+    """Soft scoring must not hardcode ≤20 km when the user configured a wider commute."""
+    from core.matcher import _distance_points
+
+    pts, reason, issue = _distance_points(35.0, "onsite", max_distance_km=50.0)
+    assert pts > 0
+    assert issue is None
+    assert reason is not None
+    assert "35" in reason
+
+    pts_over, reason_over, issue_over = _distance_points(55.0, "onsite", max_distance_km=50.0)
+    assert pts_over == 0
+    assert issue_over is not None
+    assert reason_over is None
+
+    cfg = _config()
+    cfg.profile.location.max_distance_km = 50.0
+    job = Job(
+        title="Sachbearbeiter",
+        company="Good",
+        remote_type="onsite",
+        distance_km=35.0,
+        description="Excel Verwaltung Deutsch Kommunikation",
+        employment_type="Vollzeit",
+    )
+    result = score_job(job, cfg)
+    assert not result.excluded
+    assert any("35" in r and "50" in r for r in result.match_reasons)
+
+
 def test_matcher_uses_driving_license_class_b():
     job = Job(
         title="Aufriebsfahrer",

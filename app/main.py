@@ -14,7 +14,7 @@ from core.cancel import cancel_active_searches, register_executor, unregister_ex
 from core.config import AppConfig, load_config
 from core.database import Database
 from core.deduplicator import deduplicate
-from core.location import LocationService, enrich_job_locations
+from core.location import LocationService, enrich_job_locations, _city_from_address
 from core.logging import RunLogger
 from core.matcher import score_job
 from core.models import JobStatus, OperatingMode
@@ -29,24 +29,8 @@ SOURCE_SEARCH_TIMEOUT_S = 120
 
 
 def _search_location(home_address: str) -> str:
-    """Prefer city name for BA/Indeed queries (e.g. Musterstadt from full address)."""
-    parts = [p.strip() for p in home_address.split(",") if p.strip()]
-    for part in reversed(parts):
-        low = part.lower()
-        if low in {"germany", "deutschland", "de"}:
-            continue
-        tokens = part.split()
-        words = [t for t in tokens if not any(c.isdigit() for c in t)]
-        if not words:
-            continue
-        # "12345 Musterstadt" → Musterstadt
-        if tokens and tokens[0].isdigit():
-            return " ".join(words)
-        # Skip street lines like "Musterstraße 1"
-        if any(c.isdigit() for c in part):
-            continue
-        return " ".join(words)
-    return ""
+    """Prefer a single city for BA/Indeed queries (same helper as geocode)."""
+    return _city_from_address(home_address)
 
 
 def build_queries(config: AppConfig) -> list[SearchQuery]:
@@ -174,7 +158,7 @@ def run_pipeline(
     run_id = uuid.uuid4().hex
     run.info(f"Run started id={run_id}")
     progress("Suche gestartet…")
-    db = Database(config.db_path)
+    db = Database(config.db_path, recover=True)
     db.start_search_run(run_id)
     location = LocationService(db, config)
     home = location.resolve_home()
@@ -393,6 +377,7 @@ def run_pipeline(
         return stats
 
     browser = None
+    apply_error: str | None = None
     try:
         progress("Browser starten…")
         browser = BrowserManager(
@@ -437,6 +422,8 @@ def run_pipeline(
                 stats["failed"] += 1
                 run.info(f"{label} → failed ({result.error_message})")
     except Exception as exc:
+        apply_error = str(exc)
+        stats["apply_error"] = apply_error
         run.error(f"Browser/apply pipeline error: {exc}")
         progress("Bewerbungslauf fehlgeschlagen. Details stehen in den Logs.")
     finally:
@@ -444,12 +431,21 @@ def run_pipeline(
             browser.close()
 
     stats["cancelled"] = cancelled
-    db.finish_search_run(run_id, "cancelled" if cancelled else "ok", stats)
+    if apply_error:
+        finish_status = "error"
+    elif cancelled:
+        finish_status = "cancelled"
+    else:
+        finish_status = "ok"
+    db.finish_search_run(run_id, finish_status, stats)
     run.info(
-        f"Finished: {stats['applied']} applications successful, "
+        f"Finished ({finish_status}): {stats['applied']} applications successful, "
         f"{stats['needs_review']} Needs Review, {stats['captcha']} CAPTCHA, {stats['failed']} Failed"
     )
-    progress("Lauf abgeschlossen." if not cancelled else "Abgebrochen.")
+    if apply_error:
+        progress("Lauf mit Fehler beendet.")
+    else:
+        progress("Lauf abgeschlossen." if not cancelled else "Abgebrochen.")
     return stats
 
 

@@ -41,3 +41,32 @@ def test_fingerprint_and_likely_same():
     b = Job(title="Verkäufer", company="Shop GmbH", city="Düsseldorf")
     assert fingerprint(a) == fingerprint(b)
     assert is_likely_same_job(a, b)
+
+
+def test_ba_beats_indeed_when_ats_type_unknown():
+    """Default ats_type 'unknown' must not override source priority (BA > Indeed)."""
+    ba = Job(
+        id="ba-1",
+        source="bundesagentur",
+        title="Sachbearbeiter",
+        company="ACME",
+        city="Berlin",
+        url="https://www.arbeitsagentur.de/jobsuche/jobdetail/123",
+        ats_type="unknown",
+    )
+    indeed = Job(
+        id="in-1",
+        source="indeed",
+        title="Sachbearbeiter",
+        company="ACME",
+        city="Berlin",
+        url="https://de.indeed.com/viewjob?jk=abc",
+        ats_type="unknown",
+    )
+    out = deduplicate([indeed, ba])
+    primary = [j for j in out if not j.duplicate_of]
+    assert len(primary) == 1
+    assert primary[0].source == "bundesagentur"
+    assert "indeed" in primary[0].alt_sources or any(
+        j.duplicate_of == primary[0].id for j in out
+    )

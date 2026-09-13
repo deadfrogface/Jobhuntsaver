@@ -272,7 +272,12 @@ class ProfilePage(QWidget):
                 if part
             ]
             if parts:
-                p.location.home_address = ", ".join(parts)
+                new_home = ", ".join(parts)
+                if new_home != (p.location.home_address or "").strip():
+                    p.location.home_latitude = None
+                    p.location.home_longitude = None
+                    p.location.home_geocoded_address = ""
+                p.location.home_address = new_home
                 self.location_work.home_address.setText(p.location.home_address)
 
         sync_application_summaries(a, p.qualifications)

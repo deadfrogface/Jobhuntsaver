@@ -146,6 +146,14 @@ def run() -> int:
     config_service = ConfigService()
     apply_appearance(app, config_service)
 
+    # One-shot crash recovery at app start (not on every GUI Database() open).
+    try:
+        from core.database import Database
+
+        Database(config_service.load().db_path, recover=True)
+    except Exception:
+        pass
+
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.warning(
             None,
