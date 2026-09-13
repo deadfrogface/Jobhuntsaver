@@ -11,7 +11,7 @@ from typing import Any
 
 from core.deduplicator import make_job_id
 from core.models import Job, RemoteType
-from search.base import JobSource, SearchQuery
+from search.base import JobSource, PartialResultsError, SearchQuery
 
 logger = logging.getLogger("jobhuntsaver")
 
@@ -94,6 +94,8 @@ class IndeedSource(JobSource):
                 if job and job.id not in seen:
                     seen.add(job.id)
                     all_jobs.append(job)
+        if hard_errors and all_jobs:
+            raise PartialResultsError(all_jobs, hard_errors[0])
         if not all_jobs and hard_errors:
             raise RuntimeError(hard_errors[0])
         return all_jobs

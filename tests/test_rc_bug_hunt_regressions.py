@@ -388,7 +388,7 @@ def test_eg10_and_from_salary_are_unknown_not_hourly():
     assert annual is None
     assert "pay-scale" in reason or "collective" in reason
     annual2, reason2 = normalize_to_annual_gross_eur(text="ab 14,50 €")
-    assert annual2 is None
+    assert annual2 == (14.5 * 2080)
     assert "floor" in reason2 or "from" in reason2
 
 
@@ -450,4 +450,183 @@ def test_unknown_required_includes_nameless_and_aria_required():
     src = inspect.getsource(BaseApplier._unknown_required_fields)
     assert "unnamed_required" in src
     assert "aria-required" in src
+
+
+def test_salary_ceiling_and_floor_matcher_behavior():
+    from core.config import empty_app_config
+    from core.matcher import score_job
+    from core.models import Job
+
+    cfg = empty_app_config()
+    cfg.profile.employment.minimum_salary = 55000
+    below = score_job(
+        Job(
+            id="1",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_max=48000,
+        ),
+        cfg,
+    )
+    assert below.excluded is True
+
+    floor_low = score_job(
+        Job(
+            id="2",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_text="ab 40.000 €",
+        ),
+        cfg,
+    )
+    assert floor_low.excluded is True
+
+    floor_ok = score_job(
+        Job(
+            id="3",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_text="ab 60.000 €",
+        ),
+        cfg,
+    )
+    assert floor_ok.excluded is False
+    assert any("floor" in (i or "").lower() or "from" in (i or "").lower() for i in floor_ok.rejection_reasons)
+
+
+def test_has_applied_blocks_failed_url_twin(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "t.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="old",
+            title="Software Engineer",
+            company="Acme GmbH",
+            url="https://boards.greenhouse.io/acme/jobs/99",
+            application_url="https://boards.greenhouse.io/acme/jobs/99",
+            status=JobStatus.FAILED.value,
+        )
+    )
+    twin = Job(
+        id="new",
+        title="Software Engineer",
+        company="Acme GmbH",
+        url="https://boards.greenhouse.io/acme/jobs/99?gh_src=x",
+        application_url="https://boards.greenhouse.io/acme/jobs/99",
+    )
+    assert db.has_applied(twin) is True
+
+
+def test_list_jobs_excludes_unknown_distance_hybrid(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job
+
+    db = Database(tmp_path / "t.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="h",
+            title="H",
+            company="C",
+            remote_type="hybrid",
+            distance_km=None,
+            city="München",
+        )
+    )
+    db.upsert_job(
+        Job(
+            id="n",
+            title="N",
+            company="C",
+            remote_type="onsite",
+            distance_km=8,
+            city="Berlin",
+        )
+    )
+    db.upsert_job(
+        Job(id="r", title="R", company="C", remote_type="remote", distance_km=None)
+    )
+    rows = db.list_jobs(max_distance=15)
+    ids = {j.id for j in rows}
+    assert "h" not in ids
+    assert "n" in ids
+    assert "r" in ids
+
+
+def test_workday_submit_selectors_include_german_absenden():
+    import inspect
+    from apply import workday
+
+    src = inspect.getsource(workday)
+    assert "Absenden" in src
+    assert "Weiter" in src
+    assert workday._SUBMIT_SEL
+    assert workday._NEXT_SEL
+    assert "Absenden" in workday._SUBMIT_SEL
+    assert "Weiter" in workday._NEXT_SEL
+    assert "pageFooterNextButton'], button:has-text('Next')" not in src.replace(" ", "")
+
+
+def test_partial_source_results_keep_jobs_and_error():
+    from core.models import Job
+    from search.base import JobSource, PartialResultsError, SearchQuery
+
+    class Fake(JobSource):
+        source_id = "fake"
+
+        def search(self, queries):
+            raise PartialResultsError(
+                [Job(id="1", title="T", company="C", url="https://x")],
+                "dynlib fail",
+            )
+
+    jobs, err, detail = Fake().safe_search([SearchQuery(keyword="x")])
+    assert len(jobs) == 1
+    assert err and "degraded" in err
+    assert detail is not None
+
+
+def test_stepstone_one_query_failure_does_not_abort_others(monkeypatch):
+    from core.models import Job
+    from search.base import SearchQuery
+    from search.stepstone import StepstoneSource
+
+    src = StepstoneSource()
+
+    def _one(query):
+        if query.keyword == "bad":
+            raise ConnectionError("boom")
+        return [Job(id="ok", title="Ok", company="C", url="https://ok")]
+
+    monkeypatch.setattr(src, "_search_one", _one)
+    jobs, err, detail = src.safe_search(
+        [SearchQuery(keyword="bad"), SearchQuery(keyword="good")]
+    )
+    assert len(jobs) == 1
+    assert err and "degraded" in err
+
+
+def test_once_refuses_silent_config_fallback(monkeypatch):
+    from app.main import main
+
+    class BoomSvc:
+        def load(self):
+            raise RuntimeError("appdata down")
+
+    monkeypatch.setattr("desktop.services.ConfigService", BoomSvc)
+    raised = False
+    try:
+        main(["--once"])
+    except SystemExit as exc:
+        raised = True
+        assert "Config load failed" in str(exc)
+        assert "appdata" in str(exc).lower()
+    assert raised, "expected SystemExit"
 

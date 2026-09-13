@@ -298,13 +298,20 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     else:
         annual, sal_note = job_annual_salary(job)
         verdict = meets_minimum(annual, min_sal)
+        note_l = (sal_note or "").lower()
+        bound_estimate = any(k in note_l for k in ("floor", "from", "ceiling"))
         if verdict is None:
             # Unknown / ambiguous — keep points, do not exclude.
             score += 4
             issues.append(sal_note or "Salary not listed")
         elif verdict:
-            score += 10
-            reasons.append(f"Salary meets minimum ({annual})")
+            if bound_estimate:
+                # Floor/ceiling that still clears the minimum — soft credit only.
+                score += 4
+                issues.append(sal_note)
+            else:
+                score += 10
+                reasons.append(f"Salary meets minimum ({annual})")
         else:
             reason = f"Salary below minimum ({annual} < {int(min_sal)})"
             return MatchResult(

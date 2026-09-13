@@ -287,7 +287,11 @@ class Database:
             clauses.append("match_score >= ?")
             params.append(min_match)
         if max_distance is not None:
-            clauses.append("(distance_km IS NULL OR distance_km <= ? OR remote_type = 'remote')")
+            # Remote always passes; hybrid/onsite need a known distance within radius.
+            # NULL distance must not slip through (was: IS NULL OR …).
+            clauses.append(
+                "(remote_type = 'remote' OR (distance_km IS NOT NULL AND distance_km <= ?))"
+            )
             params.append(max_distance)
         if statuses:
             clauses.append(f"status IN ({','.join('?' for _ in statuses)})")
@@ -330,11 +334,23 @@ class Database:
             )
 
     def has_applied(self, job: Job) -> bool:
-        """Hard safety: never apply twice (id, normalized URL, or company+title)."""
+        """Hard safety: never apply twice (id, normalized URL, or company+title).
+
+        Twin URL / company+title matching scans prior attempt statuses, not only
+        APPLIED — FAILED/NEEDS_REVIEW/CAPTCHA/APPLYING must also block re-apply.
+        """
+        prior_statuses = (
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        )
         url_keys = {_url_identity(u) for u in (job.url, job.application_url) if u}
         url_keys.discard("")
         company_key = _company_key(job.company)
         title_key = _title_key(job.title)
+        placeholders = ",".join("?" for _ in prior_statuses)
         with self.connection() as conn:
             row = conn.execute(
                 "SELECT id FROM jobs WHERE id = ? AND status = ?",
@@ -356,11 +372,11 @@ class Database:
             if row:
                 return True
             rows = conn.execute(
-                """
+                f"""
                 SELECT id, url, application_url, company, title FROM jobs
-                WHERE status = ?
+                WHERE status IN ({placeholders})
                 """,
-                (JobStatus.APPLIED.value,),
+                prior_statuses,
             ).fetchall()
             for r in rows:
                 for candidate in (r["url"], r["application_url"]):

@@ -88,6 +88,15 @@ def _classify_exception(exc: BaseException) -> tuple[str, str]:
     return stage, missing
 
 
+class PartialResultsError(Exception):
+    """Raised when a source collected some jobs but also hit hard query errors."""
+
+    def __init__(self, jobs: list[Job], message: str) -> None:
+        super().__init__(message)
+        self.jobs = list(jobs)
+        self.message = message
+
+
 class JobSource(ABC):
     """Legacy name kept for imports; prefer ``SearchAdapter``."""
 
@@ -114,6 +123,24 @@ class JobSource(ABC):
     ) -> tuple[list[Job], str | None, SourceError | None]:
         try:
             return self.search(queries), None, None
+        except PartialResultsError as exc:
+            stage, missing = _classify_exception(exc)
+            err = SourceError(
+                source=self.source_id,
+                message=str(exc),
+                stage=stage,
+                exception_type=type(exc).__name__,
+                missing_dependency=missing,
+                traceback=traceback.format_exc(),
+            )
+            logger.error(
+                "Source %s degraded (%s) with %d jobs:\n%s",
+                self.source_id,
+                stage,
+                len(exc.jobs),
+                err.detail(),
+            )
+            return list(exc.jobs), f"degraded: {err.short_message()}", err
         except Exception as exc:  # noqa: BLE001 — isolate source failures
             stage, missing = _classify_exception(exc)
             err = SourceError(

@@ -14,7 +14,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from core.models import Job
-from search.base import JobSource, SearchQuery
+from search.base import JobSource, PartialResultsError, SearchQuery
 from search.jsonld import iter_job_postings, job_from_job_posting, job_from_list_card
 
 logger = logging.getLogger("jobhuntsaver")
@@ -44,11 +44,20 @@ class XingSource(JobSource):
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         all_jobs: list[Job] = []
         seen: set[str] = set()
+        errors: list[str] = []
         for query in queries:
-            for job in self._search_one(query):
-                if job.id not in seen:
-                    seen.add(job.id)
-                    all_jobs.append(job)
+            try:
+                for job in self._search_one(query):
+                    if job.id not in seen:
+                        seen.add(job.id)
+                        all_jobs.append(job)
+            except Exception as exc:  # noqa: BLE001 — keep other queries
+                logger.error("XING query failed for %r: %s", query.keyword, exc)
+                errors.append(str(exc))
+        if errors and not all_jobs:
+            raise RuntimeError(errors[0])
+        if errors and all_jobs:
+            raise PartialResultsError(all_jobs, errors[0])
         return all_jobs
 
     def _search_one(self, query: SearchQuery) -> list[Job]:
