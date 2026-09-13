@@ -247,10 +247,14 @@ class MainWindow(QMainWindow):
         thread = start_worker(worker)
 
         def on_progress(msg: str) -> None:
+            if self._shutting_down:
+                return
             self.progress_label.setText(msg)
             self.dashboard.set_status(msg)
 
         def on_finished(stats: dict) -> None:
+            if self._shutting_down:
+                return
             self._worker = None
             self._thread = None
             self.dashboard.set_pipeline_running(False)
@@ -288,6 +292,8 @@ class MainWindow(QMainWindow):
             )
 
         def on_failed(err: str) -> None:
+            if self._shutting_down:
+                return
             self._worker = None
             self._thread = None
             self.dashboard.set_pipeline_running(False)

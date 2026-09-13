@@ -152,15 +152,20 @@ class ConfigService:
         return self._config
 
     def save_home_coords_from(self, run_config: AppConfig) -> AppConfig:
-        """Persist only home lat/lon from a pipeline run into freshly loaded settings.
+        """Persist home lat/lon + geocode fingerprint from a pipeline run.
 
-        Avoids writing transient overrides (dry_run, mode) from apply-test / worker
-        config back to disk when geocoding updates home coordinates.
+        Writes only location provenance fields into freshly loaded settings so
+        transient overrides (dry_run, mode) from apply-test / worker config are
+        not flushed to disk. Always store ``home_geocoded_address`` with the
+        coords so a later address edit can invalidate stale coordinates.
         """
         fresh = self.load()
         run_loc = run_config.profile.location
         fresh.profile.location.home_latitude = run_loc.home_latitude
         fresh.profile.location.home_longitude = run_loc.home_longitude
+        fresh.profile.location.home_geocoded_address = (
+            getattr(run_loc, "home_geocoded_address", "") or run_loc.home_address or ""
+        )
         return self.save(fresh)
 
     def validate(self, config: AppConfig | None = None) -> list[str]:

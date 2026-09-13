@@ -24,6 +24,16 @@ HEADINGS: dict[str, tuple[str, ...]] = {
         "karriere",
         "erfahrung",
     ),
+    "education_and_experience": (
+        "schul- und berufsausbildung und berufserfahrung",
+        "ausbildung und berufserfahrung",
+        "ausbildung und berufliche erfahrung",
+        "ausbildung & berufserfahrung",
+        "ausbildung und tätigkeiten",
+        "education and experience",
+        "education & experience",
+        "education and work experience",
+    ),
     "education": (
         "schul- und berufsausbildung",
         "academic background",
@@ -162,6 +172,17 @@ _COMPOSITE_REST_OK = {
     "mobilität",
     "mobilitaet",
     "tools",
+    # Compound headings like "Ausbildung und Berufserfahrung"
+    "und",
+    "and",
+    "berufserfahrung",
+    "berufserfahrungen",
+    "praktika",
+    "praktikum",
+    "work",
+    "experience",
+    "employment",
+    "schulische",
 }
 
 

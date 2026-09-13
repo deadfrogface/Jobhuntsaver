@@ -131,12 +131,19 @@ def _detect_unit_in_text(text: str) -> str | None:
     ):
         return "monthly"
     if re.search(
+        r"\b(pro\s+woche|per\s+week|/week|/woche|wöchentlich|woechentlich|weekly)\b",
+        low,
+    ):
+        return "weekly"
+    if re.search(
         r"\b(pro\s+stunde|per\s+hour|/hour|/h\b|stündlich|stuendlich|hourly)\b",
         low,
     ):
         return "hourly"
     if "monat" in low:
         return "monthly"
+    if "woche" in low or "week" in low:
+        return "weekly"
     if "stunde" in low or "/h" in low:
         return "hourly"
     if "jahr" in low or "year" in low or "annual" in low:
@@ -151,10 +158,20 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
     low = cleaned.lower()
     if any(p in low for p in _UNKNOWN_PHRASES):
         return None, None, "salary unknown / negotiable"
+    # Collective agreements / pay grades are not convertible to a number.
+    # Use {1,2} so "EG 10"/"EG 13" stay pay-scale (not €10/h).
+    if re.search(
+        r"\b(tv[öo]d|tv\-?l|tv\-?a|eg\s*\d{1,2}\b|e\d{1,2}\b|entgeltgruppe|tarif)\b",
+        low,
+    ):
+        return None, None, "pay-scale / collective agreement (unknown amount)"
+    # Floor/"from" amounts ("ab 14,50 €") are not exact salaries.
+    if re.search(r"(?i)\b(ab|from|starting(?:\s+at)?|mindestens)\b", low):
+        return None, None, "salary floor / 'from' amount (unknown exact)"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
     unit = _detect_unit_in_text(cleaned)
-    # Range like 30.000 – 40.000 or 30k-45k → ambiguous (do not hard-reject)
+    # Ranges before negative check: "40.000 - 50.000" must not look like -50.000.
     if re.search(
         r"([\d.,]+)\s*k?\s*[-–—]\s*([\d.,]+)\s*k?",
         cleaned,
@@ -165,18 +182,50 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         re.I,
     ):
         return None, unit, "ambiguous salary range"
-    num_m = re.search(
-        r"([\d.,]+)\s*(k)?\s*(?:€|eur|euro)?",
-        cleaned,
+    # Leading / standalone minus → do not invent a positive salary.
+    if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
+        return None, None, "negative salary text"
+    value = _pick_salary_number(cleaned)
+    if value is None:
+        return None, unit, "could not parse salary number"
+    return value, unit, "ok"
+
+
+def _pick_salary_number(text: str) -> float | None:
+    """Pick the numeric salary amount, ignoring hours/percent noise (e.g. 20h/Woche)."""
+    # Prefer amount adjacent to a currency marker.
+    currency_m = re.search(
+        r"([\d.,]+)\s*(k)?\s*(?:€|eur\b|euro\b)|(?:€|eur\b|euro\b)\s*([\d.,]+)\s*(k)?",
+        text,
         re.I,
     )
-    if not num_m:
-        return None, unit, "could not parse salary number"
-    raw = num_m.group(1) + ("k" if num_m.group(2) else "")
-    value = _parse_number(raw)
-    if value is None:
-        return None, unit, "invalid salary number"
-    return value, unit, "ok"
+    if currency_m:
+        if currency_m.group(1) is not None:
+            raw = currency_m.group(1) + ("k" if currency_m.group(2) else "")
+        else:
+            raw = currency_m.group(3) + ("k" if currency_m.group(4) else "")
+        return _parse_number(raw)
+
+    skip_after = re.compile(
+        r"^\s*(h\b|std\b|stunden\b|hours?\b|%|tage\b|days?\b|wochen?\b|weeks?\b)",
+        re.I,
+    )
+    for m in re.finditer(r"([\d.,]+)\s*(k)?", text, re.I):
+        after = text[m.end() :]
+        # Hourly wage markers like "15/h" are amounts, not noise.
+        if re.match(r"^/(?:h|hour|stunde)\b", after, re.I):
+            raw = m.group(1) + ("k" if m.group(2) else "")
+            return _parse_number(raw)
+        if skip_after.search(after):
+            continue
+        # "20h" without space (working hours, not €/h)
+        if re.match(r"^h\b", after, re.I):
+            continue
+        raw = m.group(1) + ("k" if m.group(2) else "")
+        value = _parse_number(raw)
+        if value is not None:
+            return value
+    return None
 
 
 def _to_annual(value: float, unit: str | None) -> tuple[int | None, str]:
@@ -184,6 +233,8 @@ def _to_annual(value: float, unit: str | None) -> tuple[int | None, str]:
         return int(round(value)), "annual"
     if unit == "monthly":
         return int(round(value * 12)), "monthly→annual"
+    if unit == "weekly":
+        return int(round(value * 52)), "weekly→annual"
     if unit == "hourly":
         return int(round(value * HOURS_PER_YEAR)), "hourly→annual (40h×52w=2080)"
     # Heuristic when unit missing: small numbers likely monthly/hourly
@@ -218,6 +269,8 @@ def normalize_to_annual_gross_eur(
             if value is None or value == "":
                 return None, status
         else:
+            if parsed_val <= 0:
+                return None, "non-positive salary"
             use_unit = explicit_unit or text_unit
             if use_unit is None:
                 annual, how = _to_annual(parsed_val, None)

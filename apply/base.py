@@ -94,8 +94,12 @@ class BaseApplier(ABC):
         for selector in (
             "iframe[src*='captcha']",
             "iframe[src*='recaptcha']",
+            "iframe[src*='challenges.cloudflare']",
+            "iframe[src*='turnstile']",
             "#captcha",
             ".g-recaptcha",
+            ".cf-turnstile",
+            "[name='cf-turnstile-response']",
             "[data-sitekey]",
         ):
             if self.page.query_selector(selector):
@@ -231,15 +235,31 @@ class BaseApplier(ABC):
         for selector, value in pairs:
             if value:
                 self._safe_fill(selector, value)
-        # Consent / privacy checkboxes — only when name clearly indicates consent.
-        # Do NOT auto-check every required checkbox (newsletter, marketing, etc.).
+        # Consent / privacy only — never marketing/newsletter/opt-in.
         for sel in (
             "input[type='checkbox'][name*='privacy' i]",
-            "input[type='checkbox'][name*='consent' i], "
             "input[type='checkbox'][name*='datenschutz' i]",
+            "input[type='checkbox'][name*='terms' i]",
+            "input[type='checkbox'][name*='agb' i]",
+            "input[type='checkbox'][id*='privacy' i]",
+            "input[type='checkbox'][id*='datenschutz' i]",
         ):
             try:
                 for box in self.page.query_selector_all(sel):
+                    name = (box.get_attribute("name") or "") + " " + (box.get_attribute("id") or "")
+                    low = name.lower()
+                    if any(
+                        bad in low
+                        for bad in (
+                            "marketing",
+                            "newsletter",
+                            "opt_in",
+                            "optin",
+                            "werbung",
+                            "promo",
+                        )
+                    ):
+                        continue
                     if box.is_visible() and not box.is_checked():
                         box.check()
             except Exception:
@@ -275,13 +295,20 @@ class BaseApplier(ABC):
         if not text:
             return False
         if selectors is None:
+            # Never fall back to bare ``textarea`` — that can overwrite
+            # unknown required questions / notes fields with cover-letter text.
             selectors = [
-                "textarea[name*='cover_letter']",
-                "textarea[id*='cover_letter']",
-                "textarea[name*='cover']",
-                "textarea[id*='cover']",
+                "textarea[name*='cover_letter' i]",
+                "textarea[id*='cover_letter' i]",
+                "textarea[name*='cover' i]",
+                "textarea[id*='cover' i]",
+                "textarea[name*='anschreiben' i]",
+                "textarea[id*='anschreiben' i]",
+                "textarea[placeholder*='cover' i]",
+                "textarea[placeholder*='Anschreiben' i]",
+                "textarea[aria-label*='cover' i]",
+                "textarea[aria-label*='Anschreiben' i]",
                 "#cover_letter",
-                "textarea",
             ]
         if isinstance(selectors, str):
             selectors = [selectors]
@@ -316,11 +343,15 @@ class BaseApplier(ABC):
         """Return required empty fields that are not identity/CV and not in profile.answers."""
         unknown: list[str] = []
         for el in self.page.query_selector_all(
-            "input[required], textarea[required], select[required]"
+            "input[required], textarea[required], select[required], "
+            "input[aria-required='true'], textarea[aria-required='true'], "
+            "select[aria-required='true']"
         ):
             try:
                 name = (el.get_attribute("name") or el.get_attribute("id") or "").lower()
                 if not name:
+                    # Nameless required controls still block auto-submit.
+                    unknown.append("unnamed_required")
                     continue
                 if any(k in name for k in skip_tokens):
                     continue

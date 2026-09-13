@@ -189,7 +189,7 @@ def run_pipeline(
                 "jobs": 0,
                 "error": note,
             }
-        return {
+        stats = {
             "total": 0,
             "cancelled": False,
             "paused": False,
@@ -200,6 +200,8 @@ def run_pipeline(
             "applied": 0,
             "config_error": "empty_queries",
         }
+        db.finish_search_run(run_id, "error", stats)
+        return stats
     for source in sources:
         if stopped():
             cancelled = True

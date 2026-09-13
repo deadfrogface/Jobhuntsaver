@@ -49,6 +49,14 @@ def fingerprint(job: Job) -> str:
     )
 
 
+def soft_fingerprint_usable(job: Job) -> bool:
+    """Require company + title + place so bare titles cannot collapse portals."""
+    company = _norm(job.company)
+    title = _norm(job.title)
+    place = _norm(job.city or job.address)
+    return bool(company and title and place)
+
+
 def source_rank(job: Job) -> int:
     """Prefer real ATS identity; ignore placeholder ats_type 'unknown'."""
     ats = (job.ats_type or "").strip().lower()
@@ -77,14 +85,19 @@ def deduplicate(jobs: list[Job]) -> list[Job]:
             job.duplicate_of = existing.id
             hard_losers.append(job)
 
-    # Soft fingerprint grouping across different URLs
+    # Soft fingerprint grouping across different URLs (only when fingerprint is strong).
     groups: dict[str, list[Job]] = defaultdict(list)
+    singles: list[Job] = []
     for job in by_hard.values():
         if job.duplicate_of:
+            continue
+        if not soft_fingerprint_usable(job):
+            singles.append(job)
             continue
         groups[fingerprint(job)].append(job)
 
     winners: list[Job] = []
+    winners.extend(singles)
     for _fp, group in groups.items():
         if len(group) == 1:
             winners.append(group[0])
@@ -107,4 +120,6 @@ def is_likely_same_job(a: Job, b: Job) -> bool:
         return True
     if a.application_url and b.application_url and a.application_url.strip().lower() == b.application_url.strip().lower():
         return True
-    return fingerprint(a) == fingerprint(b) and bool(fingerprint(a).strip("|"))
+    if not (soft_fingerprint_usable(a) and soft_fingerprint_usable(b)):
+        return False
+    return fingerprint(a) == fingerprint(b)

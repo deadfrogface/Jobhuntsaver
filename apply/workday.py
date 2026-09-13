@@ -51,7 +51,17 @@ class WorkdayApplier(BaseApplier):
             phone="input[data-automation-id='phone-number'], input[type='tel']",
             resume_pdf_path=resume_pdf_path,
         )
-        self._fill_cover_letter(cover_letter_text, ["textarea"])
+        self._fill_cover_letter(
+            cover_letter_text,
+            [
+                "textarea[name*='cover' i]",
+                "textarea[id*='cover' i]",
+                "textarea[data-automation-id*='cover' i]",
+                "textarea[placeholder*='cover' i]",
+                "textarea[aria-label*='cover' i]",
+                "textarea[placeholder*='Anschreiben' i]",
+            ],
+        )
 
         # Multi-step: advance carefully; stop before final submit in dry_run
         for _ in range(6):

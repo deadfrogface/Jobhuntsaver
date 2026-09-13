@@ -45,10 +45,15 @@ def _detect_remote(item: dict, text: str = "") -> str:
     blob = f"{homeoffice} {text}".lower()
     if any(x in blob for x in ("100%", "vollständig remote", "remote only", "rein remote")):
         return RemoteType.REMOTE.value
-    if homeoffice or "homeoffice" in blob or "remote" in blob or "hybrid" in blob:
-        if "hybrid" in blob or "tage" in blob:
-            return RemoteType.HYBRID.value
-        return RemoteType.REMOTE.value if homeoffice else RemoteType.ONSITE.value
+    mentions_remote = bool(homeoffice) or "homeoffice" in blob or "remote" in blob
+    mentions_hybrid = "hybrid" in blob or (
+        mentions_remote and any(tok in blob for tok in ("tage", "teilweise", "anteil"))
+    )
+    if mentions_hybrid:
+        return RemoteType.HYBRID.value
+    if mentions_remote:
+        # Text-only "Remote"/"Homeoffice" counts as remote even without BA boolean.
+        return RemoteType.REMOTE.value
     return RemoteType.ONSITE.value
 
 
