@@ -293,3 +293,35 @@ def test_title_key_strips_bare_gender_tag():
     assert _title_key("Kaufmann (m/w/d)") == _title_key("Kaufmann m/w/d")
     assert _title_key("Kaufmann (m/w/d)") == "kaufmann"
 
+
+def test_ascii_hyphen_salary_range_is_ambiguous_not_negative():
+    from core.salary import normalize_to_annual_gross_eur
+
+    annual, reason = normalize_to_annual_gross_eur(text="40.000 - 50.000 € p.a.")
+    assert annual is None
+    assert "ambiguous" in reason
+    annual2, reason2 = normalize_to_annual_gross_eur(text="-5000 EUR jährlich")
+    assert annual2 is None
+    assert "negative" in reason2
+
+
+def test_hours_in_salary_text_do_not_become_the_amount():
+    from core.salary import normalize_to_annual_gross_eur
+
+    annual, reason = normalize_to_annual_gross_eur(
+        text="Teilzeit 20h/Woche 2.500 € monatlich"
+    )
+    assert annual == 30000
+    assert "monthly" in reason
+    annual_h, _ = normalize_to_annual_gross_eur(text="25 €/Stunde")
+    assert annual_h == 25 * 2080
+
+
+def test_personio_cover_letter_selectors_are_not_bare_textarea():
+    import inspect
+    from apply import personio
+
+    src = inspect.getsource(personio.PersonioApplier._do_apply)
+    assert '["textarea"]' not in src
+    assert "cover" in src.lower() or "anschreiben" in src.lower()
+

@@ -44,7 +44,19 @@ class PersonioApplier(BaseApplier):
         if resume_pdf_path and not uploaded:
             return ApplyResult(success=False, needs_review=True, error_message="Personio CV upload failed")
         self._fill_german_profile_fields(profile)
-        self._fill_cover_letter(cover_letter_text, ["textarea"])
+        self._fill_cover_letter(
+            cover_letter_text,
+            [
+                "textarea[name*='cover' i]",
+                "textarea[id*='cover' i]",
+                "textarea[name*='anschreiben' i]",
+                "textarea[id*='anschreiben' i]",
+                "textarea[placeholder*='Anschreiben' i]",
+                "textarea[placeholder*='cover' i]",
+                "textarea[aria-label*='cover' i]",
+                "textarea[aria-label*='Anschreiben' i]",
+            ],
+        )
 
         unknown = self._unknown_required_fields(
             profile,

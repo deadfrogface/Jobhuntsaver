@@ -163,11 +163,8 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         return None, None, "pay-scale / collective agreement (unknown amount)"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
-    # Leading minus → do not invent a positive salary.
-    if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
-        return None, None, "negative salary text"
     unit = _detect_unit_in_text(cleaned)
-    # Range like 30.000 – 40.000 or 30k-45k → ambiguous (do not hard-reject)
+    # Ranges before negative check: "40.000 - 50.000" must not look like -50.000.
     if re.search(
         r"([\d.,]+)\s*k?\s*[-–—]\s*([\d.,]+)\s*k?",
         cleaned,
@@ -178,18 +175,50 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         re.I,
     ):
         return None, unit, "ambiguous salary range"
-    num_m = re.search(
-        r"([\d.,]+)\s*(k)?\s*(?:€|eur|euro)?",
-        cleaned,
+    # Leading / standalone minus → do not invent a positive salary.
+    if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
+        return None, None, "negative salary text"
+    value = _pick_salary_number(cleaned)
+    if value is None:
+        return None, unit, "could not parse salary number"
+    return value, unit, "ok"
+
+
+def _pick_salary_number(text: str) -> float | None:
+    """Pick the numeric salary amount, ignoring hours/percent noise (e.g. 20h/Woche)."""
+    # Prefer amount adjacent to a currency marker.
+    currency_m = re.search(
+        r"([\d.,]+)\s*(k)?\s*(?:€|eur\b|euro\b)|(?:€|eur\b|euro\b)\s*([\d.,]+)\s*(k)?",
+        text,
         re.I,
     )
-    if not num_m:
-        return None, unit, "could not parse salary number"
-    raw = num_m.group(1) + ("k" if num_m.group(2) else "")
-    value = _parse_number(raw)
-    if value is None:
-        return None, unit, "invalid salary number"
-    return value, unit, "ok"
+    if currency_m:
+        if currency_m.group(1) is not None:
+            raw = currency_m.group(1) + ("k" if currency_m.group(2) else "")
+        else:
+            raw = currency_m.group(3) + ("k" if currency_m.group(4) else "")
+        return _parse_number(raw)
+
+    skip_after = re.compile(
+        r"^\s*(h\b|std\b|stunden\b|hours?\b|%|tage\b|days?\b|wochen?\b|weeks?\b)",
+        re.I,
+    )
+    for m in re.finditer(r"([\d.,]+)\s*(k)?", text, re.I):
+        after = text[m.end() :]
+        # Hourly wage markers like "15/h" are amounts, not noise.
+        if re.match(r"^/(?:h|hour|stunde)\b", after, re.I):
+            raw = m.group(1) + ("k" if m.group(2) else "")
+            return _parse_number(raw)
+        if skip_after.search(after):
+            continue
+        # "20h" without space (working hours, not €/h)
+        if re.match(r"^h\b", after, re.I):
+            continue
+        raw = m.group(1) + ("k" if m.group(2) else "")
+        value = _parse_number(raw)
+        if value is not None:
+            return value
+    return None
 
 
 def _to_annual(value: float, unit: str | None) -> tuple[int | None, str]:
