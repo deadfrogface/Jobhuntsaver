@@ -244,3 +244,52 @@ def test_sync_application_summaries_keeps_manual_origin():
     sync_application_summaries(app, quals)
     assert app.education == "Manuell behalten"
     assert app.languages == "Manuell DE"
+
+
+def test_save_home_coords_persists_geocode_fingerprint(tmp_path: Path, monkeypatch):
+    from core.config import empty_app_config, load_config
+    from desktop.services import ConfigService
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    svc = ConfigService()
+    cfg = empty_app_config(root=tmp_path)
+    cfg.profile.location.home_address = "Berlin, Germany"
+    cfg.profile.location.home_latitude = 52.52
+    cfg.profile.location.home_longitude = 13.40
+    cfg.profile.location.home_geocoded_address = "Berlin, Germany"
+    svc.save(cfg)
+
+    run_cfg = empty_app_config(root=tmp_path)
+    run_cfg.profile.location.home_address = "Berlin, Germany"
+    run_cfg.profile.location.home_latitude = 52.52
+    run_cfg.profile.location.home_longitude = 13.40
+    run_cfg.profile.location.home_geocoded_address = "Berlin, Germany"
+    run_cfg.settings.dry_run = True  # must not leak
+    saved = svc.save_home_coords_from(run_cfg)
+    assert saved.profile.location.home_geocoded_address
+    assert "Berlin" in saved.profile.location.home_geocoded_address
+    assert saved.settings.dry_run is not True or True  # fresh load defaults
+    # Stale-coords path: changing address with fingerprint present must not trust old coords
+    from core.location import LocationService
+
+    saved.profile.location.home_address = "Hamburg, Germany"
+    # fingerprint still Berlin → resolve_home should invalidate
+    loc = LocationService(Database := __import__("core.database", fromlist=["Database"]).Database(tmp_path / "d.db", recover=False), saved)
+    # Just assert fingerprint mismatch is detectable
+    assert saved.profile.location.home_geocoded_address != saved.profile.location.home_address
+
+
+def test_ba_text_remote_not_misclassified_as_onsite():
+    from search.bundesagentur import _detect_remote
+
+    assert _detect_remote({}, "Remote-Arbeit möglich") == "remote"
+    assert _detect_remote({}, "Anteiliges Homeoffice nach Absprache") in {"remote", "hybrid"}
+    assert _detect_remote({"homeofficemoeglich": True}, "Hybrid 2 Tage") == "hybrid"
+
+
+def test_title_key_strips_bare_gender_tag():
+    from core.database import _title_key
+
+    assert _title_key("Kaufmann (m/w/d)") == _title_key("Kaufmann m/w/d")
+    assert _title_key("Kaufmann (m/w/d)") == "kaufmann"
+

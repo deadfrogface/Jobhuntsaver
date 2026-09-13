@@ -46,9 +46,14 @@ _LEGAL_SUFFIX = re.compile(
     re.I,
 )
 _GENDER_TAG = re.compile(
-    r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)",
+    r"(?:"
+    r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)|"
+    r"\b(?:m/w/d|w/m/d|f/m/d|d/m/w)\b|"
+    r"\b(?:m/w|w/m)\b"
+    r")",
     re.I,
 )
+
 
 
 def _company_key(company: str) -> str:
@@ -60,7 +65,7 @@ def _company_key(company: str) -> str:
 
 def _title_key(title: str) -> str:
     text = (title or "").lower().strip()
-    text = _GENDER_TAG.sub("", text)
+    text = _GENDER_TAG.sub(" ", text)
     text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
