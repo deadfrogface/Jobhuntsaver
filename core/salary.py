@@ -165,9 +165,17 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         low,
     ):
         return None, None, "pay-scale / collective agreement (unknown amount)"
-    # Floor/"from" amounts ("ab 14,50 €") are not exact salaries.
+    # Floor/"from" amounts ("ab 40.000 €", "ab 14,50 €") — parse the floor number
+    # so the matcher can hard-exclude when floor < minimum.
     if re.search(r"(?i)\b(ab|from|starting(?:\s+at)?|mindestens)\b", low):
-        return None, None, "salary floor / 'from' amount (unknown exact)"
+        if not re.search(r"\d", cleaned):
+            return None, None, "salary floor / 'from' amount (unknown exact)"
+        # Ranges with "ab" still ambiguous exact; prefer floor of first number.
+        unit = _detect_unit_in_text(cleaned)
+        value = _pick_salary_number(cleaned)
+        if value is None:
+            return None, unit, "salary floor / 'from' amount (unknown exact)"
+        return value, unit, "salary floor / 'from' amount"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
     unit = _detect_unit_in_text(cleaned)
@@ -272,10 +280,13 @@ def normalize_to_annual_gross_eur(
             if parsed_val <= 0:
                 return None, "non-positive salary"
             use_unit = explicit_unit or text_unit
-            if use_unit is None:
-                annual, how = _to_annual(parsed_val, None)
-                return annual, how
             annual, how = _to_annual(parsed_val, use_unit)
+            # Preserve floor/from (and similar) reason for matcher soft/hard rules.
+            status_l = status.lower()
+            if status != "ok" and (
+                "floor" in status_l or "from" in status_l or "ceiling" in status_l
+            ):
+                return annual, f"{status}; {how}"
             return annual, how
 
     if value is None or value == "":
@@ -311,11 +322,38 @@ def meets_minimum(
 
 
 def job_annual_salary(job: Any) -> tuple[int | None, str]:
-    """Resolve a Job's compensation to EUR gross / year using salary_min + salary_text."""
+    """Resolve a Job's compensation to EUR gross / year.
+
+    Uses salary_text when present; salary_max alone is treated as a ceiling;
+    min!=max both set is ambiguous (unknown exact).
+    """
     salary_min = getattr(job, "salary_min", None)
+    salary_max = getattr(job, "salary_max", None)
     salary_text = getattr(job, "salary_text", None) or None
+
+    if salary_text:
+        annual, reason = normalize_to_annual_gross_eur(
+            salary_min if salary_min is not None else None,
+            unit=None,
+            text=salary_text,
+        )
+        return annual, reason
+
+    if (
+        salary_min is not None
+        and salary_max is not None
+        and float(salary_min) != float(salary_max)
+    ):
+        return None, "ambiguous salary range (min!=max)"
+
+    if salary_min is None and salary_max is not None:
+        annual, how = normalize_to_annual_gross_eur(salary_max, unit=None, text=None)
+        if annual is None:
+            return None, how
+        return annual, f"salary ceiling / max-only; {how}"
+
     return normalize_to_annual_gross_eur(
         salary_min if salary_min is not None else None,
         unit=None,
-        text=salary_text,
+        text=None,
     )

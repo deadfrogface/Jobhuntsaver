@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
@@ -21,6 +22,8 @@ from core.models import JobStatus, OperatingMode
 from core.source_health import SourceHealthStatus
 from search.base import SearchQuery
 from search.registry import build_sources
+
+logger = logging.getLogger("jobhuntsaver")
 
 # Hard ceiling per job board so one hung source cannot freeze the whole run.
 SOURCE_SEARCH_TIMEOUT_S = 120
@@ -213,7 +216,7 @@ def run_pipeline(
         jobs, err, detail = _search_source_with_timeout(
             source, queries, should_stop=stopped
         )
-        if err:
+        if err and not jobs:
             run.error(f"{source.source_id}: {err}")
             source_errors.append(f"{source.source_id}: {err}")
             status = SourceHealthStatus.from_outcome(
@@ -235,6 +238,33 @@ def run_pipeline(
             progress(
                 f"{source.source_id}: {status.value} — andere Quellen laufen weiter."
             )
+            continue
+        if err and jobs:
+            run.error(f"{source.source_id}: {err}")
+            source_errors.append(f"{source.source_id}: {err}")
+            status = SourceHealthStatus.from_outcome(
+                jobs_found=len(jobs),
+                error=err,
+                detail_stage=getattr(detail, "stage", None) if detail else None,
+                source_id=source.source_id,
+                placeholder=placeholder,
+            )
+            msg = detail.short_message() if detail else err
+            if detail:
+                run.error(detail.detail())
+            db.set_source_status(source.source_id, status.value, msg, len(jobs))
+            source_results[source.source_id] = {
+                "status": status.value,
+                "jobs": len(jobs),
+                "error": msg,
+            }
+            progress(
+                f"{source.source_id}: degraded — {len(jobs)} Jobs behalten, "
+                "andere Quellen laufen weiter."
+            )
+            for job in jobs:
+                job.run_id = run_id
+            all_jobs.extend(jobs)
             continue
         status = SourceHealthStatus.from_outcome(
             jobs_found=len(jobs),
@@ -471,7 +501,15 @@ def main(argv: list[str] | None = None) -> int:
         from desktop.services import ConfigService
 
         config = ConfigService().load()
-    except Exception:
+    except Exception as exc:
+        if args.once:
+            logger.exception("AppData-Konfiguration fehlgeschlagen — Abbruch (--once)")
+            raise SystemExit(
+                f"Config load failed (AppData): {exc}"
+            ) from exc
+        logger.exception(
+            "AppData-Konfiguration fehlgeschlagen — Fallback auf Paket-Root-Config"
+        )
         config = load_config()
     run_pipeline(config, mode=args.mode)
     return 0
