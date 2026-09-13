@@ -134,7 +134,50 @@ def test_salary_zero_text_is_unknown_not_zero():
 def test_compound_ausbildung_berufserfahrung_is_heading():
     from core.cv_sections import is_heading
 
-    assert is_heading("Ausbildung und Berufserfahrung") is not None
+    assert is_heading("Ausbildung und Berufserfahrung") == "education_and_experience"
+
+
+def test_compound_heading_splits_education_and_work():
+    from core.cv_parser import parse_cv_text
+
+    parsed = parse_cv_text(
+        """Max Test
+Ausbildung und Berufserfahrung
+2010-2013 Ausbildung Kaufmann, Handelsschule
+2014-2020 Verkäufer, Shop GmbH
+Software: Excel, SAP
+"""
+    )
+    quals = " ".join(e.get("qualification", "") for e in parsed["education"])
+    titles = " ".join(e.get("title", "") for e in parsed["work_experience"])
+    assert "Ausbildung" in quals
+    assert "Verkäufer" in titles
+    assert "Verkäufer" not in quals
+    assert "Excel" in parsed["software"]
+    assert "SAP" in parsed["software"]
+
+
+def test_licence_line_not_a_skill_and_bare_cefr_not_a_language():
+    from core.cv_parser import parse_cv_text
+
+    parsed = parse_cv_text(
+        """Max Mustermann
+Kenntnisse
+Python, SQL
+Führerschein Klasse B
+Sprachen
+C1
+Englisch
+"""
+    )
+    assert "Führerschein Klasse B" not in parsed["skills"]
+    assert "Python" in parsed["skills"]
+    assert any(d.get("value") == "B" for d in parsed["driving_license"])
+    langs = parsed["languages"]
+    assert not any(lang.get("language") == "C" for lang in langs)
+    assert any(
+        lang.get("language") == "Englisch" and lang.get("level") == "C1" for lang in langs
+    )
 
 
 def test_bare_cefr_c1_not_treated_as_driving_class():

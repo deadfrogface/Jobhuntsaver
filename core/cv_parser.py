@@ -157,6 +157,9 @@ def _parse_one_language(chunk: str) -> LanguageEntry | None:
     line = chunk.strip().strip("•-–—*· ")
     if not line or _is_heading_value(line):
         return None
+    # Bare CEFR token without a language name — never invent "C"/"B"/"A".
+    if re.fullmatch(r"[ABC][12]", line, re.I):
+        return None
 
     m = re.match(
         r"^(?P<lang>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-/']*)\s*"
@@ -167,10 +170,16 @@ def _parse_one_language(chunk: str) -> LanguageEntry | None:
     if m:
         lang = m.group("lang").strip(" :")
         body = (m.group("body") or "").strip()
+        # "C1" splits as lang=C body=1 — reject single-letter fake languages.
+        if re.fullmatch(r"[ABC]", lang, re.I) and re.fullmatch(r"[12]", body or ""):
+            return None
         if lang and not _is_heading_value(lang):
             level = _normalize_lang_level(body, full_line=line)
             if level or body:
                 return LanguageEntry(language=lang, level=level)
+            # Bare language name on its own line (level may follow/precede).
+            if re.fullmatch(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\-/']{1,}", lang):
+                return LanguageEntry(language=lang, level="")
     level_m = _LEVEL.search(line)
     if level_m:
         lang = line[: level_m.start()].strip(" -–—|():")
@@ -184,9 +193,14 @@ def _parse_one_language(chunk: str) -> LanguageEntry | None:
 
 def _parse_languages(body: str) -> list[LanguageEntry]:
     results: list[LanguageEntry] = []
+    pending_level: str | None = None
     for raw in body.splitlines():
         line = _normalize_bullet(raw)
         if not line:
+            continue
+        # Orphan CEFR token on its own line — attach to the next language name.
+        if re.fullmatch(r"[ABC][12]", line, re.I):
+            pending_level = line.upper()
             continue
         for chunk in _split_language_chunks(line):
             amp = re.match(
@@ -201,9 +215,15 @@ def _parse_languages(body: str) -> list[LanguageEntry]:
                     name = re.sub(r"\(.*?\)", "", part).strip(" -–—|:")
                     if name and not _is_heading_value(name):
                         results.append(LanguageEntry(language=name, level=level))
+                pending_level = None
                 continue
             entry = _parse_one_language(chunk)
             if entry:
+                if pending_level and not (entry.level or "").strip():
+                    entry = LanguageEntry(language=entry.language, level=pending_level)
+                    pending_level = None
+                elif entry.level:
+                    pending_level = None
                 results.append(entry)
     seen: set[str] = set()
     unique: list[LanguageEntry] = []
@@ -220,6 +240,10 @@ def _parse_software(body: str) -> list[str]:
     for raw in body.splitlines():
         line = _normalize_bullet(raw)
         if not line or _is_heading_value(line):
+            continue
+        # Strip section-style labels pasted into a body line.
+        line = re.sub(r"(?i)^(software|edv|it|tools)\s*:\s*", "", line).strip()
+        if not line:
             continue
         # Skip licence / mobility fragments accidentally mixed in.
         if re.match(r"(?i)^(führerschein|fuehrerschein|driving\s+licen)", line):
@@ -652,6 +676,39 @@ def _parse_experience(body: str) -> list[ExperienceEntry]:
     return entries
 
 
+_LICENCE_LINE = re.compile(
+    r"(?i)^(führerschein|fuehrerschein|fahrerlaubnis|driving\s+licen)"
+)
+
+_EDU_LINE_HINT = re.compile(
+    r"(?i)\b("
+    r"ausbildung|studium|bachelor|master|diplom|magister|abitur|matura|"
+    r"schule|schulisch|university|hochschule|fachhochschule|berufsschule|"
+    r"handelsschule|realschule|gymnasium|volksschule|oberschule|"
+    r"student|studierende|lehrgang\s+zum|lehre\b"
+    r")\b"
+)
+
+
+def _split_education_and_experience_body(body: str) -> tuple[str, str, str]:
+    """Split a compound Ausbildung+Berufserfahrung section into edu / work / other."""
+    edu_lines: list[str] = []
+    exp_lines: list[str] = []
+    other_lines: list[str] = []
+    for raw in body.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if re.match(r"(?i)^(software|edv|it|tools)\s*:", stripped):
+            other_lines.append(raw)
+            continue
+        if _EDU_LINE_HINT.search(stripped):
+            edu_lines.append(raw)
+        else:
+            exp_lines.append(raw)
+    return "\n".join(edu_lines), "\n".join(exp_lines), "\n".join(other_lines)
+
+
 def _parse_skills(body: str) -> list[str]:
     skills: list[str] = []
     for raw in body.splitlines():
@@ -663,6 +720,9 @@ def _parse_skills(body: str) -> list[str]:
         # Skip long prose / project descriptions
         if len(line) > 120 and not re.search(r"[,;|/]", line):
             continue
+        # Licence lines belong in driving_license, not skills.
+        if _LICENCE_LINE.match(line):
+            continue
         # CEFR / native language lines under bare "Kenntnisse" belong in languages.
         if _LEVEL.search(line) and _parse_one_language(line) is not None:
             continue
@@ -670,6 +730,8 @@ def _parse_skills(body: str) -> list[str]:
         for part in parts:
             part = part.strip(" .")
             if part and not _is_heading_value(part) and len(part) < 80:
+                if _LICENCE_LINE.match(part):
+                    continue
                 if _LEVEL.search(part) and _parse_one_language(part) is not None:
                     continue
                 skills.append(part)
@@ -877,7 +939,27 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         c for c in _parse_certificates(sections.get("certificates", "")) if not _is_heading_value(c.name)
     ]
     driving = _parse_driving(sections.get("license", ""))
-    education, edu_certs = _parse_education(sections.get("education", ""))
+    # Licence lines parked under Kenntnisse/Skills still count as driving licences.
+    for raw in sections.get("skills", "").splitlines():
+        line = _normalize_bullet(raw)
+        if line and _LICENCE_LINE.match(line):
+            for code in _inline_licence_mentions(line) or _parse_driving(line):
+                if code not in driving:
+                    driving.append(code)
+    edu_body = sections.get("education", "")
+    exp_body = sections.get("experience", "")
+    combo = sections.get("education_and_experience", "")
+    if combo:
+        c_edu, c_exp, c_other = _split_education_and_experience_body(combo)
+        edu_body = "\n".join(part for part in (edu_body, c_edu) if part)
+        exp_body = "\n".join(part for part in (exp_body, c_exp) if part)
+        if c_other:
+            extra_soft = [
+                s for s in _parse_software(c_other) if not _is_heading_value(s)
+            ]
+            if extra_soft:
+                software = list(dict.fromkeys([*software, *extra_soft]))
+    education, edu_certs = _parse_education(edu_body)
     if edu_certs and not certificates:
         certificates.extend(edu_certs)
     elif edu_certs:
@@ -885,7 +967,7 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         for c in edu_certs:
             if c.name.lower() not in existing:
                 certificates.append(c)
-    experience = _parse_experience(sections.get("experience", ""))
+    experience = _parse_experience(exp_body)
 
     if "languages_tools_mobility" in sections:
         m_langs, m_soft, m_lic = _parse_mixed_languages_tools_mobility(
