@@ -13,7 +13,7 @@ class CompanySitesSource(JobSource):
     source_id = "company_sites"
 
     def health_check(self) -> tuple[bool, str]:
-        return True, "PLACEHOLDER — Firmenkarriereseiten sind in v1 nicht implementiert"
+        return True, "placeholder — Firmenkarriereseiten sind in v1 nicht implementiert"
 
     def search(self, queries: list[SearchQuery]) -> list[Job]:
         # Intentionally empty in v1 — curated company feeds can be added later.

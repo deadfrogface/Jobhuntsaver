@@ -27,7 +27,7 @@ Kundenberater
 Weitere Kenntnisse
 Kundenorientierung
 Beschwerdemanagement
-ZA Office (Zahnarztpraxis-Software)
+ClinicDesk (Zahnarztpraxis-Software)
 
 Sprachen
 Deutsch C2
@@ -46,8 +46,8 @@ B
     assert parsed["confidence"]["personal"] != "Nicht erkannt"
     assert "Kundenorientierung" in parsed["skills"]
     soft = " | ".join(parsed["software"]).lower()
-    assert "za office" in soft
-    assert soft.count("za office") == 1
+    assert "clinicdesk" in soft
+    assert soft.count("clinicdesk") == 1
     assert "kundenorientierung" not in soft
 
 
@@ -55,14 +55,14 @@ def test_software_paren_not_duplicated() -> None:
     text = """
 Max Test
 EDV-Kenntnisse
-ZA Office (zentraler Abrechnungsassistent)
-Upway Backoffice (Versandplattform)
+ClinicDesk (zentraler Abrechnungsassistent)
+NovaDesk Backoffice (Versandplattform)
 MS Office
 """
     parsed = parse_cv_text(text)
     joined = " || ".join(parsed["software"])
-    assert joined.lower().count("za office") == 1
-    assert joined.lower().count("upway") == 1
+    assert joined.lower().count("clinicdesk") == 1
+    assert joined.lower().count("novadesk") == 1
 
 
 def test_missing_personal_does_not_clear_existing_profile() -> None:

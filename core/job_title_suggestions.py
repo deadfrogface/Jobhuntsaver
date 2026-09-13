@@ -38,7 +38,7 @@ _TOKEN_TITLES: list[tuple[re.Pattern[str], list[str]]] = [
     ),
     (
         re.compile(r"fitness|trainer|zumba|pilates|ems", re.I),
-        ["Fitnesstrainer", "Sport- und Fitnesskaufmann"],
+        ["Fitnesstrainer", "Sportfachberater"],
     ),
     (
         re.compile(r"zeitarbeit|personaldisponent|staffing", re.I),
