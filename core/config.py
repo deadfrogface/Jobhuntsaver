@@ -42,6 +42,9 @@ class LocationConfig:
     country: str = "DE"
     home_latitude: float | None = None
     home_longitude: float | None = None
+    # Address text that home_latitude/longitude were geocoded for. When the
+    # current home_address no longer matches, persisted coords are discarded.
+    home_geocoded_address: str = ""
 
 
 @dataclass

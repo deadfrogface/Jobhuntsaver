@@ -287,6 +287,7 @@ class LocationWorkSection(QGroupBox):
             # stale geocodes (and never silently fall back to generic DE coords).
             location.home_latitude = None
             location.home_longitude = None
+            location.home_geocoded_address = ""
         location.home_address = new_home
         location.max_distance_km = float(self.max_distance.value())
         location.allow_remote_germany = self.allow_remote.isChecked()
