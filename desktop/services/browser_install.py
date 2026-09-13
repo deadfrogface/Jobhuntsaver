@@ -204,23 +204,38 @@ def repair_browser() -> tuple[bool, str]:
     """Install/repair Chromium into %LOCALAPPDATA%\\Jobhuntsaver\\browsers.
 
     Uses the Playwright driver binary — never relaunches the frozen EXE.
+    Always attempts a driver-based install/repair (even if a previous binary
+    path looks present) so "Reparieren" actually re-downloads a broken install.
     """
     configure_playwright_browsers_path()
-    if playwright_available():
-        exe = find_chromium_executable()
-        return True, f"Browser-Komponente ist bereits vorhanden:\n{exe}"
-
     target = preferred_browsers_dir()
+    # Hard safety: never invoke sys.executable -m playwright when frozen.
+    if is_frozen():
+        try:
+            cmd = _playwright_driver_command()
+        except Exception as exc:  # noqa: BLE001
+            return False, f"Playwright-Treiber nicht verfügbar: {exc}"
+        if Path(cmd[0]).resolve() == Path(sys.executable).resolve():
+            return False, "Interner Fehler: Playwright-Treiber zeigt auf Jobhuntsaver.exe."
+
     ok, msg = _run_playwright_install(target)
     if ok:
         return True, msg
+
+    # If install failed but a usable Chromium still exists, report degraded success.
+    existing = find_chromium_executable()
+    if existing:
+        return True, (
+            f"Neue Installation fehlgeschlagen ({msg}), "
+            f"vorhandene Komponente bleibt nutzbar:\n{existing}"
+        )
 
     if is_frozen():
         return False, (
             f"{msg}\n\n"
             "Chromium konnte nicht installiert werden.\n"
             f"Zielordner: {target}\n"
-            "Bitte Internetverbindung prüfen."
+            "Bitte Internetverbindung prüfen. Die App bleibt geöffnet."
         )
     return False, msg
 

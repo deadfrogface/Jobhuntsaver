@@ -234,8 +234,9 @@ def _parse_software(body: str) -> list[str]:
             continue
         paren = re.match(r"^(?P<desc>.+?)\s*\((?P<name>[^)]+)\)\s*$", line)
         if paren and len(paren.group("name")) < 40:
+            # Keep a single canonical entry (name / description). Do NOT also
+            # append the bare name — that creates ZA Office duplicates.
             items.append(f"{paren.group('name').strip()} / {paren.group('desc').strip()}")
-            items.append(paren.group("name").strip())
             continue
         items.append(line)
     cleaned: list[str] = []
@@ -250,6 +251,16 @@ def _parse_software(body: str) -> list[str]:
             continue
         seen.add(key)
         cleaned.append(item)
+    # Drop bare names that are already covered by a richer "Name / Desc" entry.
+    richer_prefixes = set()
+    for item in cleaned:
+        if " / " in item:
+            richer_prefixes.add(item.split(" / ", 1)[0].strip().lower())
+    cleaned = [
+        item
+        for item in cleaned
+        if (" / " in item) or (item.lower() not in richer_prefixes)
+    ]
     return cleaned
 
 
@@ -672,6 +683,54 @@ def _parse_mixed_languages_tools_mobility(body: str) -> tuple[list[LanguageEntry
     return _parse_languages("\n".join(lang_lines)), _parse_software("\n".join(soft_lines)), lic
 
 
+_KNOWN_SOFTWARE_TOKENS = (
+    "microsoft 365", "microsoft office", "office 365", "m365", "docuware",
+    "sharepoint", "onedrive", "teams", "power automate", "power apps",
+    "datev", "sap", "salesforce", "hubspot", "jira", "confluence",
+
+    "office", "excel", "word", "outlook", "powerpoint", "sap", "datev", "jira",
+    "confluence", "salesforce", "teams", "windows", "linux", "photoshop",
+    "illustrator", "indesign", "autocad", "python", "java", "sql", "powerpoint",
+    "power bi", "powerbi", "tableau", "zendesk", "hubspot", "navision", "odoo",
+    "za office", "upway", "sage", "lexware", "tobii", "chrome", "firefox",
+)
+
+
+
+_SOFT_SKILL_HINTS = (
+    "beratung", "orientierung", "management", "kommunikation", "organisation",
+    "teamfähigkeit", "teamfaehigkeit", "belastbarkeit", "zuverlässigkeit",
+    "zuverlaessigkeit", "verkauf", "akquise", "verhandlung", "reklamation",
+    "beschwerde", "kunden", "serviceorient", "führung", "fuehrung",
+)
+
+
+def _looks_like_soft_skill(value: str) -> bool:
+    """True for competency phrases that should not live in the software list."""
+    low = (value or "").strip().lower()
+    if not low or " / " in low or "(" in low:
+        return False
+    if any(tok in low for tok in _KNOWN_SOFTWARE_TOKENS):
+        return False
+    # Product-like tokens (digits, versions, brand-ish single tokens)
+    if re.search(r"\d|\b(office|excel|word|sap|datev|sql|linux|windows|notion|asana|jira|slack|trello)\b", low):
+        return False
+    if len(low) > 60 or len(low) < 4:
+        return False
+    # Single-token product names (Notion, DocuWare) are NOT soft skills.
+    if " " not in low and not any(h in low for h in _SOFT_SKILL_HINTS):
+        return False
+    return any(h in low for h in _SOFT_SKILL_HINTS) or (
+        " " in low and any(low.endswith(suf) for suf in ("keit", "ung", "tion", "ismus"))
+    )
+
+def _looks_like_software(value: str) -> bool:
+    low = (value or "").lower()
+    if " / " in low:
+        return True
+    return any(tok in low for tok in _KNOWN_SOFTWARE_TOKENS)
+
+
 def parse_cv_text(text: str) -> dict[str, Any]:
     """Heuristic extraction — never invents values not present in text."""
     empty = {
@@ -718,6 +777,37 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         s for s in _parse_software(sections.get("software", "")) if not _is_heading_value(s)
     ]
     skills = _parse_skills(sections.get("skills", ""))
+    # If the CV only has EDV/IT/"Weitere Kenntnisse" (mapped to software), recover
+    # non-tool competency lines as skills — never invent skills not present.
+    if not skills:
+        soft_body = sections.get("software", "")
+        recovered: list[str] = []
+        for raw in soft_body.splitlines():
+            line = _normalize_bullet(raw)
+            if not line or _is_heading_value(line) or _is_heading(line):
+                continue
+            if _LEVEL.search(line) and _parse_one_language(line) is not None:
+                continue
+            if _looks_like_software(line) and not _looks_like_soft_skill(line):
+                continue
+            parts = re.split(r"\s*[,;|/]\s*", line) if re.search(r"[,;|/]", line) else [line]
+            for part in parts:
+                part = part.strip(" .")
+                if not part or len(part) > 80:
+                    continue
+                if _looks_like_software(part) and not _looks_like_soft_skill(part):
+                    continue
+                if _looks_like_soft_skill(part) or not _looks_like_software(part):
+                    recovered.append(part)
+        if recovered:
+            skills = list(dict.fromkeys(recovered))
+            soft_drop = {s.lower() for s in skills}
+            # Remove recovered soft skills from software — keep all real tools,
+            # including unknown product names (DocuWare, Microsoft 365, …).
+            software = [s for s in software if s.lower() not in soft_drop]
+    # Always strip soft-skill phrases that leaked into software.
+    if software:
+        software = [s for s in software if not _looks_like_soft_skill(s)]
     # Bare "Kenntnisse" maps to skills — recover only CEFR/native language lines.
     known = {(lang.language.lower(), (lang.level or "").lower()) for lang in languages}
     for raw in sections.get("skills", "").splitlines():
@@ -870,6 +960,107 @@ def _contains_name(text: str, personal: dict[str, str]) -> bool:
     return bool(full) and full in (text or "").strip().lower()
 
 
+
+def _extract_personal_from_lines(lines: list[str], personal: dict[str, str]) -> dict[str, str]:
+    """Fill missing name/address fields from an arbitrary list of CV lines."""
+    for line in lines:
+        line = (line or "").strip()
+        if not line:
+            continue
+        if "@" in line or re.search(r"\+?\d[\d\s\-()]{7,}\d", line):
+            continue
+        if _DOB.search(line):
+            continue
+        if _is_heading_value(line) or _is_heading(line) or _is_document_title(line):
+            continue
+        if line.isupper() and len(line.split()) >= 2:
+            continue
+        if not personal.get("first_name") and _NAME_RE.fullmatch(line):
+            parts = line.split()
+            if 2 <= len(parts) <= 4:
+                personal["first_name"] = parts[0]
+                personal["last_name"] = " ".join(parts[1:])
+                break
+
+    for line in lines:
+        line = (line or "").strip()
+        if not line or personal.get("postal_code"):
+            continue
+        m = _POSTAL_DE.search(line)
+        if m:
+            street = m.group("street").strip(" ,;·|")
+            street = re.sub(r"^(Adresse|Anschrift)\s*[:\-]?\s*", "", street, flags=re.I)
+            street = re.sub(r",?\s*(Germany|Deutschland|United Kingdom|Ireland)\s*$", "", street, flags=re.I)
+            if "@" not in street and re.search(r"\d", street):
+                personal["street"] = street
+            personal["postal_code"] = m.group("plz")
+            city = m.group("city").strip(" ,;·|")
+            city = re.sub(r",?\s*(Germany|Deutschland)\s*$", "", city, flags=re.I).strip()
+            personal["city"] = city
+            hn = re.search(r"^(?P<s>.+?)\s+(?P<n>\d+[a-zA-Z]?)$", personal.get("street", ""))
+            if hn:
+                personal["house_number"] = hn.group("n")
+            break
+        m2 = _POSTAL_UK_IE.search(line)
+        if m2:
+            street = m2.group("street").strip(" ,;·|")
+            street = re.sub(r"^(Adresse|Address)\s*[:\-]?\s*", "", street, flags=re.I)
+            personal["street"] = street
+            personal["city"] = m2.group("city").strip()
+            personal["postal_code"] = re.sub(r"\s+", " ", m2.group("pc").strip().upper())
+            if m2.group("country"):
+                personal["country"] = m2.group("country").strip()
+            break
+
+    # Standalone "12345 München" or street-only line above PLZ.
+    if not personal.get("postal_code"):
+        for idx, line in enumerate(lines):
+            line = (line or "").strip()
+            m = re.match(r"^(?P<plz>\d{5})\s+(?P<city>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\\-\\s]+)$", line)
+            if not m:
+                continue
+            personal["postal_code"] = m.group("plz")
+            personal["city"] = m.group("city").strip()
+            # Previous non-empty line may be the street
+            if not personal.get("street") and idx > 0:
+                prev = (lines[idx - 1] or "").strip()
+                if prev and "@" not in prev and re.search(r"\d", prev) and not re.match(r"^\d{5}\b", prev):
+                    if not (_NAME_RE.fullmatch(prev) and len(prev.split()) >= 2):
+                        personal["street"] = prev
+                        hn = re.search(r"^(?P<s>.+?)\s+(?P<n>\d+[a-zA-Z]?)$", prev)
+                        if hn:
+                            personal["house_number"] = hn.group("n")
+            break
+
+    if not personal.get("city"):
+        for line in lines:
+            candidate = (line or "").split("|", 1)[0].strip()
+            if not candidate or "@" in candidate or re.search(r"\d", candidate):
+                continue
+            if personal.get("first_name") and _contains_name(candidate, personal):
+                continue
+            if _NAME_RE.fullmatch(candidate) and len(candidate.split()) >= 2:
+                continue
+            m3 = _CITY_ONLY.match(candidate) or _CITY_ONLY.match(line)
+            if m3 and not re.search(r"\d", m3.group("city")):
+                city = m3.group("city").strip()
+                if city.lower() not in {"germany", "deutschland", "united kingdom", "ireland"}:
+                    personal["city"] = city
+                    if m3.group("country"):
+                        personal["country"] = m3.group("country").strip()
+                    break
+
+    if personal.get("street") or personal.get("postal_code"):
+        parts = [
+            personal.get("street", ""),
+            f"{personal.get('postal_code', '')} {personal.get('city', '')}".strip(),
+        ]
+        personal["address"] = ", ".join(p for p in parts if p)
+    elif personal.get("city") and not personal.get("address"):
+        personal["address"] = personal["city"]
+    return personal
+
+
 def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str]:
     """Extract name/address from the CV header (before first known section)."""
     personal: dict[str, str] = {}
@@ -972,6 +1163,15 @@ def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str
         personal["address"] = ", ".join(p for p in parts if p)
     elif personal.get("city"):
         personal["address"] = personal["city"]
+
+    # Many German CVs put contact data under "Persönliche Daten" / Profil —
+    # that content lands in sections["profile"] and was previously ignored.
+    needs = not (personal.get("first_name") and (personal.get("street") or personal.get("city")))
+    if needs:
+        profile_body = sections.get("profile") or sections.get("general") or ""
+        if profile_body.strip():
+            personal = _extract_personal_from_lines(profile_body.splitlines(), personal)
+
     return personal
 
 

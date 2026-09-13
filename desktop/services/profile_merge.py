@@ -422,19 +422,8 @@ def plan_personal_import(
         updates[field_name] = new_val
         will_replace.append(labels.get(field_name, field_name))
 
-    # In replace mode, clear CV-sourced personal fields that are absent from new CV
-    if mode == "replace":
-        for field_name in PERSONAL_FIELDS:
-            if field_name in incoming and incoming[field_name]:
-                continue
-            if field_name in updates:
-                continue
-            origin = field_origin(app, field_name)
-            current = str(getattr(app, field_name, "") or "").strip()
-            if origin == SOURCE_CV and current:
-                updates[field_name] = ""
-                will_replace.append(labels.get(field_name, field_name) + " (leeren)")
-
+    # NEVER clear existing profile values just because the new parse omitted them.
+    # Missing parsed value != delete. Deletion requires an explicit user action.
     return PersonalImportPlan(
         updates=updates,
         conflicts=conflicts,
