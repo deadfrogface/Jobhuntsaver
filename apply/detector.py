@@ -5,30 +5,35 @@ Adapted and extended from AutoApply core/filter.py detect_ats (MIT).
 
 from __future__ import annotations
 
-# Longer / more specific fingerprints first.
+# Longer / more specific fingerprints first. Match host/path shapes only —
+# never bare marketing domains or query-string substrings.
 ATS_FINGERPRINTS: list[tuple[str, str]] = [
     ("boards.greenhouse.io", "greenhouse"),
     ("job-boards.greenhouse.io", "greenhouse"),
-    ("greenhouse.io", "greenhouse"),
     ("jobs.lever.co", "lever"),
-    ("lever.co", "lever"),
     ("myworkdayjobs.com", "workday"),
     ("wd1.myworkdaysite.com", "workday"),
     ("wd3.myworkdaysite.com", "workday"),
-    ("workday.com", "workday"),
+    ("wd5.myworkdaysite.com", "workday"),
     ("ashbyhq.com", "ashby"),
     ("jobs.ashbyhq.com", "ashby"),
     ("linkedin.com/jobs", "linkedin"),
-    ("linkedin.com", "linkedin"),
     ("de.indeed.com", "indeed"),
-    ("indeed.com", "indeed"),
-    ("personio.de", "personio"),
-    ("personio.com", "personio"),
-    ("jobs.personio", "personio"),
-    ("stepstone.de", "stepstone"),
-    ("smartrecruiters.com", "smartrecruiters"),
+    ("indeed.com/viewjob", "indeed"),
+    ("indeed.com/rc/clk", "indeed"),
+    ("indeed.com/jobs", "indeed"),
+    ("personio.de/job", "personio"),
+    ("personio.com/job", "personio"),
+    ("jobs.personio.de", "personio"),
+    ("jobs.personio.com", "personio"),
+    ("stepstone.de/stellenangebote", "stepstone"),
+    ("stepstone.de/job", "stepstone"),
     ("jobs.smartrecruiters.com", "smartrecruiters"),
-    ("successfactors", "successfactors"),
+    ("smartrecruiters.com/job", "smartrecruiters"),
+    ("successfactors.eu", "successfactors"),
+    ("successfactors.com", "successfactors"),
+    ("sapsf.eu", "successfactors"),
+    ("sapsf.com", "successfactors"),
     ("taleo.net", "taleo"),
     ("icims.com", "icims"),
     ("bamboohr.com", "bamboohr"),
@@ -37,11 +42,10 @@ ATS_FINGERPRINTS: list[tuple[str, str]] = [
     ("softgarden.io", "softgarden"),
     ("softgarden.de", "softgarden"),
     ("join.com", "join"),
-    ("onlyfy.com", "onlyfy",),
+    ("onlyfy.com", "onlyfy"),
     ("umantis.com", "umantis"),
     ("kenoby.com", "kenoby"),
     ("jobvite.com", "jobvite"),
-    ("greenhouse-support", "greenhouse"),
 ]
 
 # Mature adapters: safe field fill + dry-run/submit guard.

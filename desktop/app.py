@@ -201,15 +201,34 @@ def main() -> int:
 
 
 def _run_once_headless() -> int:
-    """Scheduler entrypoint: one pipeline pass using AppData config, no Qt UI."""
+    """Scheduler entrypoint: one pipeline pass using AppData config, no Qt UI.
+
+    Takes the same single-instance lock as the GUI so Task Scheduler ``--once``
+    cannot overlap a live desktop pipeline on the shared AppData DB/YAML.
+    """
+    from PySide6.QtCore import QCoreApplication
+
     from app.main import run_pipeline
     from desktop.services import ConfigService
 
-    cfg = ConfigService().load()
-    if bool(getattr(cfg.settings, "automation_paused", False)):
+    # QSharedMemory requires a QCoreApplication.
+    app = QCoreApplication.instance() or QCoreApplication(sys.argv)
+    shared = acquire_single_instance_lock()
+    if shared is None:
         return 0
-    run_pipeline(cfg)
-    return 0
+    try:
+        cfg = ConfigService().load()
+        if bool(getattr(cfg.settings, "automation_paused", False)):
+            return 0
+        run_pipeline(cfg)
+        return 0
+    finally:
+        # Keep segment alive until process exit; detach explicitly for clarity.
+        try:
+            shared.detach()
+        except Exception:
+            pass
+        _ = app
 
 
 def _smoke_result_paths() -> list[Path]:

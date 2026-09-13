@@ -162,6 +162,17 @@ _COMPOSITE_REST_OK = {
     "mobilität",
     "mobilitaet",
     "tools",
+    # Compound headings like "Ausbildung und Berufserfahrung"
+    "und",
+    "and",
+    "berufserfahrung",
+    "berufserfahrungen",
+    "praktika",
+    "praktikum",
+    "work",
+    "experience",
+    "employment",
+    "schulische",
 }
 
 

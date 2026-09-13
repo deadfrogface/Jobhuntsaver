@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -93,10 +94,16 @@ class ApplicationShutdownManager:
             self._tray = tray
 
     def _log_step(self, message: str) -> None:
-        self._log.info(message)
-        # Visible console breadcrumbs for packaged debugging only
-        if getattr(sys, "frozen", False):
-            print(f"[shutdown] {message}", flush=True)
+        logger.info(message)
+        # Windowed (noconsole) EXEs often have a closed/invalid stdout — never let
+        # shutdown breadcrumbs crash the quit path. Opt-in console only.
+        if getattr(sys, "frozen", False) and os.environ.get(
+            "JOBHUNTSAVER_FORCE_CONSOLE", ""
+        ).strip().lower() in {"1", "true", "yes"}:
+            try:
+                print(f"[shutdown] {message}", flush=True)
+            except (OSError, ValueError):
+                pass
 
     def shutdown(self, *, reason: str = "user") -> None:
         """Idempotent full shutdown. Safe to call multiple times."""

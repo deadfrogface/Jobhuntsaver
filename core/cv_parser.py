@@ -76,16 +76,35 @@ _DEGREE_HINT = re.compile(
 )
 
 
+# Overlap with CEFR language levels — only accept with explicit licence context.
+_AMBIGUOUS_LICENCE_CEFR = frozenset({"A1", "A2", "B1", "C1"})
+_LICENCE_CONTEXT = re.compile(
+    r"(?i)(führerschein|fuehrerschein|fahrerlaubnis|fahrerlaubnis|"
+    r"klasse|klassen|category|categories|driving\s*licen)"
+)
+
+
 def normalize_driving_license(raw: str | list[str]) -> list[str]:
-    """Normalize German/EU licence text to class codes like ``B``, ``BE``, ``C1``."""
+    """Normalize German/EU licence text to class codes like ``B``, ``BE``, ``C1``.
+
+    Bare CEFR-overlapping tokens (A1/A2/B1/C1) are ignored unless the chunk
+    contains licence context (``Klasse``, ``Führerschein``, …) or an unambiguous
+    licence class (``B``, ``BE``, ``C``, …) on the same chunk.
+    """
     chunks = raw if isinstance(raw, list) else [raw]
     found: list[str] = []
     for chunk in chunks:
         text = str(chunk or "").strip()
         if not text or _is_heading_value(text):
             continue
-        for m in _LICENSE_CLASS.finditer(text):
-            code = m.group(1).upper()
+        codes = [m.group(1).upper() for m in _LICENSE_CLASS.finditer(text)]
+        if not codes:
+            continue
+        has_context = bool(_LICENCE_CONTEXT.search(text))
+        has_unambiguous = any(c not in _AMBIGUOUS_LICENCE_CEFR for c in codes)
+        for code in codes:
+            if code in _AMBIGUOUS_LICENCE_CEFR and not (has_context or has_unambiguous):
+                continue
             if code not in found:
                 found.append(code)
     return found

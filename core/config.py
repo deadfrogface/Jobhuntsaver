@@ -626,8 +626,13 @@ def _dataclass_to_dict(obj: Any) -> Any:
 
 def _dump_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
+    # Atomic replace: never leave a truncated YAML if the process dies mid-write.
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def save_config(

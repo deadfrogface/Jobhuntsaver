@@ -218,6 +218,8 @@ def normalize_to_annual_gross_eur(
             if value is None or value == "":
                 return None, status
         else:
+            if parsed_val <= 0:
+                return None, "non-positive salary"
             use_unit = explicit_unit or text_unit
             if use_unit is None:
                 annual, how = _to_annual(parsed_val, None)
