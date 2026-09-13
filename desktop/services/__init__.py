@@ -143,6 +143,18 @@ class ConfigService:
         self._config = self.load()
         return self._config
 
+    def save_home_coords_from(self, run_config: AppConfig) -> AppConfig:
+        """Persist only home lat/lon from a pipeline run into freshly loaded settings.
+
+        Avoids writing transient overrides (dry_run, mode) from apply-test / worker
+        config back to disk when geocoding updates home coordinates.
+        """
+        fresh = self.load()
+        run_loc = run_config.profile.location
+        fresh.profile.location.home_latitude = run_loc.home_latitude
+        fresh.profile.location.home_longitude = run_loc.home_longitude
+        return self.save(fresh)
+
     def validate(self, config: AppConfig | None = None) -> list[str]:
         config = config or self.config
         errors: list[str] = []
