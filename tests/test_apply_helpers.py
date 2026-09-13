@@ -102,3 +102,15 @@ def test_fill_identity_fields_writes_name_email_phone():
     assert last.filled == "Lovelace"
     assert email.filled == "ada@example.com"
     assert phone.filled == "+491234"
+
+
+def test_consent_auto_check_skips_bare_required_checkbox():
+    """Only privacy/consent-named boxes are auto-checked — not every required checkbox."""
+    import inspect
+
+    from apply import base as base_mod
+
+    src = inspect.getsource(base_mod.BaseApplier._fill_german_profile_fields)
+    assert "privacy" in src
+    assert "consent" in src or "datenschutz" in src
+    assert "input[type='checkbox'][required]" not in src

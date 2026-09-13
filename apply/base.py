@@ -231,9 +231,9 @@ class BaseApplier(ABC):
         for selector, value in pairs:
             if value:
                 self._safe_fill(selector, value)
-        # Consent / privacy checkboxes — only when clearly required.
+        # Consent / privacy checkboxes — only when name clearly indicates consent.
+        # Do NOT auto-check every required checkbox (newsletter, marketing, etc.).
         for sel in (
-            "input[type='checkbox'][required]",
             "input[type='checkbox'][name*='privacy' i]",
             "input[type='checkbox'][name*='consent' i], "
             "input[type='checkbox'][name*='datenschutz' i]",
