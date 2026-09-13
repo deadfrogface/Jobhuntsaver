@@ -145,6 +145,24 @@ def test_multi_city_home_uses_first_city_only() -> None:
     assert _city_from_address("München und Köln") == "München"
 
 
+def test_build_queries_multi_city_uses_single_city() -> None:
+    """Board queries must not send 'Berlin / Hamburg' as the location string."""
+    from app.main import build_queries, _search_location
+
+    assert _search_location("Berlin / Hamburg") == "Berlin"
+    assert _search_location("Musterstraße 1, 12345 Musterstadt, Deutschland") == "Musterstadt"
+
+    cfg = empty_app_config()
+    cfg.profile.jobs.desired_titles = ["Sachbearbeiter"]
+    cfg.profile.jobs.alternative_titles = []
+    cfg.profile.location.home_address = "Berlin / Hamburg"
+    cfg.profile.location.allow_remote_germany = False
+    queries = build_queries(cfg)
+    assert queries
+    assert all(q.location == "Berlin" for q in queries)
+    assert not any("/" in q.location or "Hamburg" in q.location for q in queries)
+
+
 def test_run_pipeline_empty_queries_marks_sources() -> None:
     from app.main import run_pipeline
 
