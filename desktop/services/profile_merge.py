@@ -340,19 +340,24 @@ def filter_parsed_for_import(parsed: dict[str, Any]) -> dict[str, Any]:
 
 
 def sync_application_summaries(app: ApplicationProfile, quals: QualificationsConfig) -> None:
-    """Refresh short application text fields from structured quals (CV-sourced)."""
-    if quals.language_labels():
+    """Refresh short application text fields from structured quals (CV-sourced).
+
+    Manual field origins are preserved — never overwrite user-edited summaries.
+    """
+    if quals.language_labels() and field_origin(app, "languages") != SOURCE_MANUAL:
         app.languages = ", ".join(quals.language_labels())
         set_field_origin(app, "languages", SOURCE_CV)
-    if quals.education:
+    if quals.education and field_origin(app, "education") != SOURCE_MANUAL:
         app.education = quals.education[0].qualification or quals.education[0].label()
         set_field_origin(app, "education", SOURCE_CV)
     if quals.work_experience:
-        app.current_employment = quals.work_experience[0].title or quals.work_experience[0].label()
-        set_field_origin(app, "current_employment", SOURCE_CV)
-        app.work_experience = quals.work_experience[0].label()
-        set_field_origin(app, "work_experience", SOURCE_CV)
-    if quals.driving_values():
+        if field_origin(app, "current_employment") != SOURCE_MANUAL:
+            app.current_employment = quals.work_experience[0].title or quals.work_experience[0].label()
+            set_field_origin(app, "current_employment", SOURCE_CV)
+        if field_origin(app, "work_experience") != SOURCE_MANUAL:
+            app.work_experience = quals.work_experience[0].label()
+            set_field_origin(app, "work_experience", SOURCE_CV)
+    if quals.driving_values() and field_origin(app, "driving_license") != SOURCE_MANUAL:
         app.driving_license = quals.driving_values()[0]
         set_field_origin(app, "driving_license", SOURCE_CV)
 

@@ -12,6 +12,59 @@ from typing import Any, Iterator
 
 from core.models import ApplicationRecord, Job, JobStatus, utc_now_iso
 
+import re
+from urllib.parse import parse_qs, urlparse
+
+
+def _url_identity(url: str) -> str:
+    """Stable identity for job URLs (Indeed jk=, strip tracking params)."""
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return raw.lower()
+    host = (parsed.netloc or "").lower()
+    path = (parsed.path or "").rstrip("/").lower()
+    qs = parse_qs(parsed.query or "")
+    if "jk" in qs and qs["jk"]:
+        return f"indeed:jk:{qs['jk'][0].lower()}"
+    # Drop common tracking params
+    keep = []
+    for key in sorted(qs):
+        if key.lower() in {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "from", "ref", "si"}:
+            continue
+        for val in qs[key]:
+            keep.append(f"{key.lower()}={val.lower()}")
+    query = "&".join(keep)
+    return f"{host}{path}?{query}" if query else f"{host}{path}"
+
+
+_LEGAL_SUFFIX = re.compile(
+    r"\b(gmbh|ag|kg|ug|se|inc|ltd|llc|co\.?|company|mbh)\b\.?",
+    re.I,
+)
+_GENDER_TAG = re.compile(
+    r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)",
+    re.I,
+)
+
+
+def _company_key(company: str) -> str:
+    text = (company or "").lower().strip()
+    text = _LEGAL_SUFFIX.sub("", text)
+    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _title_key(title: str) -> str:
+    text = (title or "").lower().strip()
+    text = _GENDER_TAG.sub("", text)
+    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -186,6 +239,12 @@ class Database:
         data["rejection_reasons"] = json.dumps(job.rejection_reasons, ensure_ascii=False)
         data["alt_sources"] = json.dumps(job.alt_sources, ensure_ascii=False)
         data["updated_at"] = utc_now_iso()
+        # Never downgrade a previously applied job when soft-dedup losers are
+        # re-upserted with default status=new.
+        existing = self.get_job(job.id) if job.id else None
+        if existing and existing.status == JobStatus.APPLIED.value:
+            data["status"] = JobStatus.APPLIED.value
+            job.status = JobStatus.APPLIED.value
         cols = list(data.keys())
         placeholders = ", ".join("?" for _ in cols)
         col_names = ", ".join(cols)
@@ -266,64 +325,60 @@ class Database:
             )
 
     def has_applied(self, job: Job) -> bool:
-        """Hard safety: never apply twice (job id, url, or likely duplicate)."""
+        """Hard safety: never apply twice (id, normalized URL, or company+title)."""
+        url_keys = {_url_identity(u) for u in (job.url, job.application_url) if u}
+        url_keys.discard("")
+        company_key = _company_key(job.company)
+        title_key = _title_key(job.title)
         with self.connection() as conn:
-            # Direct status
             row = conn.execute(
                 "SELECT id FROM jobs WHERE id = ? AND status = ?",
                 (job.id, JobStatus.APPLIED.value),
             ).fetchone()
             if row:
                 return True
-            # Application table
             row = conn.execute(
                 "SELECT id FROM applications WHERE job_id = ? AND status = ?",
                 (job.id, JobStatus.APPLIED.value),
             ).fetchone()
             if row:
                 return True
-            # URL match already applied
-            if job.url or job.application_url:
-                row = conn.execute(
-                    """
-                    SELECT id FROM jobs
-                    WHERE status = ?
-                      AND (
-                        (url != '' AND url = ?)
-                        OR (application_url != '' AND application_url = ?)
-                        OR (application_url != '' AND application_url = ?)
-                        OR (url != '' AND url = ?)
-                      )
-                    LIMIT 1
-                    """,
-                    (
-                        JobStatus.APPLIED.value,
-                        job.url,
-                        job.application_url,
-                        job.url,
-                        job.application_url,
-                    ),
-                ).fetchone()
-                if row:
-                    return True
-            # Likely duplicate by company+title
+            # Any applications row for this job_id counts as already handled.
             row = conn.execute(
-                """
-                SELECT id FROM jobs
-                WHERE status = ?
-                  AND LOWER(company) = LOWER(?)
-                  AND LOWER(title) = LOWER(?)
-                LIMIT 1
-                """,
-                (JobStatus.APPLIED.value, job.company, job.title),
+                "SELECT id FROM applications WHERE job_id = ? LIMIT 1",
+                (job.id,),
             ).fetchone()
-            return bool(row)
+            if row:
+                return True
+            rows = conn.execute(
+                """
+                SELECT id, url, application_url, company, title FROM jobs
+                WHERE status = ?
+                """,
+                (JobStatus.APPLIED.value,),
+            ).fetchall()
+            for r in rows:
+                for candidate in (r["url"], r["application_url"]):
+                    key = _url_identity(candidate or "")
+                    if key and key in url_keys:
+                        return True
+                if company_key and title_key:
+                    if _company_key(r["company"] or "") == company_key and _title_key(
+                        r["title"] or ""
+                    ) == title_key:
+                        return True
+            return False
 
     def count_applications_today(self) -> int:
+        """Count only real applied submissions toward the daily cap."""
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS c FROM applications WHERE application_date LIKE ?",
+                """
+                SELECT COUNT(*) AS c FROM applications
+                WHERE application_date LIKE ?
+                  AND LOWER(COALESCE(status, '')) IN ('applied', 'submitted', 'ok')
+                """,
                 (f"{day}%",),
             ).fetchone()
         return int(row["c"] if row else 0)

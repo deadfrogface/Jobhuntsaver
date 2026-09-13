@@ -231,15 +231,31 @@ class BaseApplier(ABC):
         for selector, value in pairs:
             if value:
                 self._safe_fill(selector, value)
-        # Consent / privacy checkboxes — only when name clearly indicates consent.
-        # Do NOT auto-check every required checkbox (newsletter, marketing, etc.).
+        # Consent / privacy only — never marketing/newsletter/opt-in.
         for sel in (
             "input[type='checkbox'][name*='privacy' i]",
-            "input[type='checkbox'][name*='consent' i], "
             "input[type='checkbox'][name*='datenschutz' i]",
+            "input[type='checkbox'][name*='terms' i]",
+            "input[type='checkbox'][name*='agb' i]",
+            "input[type='checkbox'][id*='privacy' i]",
+            "input[type='checkbox'][id*='datenschutz' i]",
         ):
             try:
                 for box in self.page.query_selector_all(sel):
+                    name = (box.get_attribute("name") or "") + " " + (box.get_attribute("id") or "")
+                    low = name.lower()
+                    if any(
+                        bad in low
+                        for bad in (
+                            "marketing",
+                            "newsletter",
+                            "opt_in",
+                            "optin",
+                            "werbung",
+                            "promo",
+                        )
+                    ):
+                        continue
                     if box.is_visible() and not box.is_checked():
                         box.check()
             except Exception:

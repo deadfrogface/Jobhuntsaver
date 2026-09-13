@@ -143,3 +143,104 @@ def test_bare_cefr_c1_not_treated_as_driving_class():
     assert normalize_driving_license("C1") == []
     assert normalize_driving_license("Klasse C1") == ["C1"]
     assert normalize_driving_license("B, C1") == ["B", "C1"]
+
+
+def test_has_applied_survives_url_and_title_drift(tmp_path: Path):
+    from core.database import Database
+    from core.models import ApplicationRecord, Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    applied = Job(
+        id="job1",
+        source="indeed",
+        title="Sachbearbeiter (m/w/d)",
+        company="Musterfirma GmbH",
+        city="Berlin",
+        url="https://de.indeed.com/viewjob?jk=abc123&from=serp",
+        status=JobStatus.APPLIED.value,
+    )
+    db.upsert_job(applied)
+    db.save_application(
+        ApplicationRecord(
+            job_id="job1",
+            company=applied.company,
+            position=applied.title,
+            status="applied",
+            result="submitted",
+        )
+    )
+    drift = Job(
+        id="job2",
+        source="indeed",
+        title="Sachbearbeiter",
+        company="Musterfirma",
+        city="Berlin",
+        url="https://de.indeed.com/viewjob?jk=abc123&utm_source=share",
+    )
+    assert db.has_applied(drift) is True
+
+    # Soft-dedup loser re-upsert must not wipe applied status.
+    wipe = Job(
+        id="job1",
+        source="indeed",
+        title="Sachbearbeiter (m/w/d)",
+        company="Musterfirma GmbH",
+        city="Berlin",
+        url="https://de.indeed.com/viewjob?jk=abc123",
+        status=JobStatus.NEW.value,
+    )
+    db.upsert_job(wipe)
+    assert db.get_job("job1").status == JobStatus.APPLIED.value
+
+
+def test_salary_tvoed_weekly_and_negative_are_unknown():
+    from core.salary import normalize_to_annual_gross_eur as n
+
+    assert n(text="TVÖD E9")[0] is None
+    weekly, how = n(text="1.500 EUR / Woche")
+    assert weekly == 78000
+    assert "weekly" in how
+    assert n(text="-5000 EUR monatlich")[0] is None
+
+
+def test_daily_quota_ignores_dry_run_rows(tmp_path: Path):
+    from core.database import Database
+    from core.models import ApplicationRecord, Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    for jid, company in (("a", "A"), ("b", "B")):
+        db.upsert_job(
+            Job(id=jid, source="t", title="P", company=company, status=JobStatus.NEW.value)
+        )
+    db.save_application(
+        ApplicationRecord(job_id="a", company="A", position="P", status="dry_run", result="preview")
+    )
+    db.save_application(
+        ApplicationRecord(job_id="b", company="B", position="P", status="applied", result="submitted")
+    )
+    assert db.count_applications_today() == 1
+
+
+def test_sync_application_summaries_keeps_manual_origin():
+    from core.config import (
+        ApplicationProfile,
+        EducationEntry,
+        ExperienceEntry,
+        QualificationsConfig,
+    )
+    from desktop.services.profile_merge import (
+        SOURCE_MANUAL,
+        set_field_origin,
+        sync_application_summaries,
+    )
+
+    app = ApplicationProfile(education="Manuell behalten", languages="Manuell DE")
+    set_field_origin(app, "education", SOURCE_MANUAL)
+    set_field_origin(app, "languages", SOURCE_MANUAL)
+    quals = QualificationsConfig(
+        education=[EducationEntry(qualification="Bachelor Informatik")],
+        work_experience=[ExperienceEntry(title="Dev", company="X")],
+    )
+    sync_application_summaries(app, quals)
+    assert app.education == "Manuell behalten"
+    assert app.languages == "Manuell DE"

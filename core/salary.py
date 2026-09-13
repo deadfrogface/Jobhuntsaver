@@ -131,12 +131,19 @@ def _detect_unit_in_text(text: str) -> str | None:
     ):
         return "monthly"
     if re.search(
+        r"\b(pro\s+woche|per\s+week|/week|/woche|wöchentlich|woechentlich|weekly)\b",
+        low,
+    ):
+        return "weekly"
+    if re.search(
         r"\b(pro\s+stunde|per\s+hour|/hour|/h\b|stündlich|stuendlich|hourly)\b",
         low,
     ):
         return "hourly"
     if "monat" in low:
         return "monthly"
+    if "woche" in low or "week" in low:
+        return "weekly"
     if "stunde" in low or "/h" in low:
         return "hourly"
     if "jahr" in low or "year" in low or "annual" in low:
@@ -151,8 +158,14 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
     low = cleaned.lower()
     if any(p in low for p in _UNKNOWN_PHRASES):
         return None, None, "salary unknown / negotiable"
+    # Collective agreements / pay grades are not convertible to a number.
+    if re.search(r"\b(tv[öo]d|tv\-?l|tv\-?a|eg\s*\d|e\d{1,2}\b|entgeltgruppe|tarif)\b", low):
+        return None, None, "pay-scale / collective agreement (unknown amount)"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
+    # Leading minus → do not invent a positive salary.
+    if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
+        return None, None, "negative salary text"
     unit = _detect_unit_in_text(cleaned)
     # Range like 30.000 – 40.000 or 30k-45k → ambiguous (do not hard-reject)
     if re.search(
@@ -184,6 +197,8 @@ def _to_annual(value: float, unit: str | None) -> tuple[int | None, str]:
         return int(round(value)), "annual"
     if unit == "monthly":
         return int(round(value * 12)), "monthly→annual"
+    if unit == "weekly":
+        return int(round(value * 52)), "weekly→annual"
     if unit == "hourly":
         return int(round(value * HOURS_PER_YEAR)), "hourly→annual (40h×52w=2080)"
     # Heuristic when unit missing: small numbers likely monthly/hourly
