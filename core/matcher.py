@@ -16,20 +16,29 @@ from core.salary import job_annual_salary, meets_minimum
 _CEFR_ORDER = {"a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "muttersprache": 6, "native": 6}
 
 
-def _distance_points(distance_km: float | None, remote_type: str) -> tuple[int, str | None, str | None]:
+def _distance_points(
+    distance_km: float | None,
+    remote_type: str,
+    max_distance_km: float = 20.0,
+) -> tuple[int, str | None, str | None]:
     if remote_type == RemoteType.REMOTE.value:
         return 20, "100% remote — no distance penalty", None
     if distance_km is None:
         return 8, None, "Distance unknown"
-    if distance_km <= 5:
-        return 20, f"Only {distance_km} km away", None
-    if distance_km <= 10:
-        return 16, f"Only {distance_km} km away", None
-    if distance_km <= 15:
-        return 12, f"{distance_km} km away", None
-    if distance_km <= 20:
-        return 8, f"{distance_km} km away (acceptable)", None
-    return 0, None, f"{distance_km} km exceeds commute limit"
+    limit = max(float(max_distance_km or 20.0), 1.0)
+    # Prefer absolute near-bands when they fit inside the configured commute.
+    near_bands = (
+        (5.0, 20, "Only {d} km away"),
+        (10.0, 16, "Only {d} km away"),
+        (15.0, 12, "{d} km away"),
+        (20.0, 8, "{d} km away (acceptable)"),
+    )
+    for band_km, pts, msg in near_bands:
+        if band_km <= limit and distance_km <= band_km:
+            return pts, msg.format(d=distance_km), None
+    if distance_km <= limit:
+        return 8, f"{distance_km} km away (within {limit:g} km limit)", None
+    return 0, None, f"{distance_km} km exceeds commute limit ({limit:g} km)"
 
 
 def _norm(text: str) -> str:
@@ -272,7 +281,11 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     elif job.remote_type == RemoteType.ONSITE.value and emp.onsite:
         score += 3
 
-    d_pts, d_reason, d_issue = _distance_points(job.distance_km, job.remote_type)
+    d_pts, d_reason, d_issue = _distance_points(
+        job.distance_km,
+        job.remote_type,
+        max_distance_km=config.profile.location.max_distance_km,
+    )
     score += d_pts
     if d_reason:
         reasons.append(d_reason)
