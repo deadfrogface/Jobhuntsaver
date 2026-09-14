@@ -13,7 +13,6 @@ from typing import Any, Iterator
 from core.models import ApplicationRecord, Job, JobStatus, utc_now_iso
 from core.deduplicator import company_key as _company_key, title_key as _title_key
 
-import re
 from urllib.parse import parse_qs, urlparse
 
 
