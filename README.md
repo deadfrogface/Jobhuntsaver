@@ -1,10 +1,10 @@
-# Stellenanker
+# Karrierekrake
 
 <p align="center">
-  <img src="assets/brand/logo.png" alt="Stellenanker" width="420" />
+  <img src="assets/brand/logo.png" alt="Karrierekrake — FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK." width="520" />
 </p>
 
-<p align="center"><strong>Lokale Jobsuche & Bewerbungen für Deutschland</strong><br/>
+<p align="center"><strong>FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.</strong><br/>
 Kein Cloud-Konto · kein Pflicht-KI-Abo · Daten bleiben auf Ihrem PC</p>
 
 <p align="center">
@@ -12,7 +12,7 @@ Kein Cloud-Konto · kein Pflicht-KI-Abo · Daten bleiben auf Ihrem PC</p>
 </p>
 
 Technischer Projektname / GitHub-Repo: **Jobhuntsaver** (unverändert).  
-Anzeige-Marke: **Stellenanker**. EXE-Dateiname bleibt `Jobhuntsaver.exe` für Kompatibilität.
+Anzeige-Marke: **Karrierekrake**. EXE-Dateiname bleibt `Jobhuntsaver.exe` für Kompatibilität.
 
 ---
 
@@ -56,7 +56,7 @@ Profil & Daten: `%LOCALAPPDATA%\Jobhuntsaver`
 | Jobs | Liste, Detail, **Bewerbung vorbereiten** |
 | Bewerbungen | Status in Alltagssprache (DB-Enums unverändert) |
 | Profil | Bewerberdaten & CV-Import |
-| Einstellungen | Allgemein / Suche / Bewerbung / Erweitert |
+| Einstellungen | Allgemein / Suche / Bewerbung / Erweitert · **Über Karrierekrake** |
 | Protokolle | Ereignisse verständlich, Technik darunter |
 
 Themes: System / Hell / Dunkel · Fenster mindestens ca. 900×650
@@ -66,7 +66,19 @@ Themes: System / Hell / Dunkel · Fenster mindestens ca. 900×650
   <img src="docs/assets/screenshots/06-profile.png" alt="Profil" width="360" />
 </p>
 
-Demo-Video (falls vorhanden): [`docs/assets/demo/stellenanker-demo.mp4`](docs/assets/demo/stellenanker-demo.mp4)
+Demo-Video: [`docs/assets/demo/karrierekrake-demo.mp4`](docs/assets/demo/karrierekrake-demo.mp4)
+
+---
+
+## Marke & Icons
+
+| Asset | Verwendung |
+|-------|------------|
+| `assets/brand/karrierekrake-logo-master.png` | MASTER A — README, Onboarding, About, Social |
+| `assets/brand/karrierekrake-app-icon-master.png` | MASTER B — EXE / Taskbar / Tray / kleine UI-Icons |
+| `assets/brand/icons/icon-*.png` + `app.ico` | Deterministisch aus MASTER B (1024→16) |
+
+Palette: Navy `#132238` · Teal `#18A999` · Orange `#E86A45` (nur Marken-Artwork).
 
 ---
 
@@ -112,6 +124,7 @@ pytest -q
 python -m desktop.app
 ```
 
-Marken-/Asset-Generator: `python scripts/generate_brand_assets.py`  
+Marken-Assets (aus Masters): `python scripts/generate_brand_assets.py`  
 Screenshots: `python scripts/capture_ui_screenshots.py`  
+Demo-Video: `xvfb-run -a python scripts/record_demo_video.py`  
 Name-Research: `docs/name-research.md` · Release-Vorlage: `docs/release-notes-template.md`

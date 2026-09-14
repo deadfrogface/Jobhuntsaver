@@ -28,7 +28,7 @@ NAMES = [
 
 def main() -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    tmp = tempfile.mkdtemp(prefix="stellenanker-shots-")
+    tmp = tempfile.mkdtemp(prefix="karrierekrake-shots-")
     os.environ["LOCALAPPDATA"] = tmp
 
     from PySide6.QtCore import QTimer

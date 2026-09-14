@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -21,10 +22,26 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
+from desktop.branding import logo_path
 from desktop.i18n import tr
 from desktop.services import ConfigService
+from desktop.tray import app_icon
 from desktop.widgets import ListEditor
 from desktop.widgets.scroll_page import wrap_scrollable
+
+
+def _brand_banner(max_width: int = 360) -> QLabel:
+    """MASTER A artwork for first-run onboarding (large presentation only)."""
+    label = QLabel()
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    path = logo_path(master=True) or logo_path()
+    if path is not None:
+        pix = QPixmap(str(path))
+        if not pix.isNull():
+            label.setPixmap(
+                pix.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
+            )
+    return label
 
 
 def _scroll_page_body(inner: QWidget) -> QScrollArea:
@@ -37,6 +54,7 @@ class CvStepPage(QWizardPage):
     def __init__(self) -> None:
         super().__init__()
         self.cv_path = ""
+        self.banner = _brand_banner(340)
         self.intro = QLabel()
         self.intro.setWordWrap(True)
         self.label = QLabel()
@@ -50,6 +68,7 @@ class CvStepPage(QWizardPage):
         inner = QWidget()
         layout = QVBoxLayout(inner)
         layout.setSpacing(12)
+        layout.addWidget(self.banner)
         layout.addWidget(self.intro)
         layout.addWidget(self.label)
         layout.addWidget(self.pick)
@@ -162,8 +181,9 @@ class FirstRunWizard(QWizard):
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
         self.config_service = config_service
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(640, 520)
         self.setSizeGripEnabled(True)
+        self.setWindowIcon(app_icon())
         self.cv = CvStepPage()
         self.prefs = PrefsStepPage()
         self.ready = ReadyStepPage()

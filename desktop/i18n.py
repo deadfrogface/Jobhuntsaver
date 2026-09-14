@@ -7,7 +7,7 @@ from typing import Callable
 # Keep keys stable; values are user-facing strings only.
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "de": {
-        "app.name": "Stellenanker",
+        "app.name": "Karrierekrake",
         "nav.dashboard": "Dashboard",
         "nav.jobs": "Jobs",
         "nav.applications": "Bewerbungen",
@@ -29,7 +29,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status.paused": "Automation pausiert",
         "status.resumed": "Automation fortgesetzt",
         "tray.running": "Läuft weiter im Infobereich.",
-        "tray.open": "Stellenanker öffnen",
+        "tray.open": "Karrierekrake öffnen",
         "tray.search": "Jetzt suchen",
         "tray.pause": "Automation pausieren",
         "tray.resume": "Automation fortsetzen",
@@ -171,10 +171,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.theme.dark": "Dunkel",
         "settings.start_windows": "Mit Windows starten",
         "settings.minimize_tray": "Beim Schließen im Hintergrund (Infobereich) weiterlaufen",
-        "shutdown.busy_title": "Stellenanker führt gerade einen Vorgang aus.",
+        "shutdown.busy_title": "Karrierekrake führt gerade einen Vorgang aus.",
         "shutdown.busy_body": "Beim Beenden wird dieser Vorgang abgebrochen.",
         "shutdown.cancel": "Abbrechen",
-        "shutdown.quit_anyway": "Stellenanker beenden",
+        "shutdown.quit_anyway": "Karrierekrake beenden",
         "settings.mode": "Bewerbungsmodus",
         "settings.mode.search": "Nur Suche – nie bewerben",
         "settings.mode.review": "Vor Absenden prüfen",
@@ -246,7 +246,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "remote": "Remote",
         "hybrid": "Hybrid",
         "onsite": "Vor Ort",
-        "wizard.welcome_title": "Willkommen bei Stellenanker",
+        "wizard.welcome_title": "Willkommen bei Karrierekrake",
         "wizard.welcome_body": (
             "Diese App sucht Jobs in Deutschland, bewertet Matches und kann "
             "optional Bewerbungen vorbereiten.\n\n"
@@ -371,10 +371,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_label.unsupported_ats": "ATS nicht unterstützt",
         "status_label.duplicate": "Duplikat",
         "status_label.ignored": "Ignoriert",
-        "brand.tagline": "Lokale Jobsuche für Deutschland",
+        "about.title": "Über Karrierekrake",
+        "about.open": "Über Karrierekrake…",
+        "about.tech": "Anzeige-Marke: {display}. Technisch: {technical} ({exe}, %LOCALAPPDATA%\\{data}).",
+        "brand.tagline": "FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.",
     },
     "en": {
-        "app.name": "Stellenanker",
+        "app.name": "Karrierekrake",
         "nav.dashboard": "Dashboard",
         "nav.jobs": "Jobs",
         "nav.applications": "Applications",
@@ -396,7 +399,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status.paused": "Automation paused",
         "status.resumed": "Automation resumed",
         "tray.running": "Still running in the system tray.",
-        "tray.open": "Open Stellenanker",
+        "tray.open": "Open Karrierekrake",
         "tray.search": "Search now",
         "tray.pause": "Pause automation",
         "tray.resume": "Resume automation",
@@ -538,10 +541,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.theme.dark": "Dark",
         "settings.start_windows": "Start with Windows",
         "settings.minimize_tray": "Keep running in the background (system tray) when closing",
-        "shutdown.busy_title": "Stellenanker is currently running an operation.",
+        "shutdown.busy_title": "Karrierekrake is currently running an operation.",
         "shutdown.busy_body": "Closing will abort this operation.",
         "shutdown.cancel": "Cancel",
-        "shutdown.quit_anyway": "Quit Stellenanker",
+        "shutdown.quit_anyway": "Quit Karrierekrake",
         "settings.mode": "Application mode",
         "settings.mode.search": "Search only – never apply",
         "settings.mode.review": "Review before submit",
@@ -613,7 +616,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "remote": "Remote",
         "hybrid": "Hybrid",
         "onsite": "On-site",
-        "wizard.welcome_title": "Welcome to Stellenanker",
+        "wizard.welcome_title": "Welcome to Karrierekrake",
         "wizard.welcome_body": (
             "This app searches jobs in Germany, scores matches and can "
             "optionally prepare applications.\n\n"
@@ -738,7 +741,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_label.unsupported_ats": "Unsupported ATS",
         "status_label.duplicate": "Duplicate",
         "status_label.ignored": "Ignored",
-        "brand.tagline": "Local job search for Germany",
+        "about.title": "About Karrierekrake",
+        "about.open": "About Karrierekrake…",
+        "about.tech": "Display brand: {display}. Technical: {technical} ({exe}, %LOCALAPPDATA%\\{data}).",
+        "brand.tagline": "FIND. APPLY. KEEP THE OVERVIEW.",
     },
 }
 

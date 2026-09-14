@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from desktop.branding import COLOR_PRIMARY, COLOR_SIDEBAR_TOP, display_name, icon_path
+from desktop.branding import COLOR_NAVY, COLOR_TEAL, display_name, icon_path
 from desktop.i18n import tr
 
 
@@ -21,8 +21,8 @@ def app_icon() -> QIcon:
     pix.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor(COLOR_SIDEBAR_TOP))
-    painter.setPen(QColor(COLOR_PRIMARY))
+    painter.setBrush(QColor(COLOR_NAVY))
+    painter.setPen(QColor(COLOR_TEAL))
     painter.drawRoundedRect(4, 4, 56, 56, 12, 12)
     painter.setPen(QColor("#F4F7FA"))
     painter.drawText(pix.rect(), int(Qt.AlignmentFlag.AlignCenter), display_name()[:1])

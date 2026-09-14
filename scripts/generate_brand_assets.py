@@ -1,30 +1,38 @@
 #!/usr/bin/env python3
-"""Deterministic brand asset generator (Pillow only — no network / AI).
+"""Deterministic brand asset pipeline from locked master PNGs (Pillow only).
+
+Does NOT redraw or regenerate the octopus artwork. Masters are copied into
+``assets/brand/`` and this script only resizes / packs derivatives:
+
+  assets/brand/karrierekrake-app-icon-master.png  (MASTER B — square icon)
+  assets/brand/karrierekrake-logo-master.png      (MASTER A — large artwork)
 
 Produces:
-  assets/brand/icons/icon-{16,24,32,48,64,128,256}.png
-  assets/brand/app.ico
-  assets/brand/logo.png
+  assets/brand/icons/icon-{1024,512,256,128,64,48,32,24,16}.png
+  assets/brand/app.ico          (multi-size)
+  assets/brand/logo.png         (MASTER A for README / About / onboarding)
   assets/brand/social-preview.png
 """
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "assets" / "brand"
+ICON_MASTER = OUT / "karrierekrake-app-icon-master.png"
+LOGO_MASTER = OUT / "karrierekrake-logo-master.png"
 
-# Match desktop.branding colors
-PRIMARY = (31, 107, 92, 255)  # #1F6B5C
-PRIMARY_DARK = (20, 61, 72, 255)  # #143D48
-ACCENT = (196, 92, 38, 255)  # #C45C26
+# Canonical palette (must match desktop.branding)
+NAVY = (19, 34, 56, 255)  # #132238
+TEAL = (24, 169, 153, 255)  # #18A999
 MARK = (244, 247, 250, 255)
-SLATE = (28, 36, 48, 255)
-LIGHT_BG = (240, 244, 247, 255)
+LIGHT_BG = (238, 242, 245, 255)  # #EEF2F5
+
+ICON_SIZES = (1024, 512, 256, 128, 64, 48, 32, 24, 16)
+ICO_SIZES = (256, 128, 64, 48, 32, 24, 16)
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -40,140 +48,134 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _draw_mark(size: int) -> Image.Image:
-    """Abstract anchor + horizon mark (no letters required at tiny sizes)."""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    pad = max(1, size // 16)
-    # Rounded square background
-    draw.rounded_rectangle(
-        [pad, pad, size - pad - 1, size - pad - 1],
-        radius=max(2, size // 6),
-        fill=PRIMARY_DARK,
-    )
-    # Horizon band
-    mid_y = int(size * 0.58)
-    band_h = max(2, size // 10)
-    draw.rounded_rectangle(
-        [pad * 3, mid_y, size - pad * 3 - 1, mid_y + band_h],
-        radius=band_h // 2,
-        fill=PRIMARY,
-    )
-    # Anchor stem
-    cx = size // 2
-    stem_w = max(2, size // 12)
-    top = pad * 3 + size // 10
-    draw.rectangle([cx - stem_w // 2, top, cx + stem_w // 2, mid_y + band_h], fill=MARK)
-    # Anchor ring
-    ring_r = max(3, size // 7)
-    draw.ellipse(
-        [cx - ring_r, top - ring_r // 3, cx + ring_r, top + ring_r * 2 - ring_r // 3],
-        outline=MARK,
-        width=max(1, size // 16),
-    )
-    # Flukes
-    fluke = max(4, size // 5)
-    y = mid_y + band_h // 2
-    draw.polygon(
-        [(cx, y), (cx - fluke, y + fluke // 2), (cx - stem_w, y)],
-        fill=ACCENT,
-    )
-    draw.polygon(
-        [(cx, y), (cx + fluke, y + fluke // 2), (cx + stem_w, y)],
-        fill=ACCENT,
-    )
-    return img
-
-
-def _logo(width: int = 640, height: int = 160) -> Image.Image:
-    img = Image.new("RGBA", (width, height), LIGHT_BG)
-    mark = _draw_mark(height - 24)
-    img.paste(mark, (20, 12), mark)
-    draw = ImageDraw.Draw(img)
-    title = _font(max(28, height // 3))
-    sub = _font(max(14, height // 8))
-    draw.text((height + 12, height // 5), "Stellenanker", fill=SLATE, font=title)
-    draw.text(
-        (height + 14, height // 5 + height // 3 + 4),
-        "Lokale Jobsuche für Deutschland",
-        fill=PRIMARY_DARK,
-        font=sub,
-    )
-    return img
-
-
-def _social(width: int = 1280, height: int = 640) -> Image.Image:
-    img = Image.new("RGB", (width, height), LIGHT_BG)
-    draw = ImageDraw.Draw(img)
-    # Soft diagonal atmosphere
-    for y in range(height):
-        t = y / max(1, height - 1)
-        r = int(240 * (1 - t) + 20 * t)
-        g = int(244 * (1 - t) + 61 * t)
-        b = int(247 * (1 - t) + 72 * t)
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
-    # Accent curve
-    for i in range(40):
-        x0 = int(width * 0.55 + math.sin(i / 6) * 20)
-        draw.ellipse(
-            [x0 + i * 8, height // 3 + i * 4, width + 80, height + 40],
-            outline=(31, 107, 92, 40),
-            width=2,
-        )
-    mark = _draw_mark(180)
-    img.paste(mark, (80, height // 2 - 90), mark)
-    title = _font(72)
-    sub = _font(28)
-    body = _font(22)
-    draw.text((300, height // 2 - 90), "Stellenanker", fill=MARK, font=title)
-    draw.text(
-        (304, height // 2 - 10),
-        "Lokale Jobsuche & Bewerbungen für Deutschland",
-        fill=MARK,
-        font=sub,
-    )
-    draw.text(
-        (304, height // 2 + 40),
-        "Kein Cloud-Konto · Dry-Run standard · Daten bleiben auf dem PC",
-        fill=(200, 220, 220),
-        font=body,
-    )
-    return img
+def _resize_square(src: Image.Image, size: int) -> Image.Image:
+    """High-quality downscale; keep RGBA."""
+    img = src.convert("RGBA")
+    if img.size == (size, size):
+        return img.copy()
+    # For tiny sizes, slightly sharpen readability by centering crop if needed
+    if img.width != img.height:
+        side = min(img.width, img.height)
+        left = (img.width - side) // 2
+        top = (img.height - side) // 2
+        img = img.crop((left, top, left + side, top + side))
+    return img.resize((size, size), Image.Resampling.LANCZOS)
 
 
 def _write_ico(pngs: dict[int, Image.Image], path: Path) -> None:
-    # Pillow ICO: pass largest as base and sizes list
-    sizes = sorted(pngs)
-    base = pngs[sizes[-1]].convert("RGBA")
+    sizes = [s for s in ICO_SIZES if s in pngs]
+    if not sizes:
+        raise SystemExit("no ICO sizes available")
+    # Pillow ICO: largest as base
+    base_size = max(sizes)
+    base = pngs[base_size].convert("RGBA")
+    append = [pngs[s].convert("RGBA") for s in sizes if s != base_size]
     base.save(
         path,
         format="ICO",
         sizes=[(s, s) for s in sizes],
-        append_images=[pngs[s].convert("RGBA") for s in sizes[:-1]],
+        append_images=append,
     )
 
 
+def _logo_from_master(master: Image.Image, max_width: int = 960) -> Image.Image:
+    img = master.convert("RGBA")
+    if img.width > max_width:
+        ratio = max_width / img.width
+        img = img.resize(
+            (max_width, max(1, int(img.height * ratio))),
+            Image.Resampling.LANCZOS,
+        )
+    return img
+
+
+def _social_from_master(master: Image.Image, width: int = 1280, height: int = 640) -> Image.Image:
+    """Compose MASTER A onto a navy → soft gradient social card."""
+    canvas = Image.new("RGB", (width, height), NAVY[:3])
+    draw = ImageDraw.Draw(canvas)
+    for y in range(height):
+        t = y / max(1, height - 1)
+        r = int(NAVY[0] * (1 - t) + 14 * t)
+        g = int(NAVY[1] * (1 - t) + 28 * t)
+        b = int(NAVY[2] * (1 - t) + 48 * t)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+    art = master.convert("RGBA")
+    # Fit artwork into left-ish area leaving room for wordmark on the right
+    max_art_w = int(width * 0.52)
+    max_art_h = int(height * 0.88)
+    ratio = min(max_art_w / art.width, max_art_h / art.height)
+    art = art.resize(
+        (max(1, int(art.width * ratio)), max(1, int(art.height * ratio))),
+        Image.Resampling.LANCZOS,
+    )
+    ax = 36
+    ay = (height - art.height) // 2
+    canvas.paste(art, (ax, ay), art)
+
+    # Wordmark (MASTER A already includes text; still add short EN/DE cue on right
+    # only when artwork already has brand — keep right panel sparse)
+    title = _font(42)
+    sub = _font(18)
+    tx = int(width * 0.58)
+    ty = height // 2 - 40
+    draw.text((tx, ty), "Karrierekrake", fill=MARK[:3], font=title)
+    # Split wordmark colors: Karriere navy-light, krake teal overlay via second draw
+    # Simpler: teal underline + tagline
+    draw.rectangle([tx, ty + 52, tx + 160, ty + 56], fill=TEAL[:3])
+    draw.text(
+        (tx, ty + 68),
+        "FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.",
+        fill=(200, 220, 220),
+        font=sub,
+    )
+    draw.text(
+        (tx, ty + 100),
+        "Lokal · Windows · Dry-Run standard",
+        fill=(160, 185, 195),
+        font=sub,
+    )
+    return canvas
+
+
 def main() -> None:
+    if not ICON_MASTER.is_file():
+        raise SystemExit(f"missing icon master: {ICON_MASTER}")
+    if not LOGO_MASTER.is_file():
+        raise SystemExit(f"missing logo master: {LOGO_MASTER}")
+
+    icon_src = Image.open(ICON_MASTER)
+    logo_src = Image.open(LOGO_MASTER)
+
     icons_dir = OUT / "icons"
     icons_dir.mkdir(parents=True, exist_ok=True)
     pngs: dict[int, Image.Image] = {}
-    for size in (16, 24, 32, 48, 64, 128, 256):
-        mark = _draw_mark(size)
+    for size in ICON_SIZES:
+        mark = _resize_square(icon_src, size)
         target = icons_dir / f"icon-{size}.png"
         mark.save(target, format="PNG", optimize=True)
         pngs[size] = mark
-        print(f"wrote {target.relative_to(ROOT)}")
+        print(f"wrote {target.relative_to(ROOT)} ({size}x{size})")
+
     ico = OUT / "app.ico"
     _write_ico(pngs, ico)
     print(f"wrote {ico.relative_to(ROOT)}")
-    logo = _logo()
+
+    logo = _logo_from_master(logo_src)
     logo_path = OUT / "logo.png"
     logo.save(logo_path, format="PNG", optimize=True)
-    print(f"wrote {logo_path.relative_to(ROOT)}")
-    social = _social()
+    print(f"wrote {logo_path.relative_to(ROOT)} ({logo.width}x{logo.height})")
+
+    social = _social_from_master(logo_src)
     social_path = OUT / "social-preview.png"
     social.save(social_path, format="PNG", optimize=True)
     print(f"wrote {social_path.relative_to(ROOT)}")
+
+    # Tiny-size sanity: ensure 16/24 are not empty / fully transparent
+    for s in (16, 24, 32):
+        band = pngs[s].get_flattened_data() if hasattr(pngs[s], "get_flattened_data") else list(pngs[s].getdata())
+        opaque = sum(1 for p in band if (p[3] if isinstance(p, tuple) else 255) > 32)
+        print(f"inspect icon-{s}: opaque_pixels={opaque}/{len(band)}")
 
 
 if __name__ == "__main__":

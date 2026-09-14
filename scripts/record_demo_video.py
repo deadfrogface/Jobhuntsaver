@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT_DIR = ROOT / "docs" / "assets" / "demo"
-OUT_MP4 = OUT_DIR / "stellenanker-demo.mp4"
+OUT_MP4 = OUT_DIR / "karrierekrake-demo.mp4"
 
 
 def main() -> int:
@@ -29,7 +29,7 @@ def main() -> int:
         print("DISPLAY not set — run under xvfb-run", file=sys.stderr)
         return 1
 
-    tmp = tempfile.mkdtemp(prefix="stellenanker-demo-")
+    tmp = tempfile.mkdtemp(prefix="karrierekrake-demo-")
     os.environ["LOCALAPPDATA"] = tmp
     # Prefer real X for recording (not offscreen)
     if os.environ.get("QT_QPA_PLATFORM") == "offscreen":

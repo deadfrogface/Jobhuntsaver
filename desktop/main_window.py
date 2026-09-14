@@ -5,8 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from PySide6.QtCore import QRect
-from PySide6.QtGui import QCloseEvent, QGuiApplication
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from desktop.branding import icon_path
 
 from desktop.i18n import i18n, tr
 from desktop.pages.applications import ApplicationsPage
@@ -64,13 +66,34 @@ class MainWindow(QMainWindow):
         side_layout = QVBoxLayout(self.sidebar)
         side_layout.setContentsMargins(10, 14, 10, 14)
         side_layout.setSpacing(6)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(8)
+        self.brand_icon = QLabel()
+        self.brand_icon.setFixedSize(36, 36)
+        ip = icon_path(64) or icon_path(48) or icon_path(32)
+        if ip is not None:
+            pix = QPixmap(str(ip))
+            if not pix.isNull():
+                self.brand_icon.setPixmap(
+                    pix.scaled(
+                        36,
+                        36,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(2)
         self.brand = QLabel(tr("app.name"))
         self.brand.setObjectName("Brand")
         self.brand_tagline = QLabel(tr("brand.tagline"))
         self.brand_tagline.setObjectName("BrandTagline")
         self.brand_tagline.setWordWrap(True)
-        side_layout.addWidget(self.brand)
-        side_layout.addWidget(self.brand_tagline)
+        brand_text.addWidget(self.brand)
+        brand_text.addWidget(self.brand_tagline)
+        brand_row.addWidget(self.brand_icon, 0, Qt.AlignmentFlag.AlignTop)
+        brand_row.addLayout(brand_text, 1)
+        side_layout.addLayout(brand_row)
         side_layout.addSpacing(8)
 
         self.stack = QStackedWidget()
