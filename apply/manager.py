@@ -91,13 +91,17 @@ class ApplicationManager:
         if self.failed_this_run >= settings.max_failed_applications_per_run:
             return False, "max failed applications per run reached"
         app = self.config.application
-        missing = [f for f, v in {
-            "first_name": app.first_name,
-            "last_name": app.last_name,
-            "email": app.email,
-            "phone": app.phone,
-            "cv_path": app.cv_path,
-        }.items() if not v]
+        missing = [
+            f
+            for f, v in {
+                "first_name": app.first_name,
+                "last_name": app.last_name,
+                "email": app.email,
+                "phone": app.phone,
+                "cv_path": app.cv_path,
+            }.items()
+            if not str(v or "").strip()
+        ]
         if missing:
             return False, f"missing profile fields: {', '.join(missing)}"
         cv_path = self._resolve_cv_path()

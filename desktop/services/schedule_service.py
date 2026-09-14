@@ -28,6 +28,8 @@ class ScheduleService:
         settings = self.config.settings
         if not settings.run_automatically or settings.automation_paused:
             return self.remove_task()
+        if sys.platform != "win32":
+            return False, "Task-Planer nur unter Windows verfügbar."
 
         cmd = self._python_command()
         # schtasks wants a single command string
@@ -113,20 +115,28 @@ class ScheduleService:
             "LIMITED",
             "/F",
         ]
-        proc = subprocess.run(args, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True)
+        except OSError as exc:
+            return False, str(exc)
         if proc.returncode != 0:
             return False, (proc.stderr or proc.stdout or "Fehler").strip()
         return True, f"Täglich um {time_str}."
 
     def remove_task(self) -> tuple[bool, str]:
+        if sys.platform != "win32":
+            return True, "Task-Planer nur unter Windows verfügbar."
         names = [TASK_NAME, f"{TASK_NAME}Evening"] + [f"{TASK_NAME}_{i}" for i in range(1, 6)]
         any_ok = False
         for name in names:
-            proc = subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"],
-                capture_output=True,
-                text=True,
-            )
+            try:
+                proc = subprocess.run(
+                    ["schtasks", "/Delete", "/TN", name, "/F"],
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError:
+                return True, "Task-Planer nicht verfügbar."
             if proc.returncode == 0:
                 any_ok = True
         return True, "Automatischer Lauf deaktiviert." if any_ok else "Kein geplanter Task vorhanden."

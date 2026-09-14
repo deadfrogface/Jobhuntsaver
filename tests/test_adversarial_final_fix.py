@@ -119,6 +119,24 @@ def test_live_dry_run_tightening_still_closes_open_gate(tmp_path: Path, monkeypa
     assert captured[1]["dry_run"] is True
 
 
+def test_schedule_service_safe_without_schtasks(tmp_path: Path):
+    """Pause/save must not crash on Linux or when schtasks is missing."""
+    from desktop.services.schedule_service import ScheduleService
+
+    cfg = empty_app_config(root=tmp_path)
+    cfg.settings.run_automatically = True
+    cfg.settings.automation_paused = True
+    ok, msg = ScheduleService(cfg).sync_from_config()
+    assert ok is True
+    assert isinstance(msg, str) and msg
+
+    cfg.settings.automation_paused = False
+    cfg.settings.run_automatically = True
+    ok2, msg2 = ScheduleService(cfg).sync_from_config()
+    # Non-Windows: create path returns False with a clear message (no crash).
+    assert isinstance(msg2, str) and msg2
+
+
 def test_missing_cv_file_blocks_can_auto_apply(tmp_path: Path):
     cfg = _cfg(
         tmp_path,
@@ -132,6 +150,22 @@ def test_missing_cv_file_blocks_can_auto_apply(tmp_path: Path):
     ok, reason = mgr.can_auto_apply(_job())
     assert ok is False
     assert "CV" in reason or "cv" in reason.lower()
+
+
+def test_whitespace_profile_fields_block_auto_apply(tmp_path: Path):
+    cfg = _cfg(
+        tmp_path,
+        dry_run=True,
+        auto_submit=False,
+        mode=OperatingMode.REVIEW_BEFORE_SUBMIT.value,
+    )
+    cfg.application.email = "   \t  "
+    cfg.application.first_name = "Ada"
+    db = Database(cfg.db_path, recover=False)
+    mgr = ApplicationManager(cfg, db, MagicMock())
+    ok, reason = mgr.can_auto_apply(_job())
+    assert ok is False
+    assert "email" in reason
 
 
 def test_update_job_status_refuses_wipe_of_applied(tmp_path: Path):
