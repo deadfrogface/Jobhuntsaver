@@ -43,13 +43,19 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
+from desktop.branding import (
+    DATA_DIR_NAME,
+    DISPLAY_NAME,
+    LOCAL_SERVER_NAME,
+    SINGLE_INSTANCE_KEY,
+)
 from desktop.i18n import i18n
 from desktop.main_window import MainWindow
 from desktop.services import ConfigService
 from desktop.theme import stylesheet_for
 
-_INSTANCE_KEY = "JobhuntsaverSingleInstance"
-_INSTANCE_SERVER = "JobhuntsaverLocalServer"
+_INSTANCE_KEY = SINGLE_INSTANCE_KEY
+_INSTANCE_SERVER = LOCAL_SERVER_NAME
 
 
 def acquire_single_instance_lock() -> QSharedMemory | None:
@@ -97,8 +103,8 @@ def run() -> int:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
-    app.setApplicationName("Jobhuntsaver")
-    app.setOrganizationName("Jobhuntsaver")
+    app.setApplicationName(DISPLAY_NAME)
+    app.setOrganizationName(DATA_DIR_NAME)
     # Quit when the last window closes unless the user opted into tray-minimize.
     # Tray exit / red-X exit always call ApplicationShutdownManager → app.quit().
     app.setQuitOnLastWindowClosed(True)
@@ -107,7 +113,7 @@ def run() -> int:
     shared = acquire_single_instance_lock()
     if shared is None:
         _try_notify_existing_instance()
-        QMessageBox.warning(None, "Jobhuntsaver", "Jobhuntsaver läuft bereits.")
+        QMessageBox.warning(None, DISPLAY_NAME, f"{DISPLAY_NAME} läuft bereits.")
         return 1
 
     from desktop.services.shutdown import get_shutdown_manager
@@ -157,7 +163,7 @@ def run() -> int:
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.warning(
             None,
-            "Jobhuntsaver",
+            DISPLAY_NAME,
             "System tray is not available. The app can still be used.",
         )
 
@@ -241,7 +247,7 @@ def _smoke_result_paths() -> list[Path]:
     paths: list[Path] = []
     local = (os.environ.get("LOCALAPPDATA") or "").strip()
     if local:
-        paths.append(Path(local) / "Jobhuntsaver" / "smoke_test_result.txt")
+        paths.append(Path(local) / DATA_DIR_NAME / "smoke_test_result.txt")
     try:
         paths.append(Path(sys.executable).resolve().parent / "smoke_test_result.txt")
     except Exception:

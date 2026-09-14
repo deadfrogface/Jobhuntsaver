@@ -66,7 +66,11 @@ class MainWindow(QMainWindow):
         side_layout.setSpacing(6)
         self.brand = QLabel(tr("app.name"))
         self.brand.setObjectName("Brand")
+        self.brand_tagline = QLabel(tr("brand.tagline"))
+        self.brand_tagline.setObjectName("BrandTagline")
+        self.brand_tagline.setWordWrap(True)
         side_layout.addWidget(self.brand)
+        side_layout.addWidget(self.brand_tagline)
         side_layout.addSpacing(8)
 
         self.stack = QStackedWidget()
@@ -162,6 +166,8 @@ class MainWindow(QMainWindow):
     def retranslate_ui(self) -> None:
         self.setWindowTitle(tr("app.name"))
         self.brand.setText(tr("app.name"))
+        if hasattr(self, "brand_tagline"):
+            self.brand_tagline.setText(tr("brand.tagline"))
         for btn, (key, _) in zip(self.nav_buttons, self._nav_defs):
             btn.setText(tr(key))
         self.progress_label.setText(tr("status.ready"))

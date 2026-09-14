@@ -22,6 +22,7 @@ from core.database import Database
 from core.models import JobStatus
 from desktop.i18n import tr
 from desktop.services import ConfigService
+from desktop.status_labels import status_label
 
 
 STATUS_FILTERS = [
@@ -41,6 +42,12 @@ class ApplicationsPage(QWidget):
         super().__init__(parent)
         self.config_service = config_service
         self._records = []
+
+        self.page_title = QLabel()
+        self.page_title.setObjectName("PageTitle")
+        self.page_subtitle = QLabel()
+        self.page_subtitle.setObjectName("PageSubtitle")
+        self.page_subtitle.setWordWrap(True)
 
         self.status = QComboBox()
         self.status.addItem("", "")
@@ -75,6 +82,7 @@ class ApplicationsPage(QWidget):
 
         self.table = QTableWidget(0, 9)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setAlternatingRowColors(True)
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
         for col in (0, 3, 4, 5, 6, 7):
@@ -83,19 +91,32 @@ class ApplicationsPage(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
 
+        self.empty = QLabel()
+        self.empty.setObjectName("EmptyState")
+        self.empty.setVisible(False)
+
         layout = QVBoxLayout(self)
+        layout.addWidget(self.page_title)
+        layout.addWidget(self.page_subtitle)
         layout.addLayout(filter_form)
-        layout.addWidget(self.table)
+        layout.addWidget(self.table, 1)
+        layout.addWidget(self.empty)
 
         self.retranslate_ui()
 
     def retranslate_ui(self) -> None:
+        self.page_title.setText(tr("apps.page_title"))
+        self.page_subtitle.setText(tr("apps.page_subtitle"))
         self.lbl_status.setText(tr("jobs.status"))
         self.status.setItemText(0, tr("jobs.all"))
+        for i in range(1, self.status.count()):
+            raw = self.status.itemData(i)
+            self.status.setItemText(i, status_label(str(raw)))
         self.refresh_btn.setText(tr("btn.refresh"))
         self.open_btn.setText(tr("btn.open_manual"))
         self.preview_btn.setText(tr("btn.preview_apply"))
         self.review_btn.setText(tr("btn.review_only"))
+        self.empty.setText(tr("apps.empty"))
         self.table.setHorizontalHeaderLabels(
             [
                 tr("apps.date"),
@@ -138,13 +159,16 @@ class ApplicationsPage(QWidget):
                 rec.position,
                 ats,
                 match,
-                rec.status,
+                status_label(rec.status),
                 rec.cv_used,
-                "ja" if rec.cover_letter_used else "",
+                tr("apps.cover_yes") if rec.cover_letter_used else "",
                 rec.error_message or rec.result or "",
             ]
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(value))
+        empty = len(records) == 0
+        self.table.setVisible(not empty)
+        self.empty.setVisible(empty)
 
     def open_selected(self) -> None:
         row = self.table.currentRow()
@@ -161,7 +185,7 @@ class ApplicationsPage(QWidget):
             webbrowser.open(url)
         else:
             QMessageBox.information(
-                self, tr("nav.applications"), "Keine Bewerbungs-URL vorhanden."
+                self, tr("nav.applications"), tr("jobs.no_url")
             )
 
     def preview_selected(self) -> None:
@@ -173,7 +197,6 @@ class ApplicationsPage(QWidget):
         db = Database(cfg.db_path)
         job = db.get_job(rec.job_id) if rec.job_id else None
         if job is None:
-            # Fallback: show stored error/preview text from application record
             from desktop.widgets.apply_preview_dialog import ApplyPreviewDialog
             from apply.preview import ApplicationPreview
 

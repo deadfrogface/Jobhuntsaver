@@ -1,4 +1,4 @@
-"""Jobs listing page."""
+"""Jobs listing page — scannable list + detail + prepare application."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -16,8 +17,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +29,7 @@ from core.database import Database
 from core.models import JobStatus
 from desktop.i18n import tr
 from desktop.services import ConfigService
+from desktop.status_labels import status_label
 
 
 class JobsPage(QWidget):
@@ -33,6 +37,13 @@ class JobsPage(QWidget):
         super().__init__(parent)
         self.config_service = config_service
         self._jobs = []
+        self._selected = None
+
+        self.page_title = QLabel()
+        self.page_title.setObjectName("PageTitle")
+        self.page_subtitle = QLabel()
+        self.page_subtitle.setObjectName("PageSubtitle")
+        self.page_subtitle.setWordWrap(True)
 
         self.min_match = QSpinBox()
         self.min_match.setRange(0, 100)
@@ -83,30 +94,91 @@ class JobsPage(QWidget):
         self.open_btn = QPushButton()
         self.open_btn.setObjectName("SecondaryButton")
         self.open_btn.clicked.connect(self.open_selected)
+        self.prepare_btn = QPushButton()
+        self.prepare_btn.setObjectName("PrimaryButton")
+        self.prepare_btn.clicked.connect(self.prepare_application)
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.apply_btn)
         btn_row.addWidget(self.open_btn)
+        btn_row.addWidget(self.prepare_btn)
         btn_row.addStretch()
         filter_form.addRow(btn_row)
 
-        self.table = QTableWidget(0, 10)
+        self.table = QTableWidget(0, 6)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
+        self.table.setAlternatingRowColors(True)
+        self.table.itemSelectionChanged.connect(self._on_selection)
         self.table.doubleClicked.connect(self.open_selected)
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
-        for col in (0, 3, 4, 5, 6, 7, 8, 9):
+        for col in (0, 3, 4, 5):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(filter_form)
-        layout.addWidget(self.table)
+        self.empty = QLabel()
+        self.empty.setObjectName("EmptyState")
+        self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty.setVisible(False)
 
+        list_wrap = QVBoxLayout()
+        list_wrap.setContentsMargins(0, 0, 0, 0)
+        list_host = QWidget()
+        list_host.setLayout(list_wrap)
+        list_wrap.addWidget(self.table)
+        list_wrap.addWidget(self.empty)
+
+        self.detail = QFrame()
+        self.detail.setObjectName("DetailPanel")
+        detail_layout = QVBoxLayout(self.detail)
+        detail_layout.setContentsMargins(14, 12, 14, 12)
+        self.detail_title = QLabel()
+        self.detail_title.setObjectName("NextActionTitle")
+        self.detail_title.setWordWrap(True)
+        self.detail_meta = QLabel()
+        self.detail_meta.setObjectName("PageSubtitle")
+        self.detail_meta.setWordWrap(True)
+        self.detail_status = QLabel()
+        self.detail_body = QTextEdit()
+        self.detail_body.setReadOnly(True)
+        self.detail_body.setMinimumHeight(140)
+        self.detail_prepare = QPushButton()
+        self.detail_prepare.setObjectName("PrimaryButton")
+        self.detail_prepare.clicked.connect(self.prepare_application)
+        self.detail_open = QPushButton()
+        self.detail_open.setObjectName("SecondaryButton")
+        self.detail_open.clicked.connect(self.open_selected)
+        dbtns = QHBoxLayout()
+        dbtns.addWidget(self.detail_prepare)
+        dbtns.addWidget(self.detail_open)
+        dbtns.addStretch()
+        detail_layout.addWidget(self.detail_title)
+        detail_layout.addWidget(self.detail_meta)
+        detail_layout.addWidget(self.detail_status)
+        detail_layout.addWidget(self.detail_body, 1)
+        detail_layout.addLayout(dbtns)
+
+        splitter = QSplitter()
+        splitter.setOrientation(Qt.Orientation.Horizontal)
+        splitter.addWidget(list_host)
+        splitter.addWidget(self.detail)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.page_title)
+        layout.addWidget(self.page_subtitle)
+        layout.addLayout(filter_form)
+        layout.addWidget(splitter, 1)
+
+        self._clear_detail()
         self.retranslate_ui()
 
     def retranslate_ui(self) -> None:
+        self.page_title.setText(tr("jobs.page_title"))
+        self.page_subtitle.setText(tr("jobs.page_subtitle"))
         self.lbl_min_match.setText(tr("jobs.min_match"))
         self.lbl_max_dist.setText(tr("jobs.max_km"))
         self.lbl_city.setText(tr("jobs.city"))
@@ -119,21 +191,73 @@ class JobsPage(QWidget):
         self.chk_onsite.setText(tr("onsite"))
         self.apply_btn.setText(tr("btn.filter"))
         self.open_btn.setText(tr("btn.open_job"))
+        self.prepare_btn.setText(tr("btn.prepare_application"))
+        self.detail_prepare.setText(tr("btn.prepare_application"))
+        self.detail_open.setText(tr("btn.open_job"))
+        self.empty.setText(tr("jobs.empty"))
         self.status.setItemText(0, tr("jobs.all"))
+        # Keep raw enum as data; show human labels in the dropdown text
+        for i in range(1, self.status.count()):
+            raw = self.status.itemData(i)
+            self.status.setItemText(i, status_label(str(raw)))
         self.table.setHorizontalHeaderLabels(
             [
                 tr("col.match"),
                 tr("col.title"),
                 tr("col.company"),
                 tr("col.city"),
-                tr("col.distance"),
-                tr("col.model"),
-                tr("col.salary"),
                 tr("col.source"),
-                tr("col.date"),
                 tr("col.status"),
             ]
         )
+        if self._selected is None:
+            self._clear_detail()
+
+    def _clear_detail(self) -> None:
+        self.detail_title.setText(tr("jobs.detail_empty_title"))
+        self.detail_meta.setText(tr("jobs.detail_empty_body"))
+        self.detail_status.clear()
+        self.detail_body.setPlainText("")
+        self.detail_prepare.setEnabled(False)
+        self.detail_open.setEnabled(False)
+
+    def _job_for_row(self, row: int):
+        if row < 0:
+            return None
+        title_item = self.table.item(row, 1)
+        company_item = self.table.item(row, 2)
+        if not title_item or not company_item:
+            return None
+        title = title_item.text()
+        company = company_item.text()
+        return next((j for j in self._jobs if j.title == title and j.company == company), None)
+
+    def _on_selection(self) -> None:
+        row = self.table.currentRow()
+        job = self._job_for_row(row)
+        self._selected = job
+        if job is None:
+            self._clear_detail()
+            return
+        self.detail_title.setText(job.title or "—")
+        dist = "" if job.distance_km is None else f"{job.distance_km:.1f} km"
+        self.detail_meta.setText(
+            f"{job.company or '—'} · {job.city or '—'} · {job.remote_type or '—'} · "
+            f"{dist} · {job.salary_text or '—'} · {job.source or '—'}"
+        )
+        self.detail_status.setText(
+            f"{tr('jobs.status')}: {status_label(job.status)} · "
+            f"{tr('col.match')}: {job.match_score}"
+        )
+        reasons = ""
+        if getattr(job, "match_reasons", None):
+            reasons = "\n".join(f"• {r}" for r in (job.match_reasons or [])[:8])
+        body = (job.description or "").strip()
+        if reasons:
+            body = f"{tr('jobs.match_reasons')}:\n{reasons}\n\n{body}"
+        self.detail_body.setPlainText(body[:4000] if body else tr("jobs.no_description"))
+        self.detail_prepare.setEnabled(True)
+        self.detail_open.setEnabled(True)
 
     def refresh(self) -> None:
         cfg = self.config_service.load()
@@ -174,12 +298,8 @@ class JobsPage(QWidget):
                 job.title,
                 job.company,
                 job.city,
-                "" if job.distance_km is None else f"{job.distance_km:.1f}",
-                job.remote_type,
-                job.salary_text or "",
                 job.source,
-                (job.published_at or job.discovered_at or "")[:10],
-                job.status,
+                status_label(job.status),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -187,20 +307,31 @@ class JobsPage(QWidget):
                     item.setData(Qt.ItemDataRole.DisplayRole, int(job.match_score))
                 self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
+        empty = len(jobs) == 0
+        self.table.setVisible(not empty)
+        self.empty.setVisible(empty)
+        if empty:
+            self._clear_detail()
 
     def open_selected(self) -> None:
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._jobs):
-            return
-        # After sorting, map via title+company is fragile; use visible cells
-        title = self.table.item(row, 1).text()
-        company = self.table.item(row, 2).text()
-        job = next((j for j in self._jobs if j.title == title and j.company == company), None)
+        job = self._selected or self._job_for_row(self.table.currentRow())
         if not job:
-            QMessageBox.information(self, tr("nav.jobs"), "Eintrag nicht gefunden.")
+            QMessageBox.information(self, tr("nav.jobs"), tr("jobs.select_first"))
             return
         url = job.application_url or job.url
         if url:
             webbrowser.open(url)
         else:
-            QMessageBox.information(self, tr("nav.jobs"), "Keine URL vorhanden.")
+            QMessageBox.information(self, tr("nav.jobs"), tr("jobs.no_url"))
+
+    def prepare_application(self) -> None:
+        job = self._selected or self._job_for_row(self.table.currentRow())
+        if not job:
+            QMessageBox.information(self, tr("nav.jobs"), tr("jobs.select_first"))
+            return
+        cfg = self.config_service.load()
+        from apply.preview import build_application_preview
+        from desktop.widgets.apply_preview_dialog import ApplyPreviewDialog
+
+        preview = build_application_preview(job, cfg)
+        ApplyPreviewDialog(preview, self).exec()

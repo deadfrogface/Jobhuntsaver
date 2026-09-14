@@ -1,4 +1,4 @@
-"""Dashboard page."""
+"""Dashboard page — next action first, then clear CTAs and key stats."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ class StatCard(QFrame):
         self._title_key = title_key
         self.setObjectName("Card")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
         self.value = QLabel("0")
         self.value.setObjectName("CardValue")
         self.caption = QLabel()
@@ -51,21 +52,56 @@ class DashboardPage(QWidget):
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
         self.config_service = config_service
+        self._next_action = "search"
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(14)
+
+        self.page_title = QLabel()
+        self.page_title.setObjectName("PageTitle")
+        self.page_subtitle = QLabel()
+        self.page_subtitle.setObjectName("PageSubtitle")
+        self.page_subtitle.setWordWrap(True)
+        root.addWidget(self.page_title)
+        root.addWidget(self.page_subtitle)
+
+        self.hero = QFrame()
+        self.hero.setObjectName("HeroCard")
+        hero_layout = QVBoxLayout(self.hero)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        hero_layout.setSpacing(10)
+        self.next_title = QLabel()
+        self.next_title.setObjectName("NextActionTitle")
+        self.next_body = QLabel()
+        self.next_body.setWordWrap(True)
+        self.next_body.setObjectName("PageSubtitle")
+        self.btn_primary = QPushButton()
+        self.btn_primary.setObjectName("PrimaryButton")
+        self.btn_primary.clicked.connect(self._on_primary)
+        hero_btns = QHBoxLayout()
+        hero_btns.addWidget(self.btn_primary)
+        hero_btns.addStretch()
+        hero_layout.addWidget(self.next_title)
+        hero_layout.addWidget(self.next_body)
+        hero_layout.addLayout(hero_btns)
+        root.addWidget(self.hero)
 
         self.cards = {
-            "this_run": StatCard("dash.this_run"),
-            "jobs_found_today": StatCard("dash.found_today"),
-            "new_today": StatCard("dash.new"),
             "matches_ge_75": StatCard("dash.matches"),
-            "applications_today": StatCard("dash.applied"),
             "needs_review": StatCard("dash.needs_review"),
+            "jobs_found_today": StatCard("dash.found_today"),
+            "applications_today": StatCard("dash.applied"),
+            "new_today": StatCard("dash.new"),
+            "this_run": StatCard("dash.this_run"),
             "captcha": StatCard("dash.captcha"),
             "errors": StatCard("dash.errors"),
         }
-
         grid = QGridLayout()
+        grid.setSpacing(10)
         for i, card in enumerate(self.cards.values()):
             grid.addWidget(card, i // 4, i % 4)
+        root.addLayout(grid)
 
         self.mode_label = QLabel()
         self.last_run_label = QLabel()
@@ -76,14 +112,17 @@ class DashboardPage(QWidget):
         self.home_warning_label.setObjectName("WarningLabel")
         self.run_detail_label = QLabel()
         self.run_detail_label.setWordWrap(True)
+        self.run_detail_label.setObjectName("PageSubtitle")
 
         info = QVBoxLayout()
+        info.setSpacing(4)
         info.addWidget(self.mode_label)
         info.addWidget(self.last_run_label)
         info.addWidget(self.next_run_label)
         info.addWidget(self.status_label)
         info.addWidget(self.home_warning_label)
         info.addWidget(self.run_detail_label)
+        root.addLayout(info)
 
         self.btn_search = QPushButton()
         self.btn_search.setObjectName("PrimaryButton")
@@ -108,27 +147,43 @@ class DashboardPage(QWidget):
         self.btn_review.clicked.connect(self.review_requested.emit)
         self.btn_clear_jobs.clicked.connect(self.clear_jobs_requested.emit)
 
-        actions = QHBoxLayout()
-        actions.addWidget(self.btn_search)
-        actions.addWidget(self.btn_cancel)
-        actions.addWidget(self.btn_apply)
-        actions.addWidget(self.btn_test)
-        actions.addWidget(self.btn_pause)
-        actions.addWidget(self.btn_review)
-        actions.addWidget(self.btn_clear_jobs)
-        actions.addStretch()
-
-        layout = QVBoxLayout(self)
-        layout.addLayout(grid)
-        layout.addSpacing(12)
-        layout.addLayout(info)
-        layout.addSpacing(8)
-        layout.addLayout(actions)
-        layout.addStretch()
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+        for btn in (self.btn_search, self.btn_cancel, self.btn_apply, self.btn_test):
+            row1.addWidget(btn)
+        row1.addStretch()
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        for btn in (self.btn_pause, self.btn_review, self.btn_clear_jobs):
+            row2.addWidget(btn)
+        row2.addStretch()
+        root.addLayout(row1)
+        root.addLayout(row2)
+        root.addStretch()
 
         self.retranslate_ui()
 
+    def _on_primary(self) -> None:
+        if self._next_action == "review":
+            self.review_requested.emit()
+        elif self._next_action == "profile":
+            # Parent window navigates via review-style hooks; emit search as fallback
+            # after profile is complete — MainWindow wires search. Profile nav is via stack.
+            parent = self.window()
+            if parent is not None and hasattr(parent, "_navigate"):
+                # profile is index 3 in main_window nav defs
+                try:
+                    parent._navigate(3)  # type: ignore[attr-defined]
+                    return
+                except Exception:
+                    pass
+            self.search_requested.emit()
+        else:
+            self.search_requested.emit()
+
     def retranslate_ui(self) -> None:
+        self.page_title.setText(tr("dash.page_title"))
+        self.page_subtitle.setText(tr("dash.page_subtitle"))
         for card in self.cards.values():
             card.retranslate()
         self.btn_search.setText(tr("btn.search_now"))
@@ -146,6 +201,26 @@ class DashboardPage(QWidget):
         self.btn_apply.setEnabled(not running)
         self.btn_test.setEnabled(not running)
         self.btn_clear_jobs.setEnabled(not running)
+        self.btn_primary.setEnabled(not running or self._next_action == "review")
+
+    def _compute_next_action(self, cfg, stats: dict) -> None:
+        titles = [t for t in (cfg.profile.jobs.desired_titles or []) if str(t).strip()]
+        if not titles:
+            self._next_action = "profile"
+            self.next_title.setText(tr("dash.next_profile_title"))
+            self.next_body.setText(tr("dash.next_profile_body"))
+            self.btn_primary.setText(tr("dash.next_profile_cta"))
+            return
+        if int(stats.get("needs_review") or 0) > 0:
+            self._next_action = "review"
+            self.next_title.setText(tr("dash.next_review_title"))
+            self.next_body.setText(tr("dash.next_review_body"))
+            self.btn_primary.setText(tr("btn.review_queue"))
+            return
+        self._next_action = "search"
+        self.next_title.setText(tr("dash.next_search_title"))
+        self.next_body.setText(tr("dash.next_search_body"))
+        self.btn_primary.setText(tr("btn.find_jobs"))
 
     def refresh(self) -> None:
         cfg = self.config_service.load()
@@ -153,6 +228,7 @@ class DashboardPage(QWidget):
         stats = db.dashboard_stats()
         for key, card in self.cards.items():
             card.set_value(stats.get(key, 0))
+        self._compute_next_action(cfg, stats)
         mode = cfg.settings.mode
         dry = tr("dash.on") if cfg.settings.dry_run else tr("dash.off")
         paused = bool(cfg.settings.automation_paused)
@@ -162,7 +238,6 @@ class DashboardPage(QWidget):
             f"{tr('dash.mode')}: {mode}  |  {tr('dash.dry_run')}: {dry}  |  "
             f"{tr('dash.automation')}: {auto} ({paused_label})"
         )
-        # Toggle label: pause when active, resume when paused
         self.btn_pause.setText(
             tr("btn.resume_automation") if paused else tr("btn.pause_automation")
         )
@@ -174,7 +249,6 @@ class DashboardPage(QWidget):
             f"{tr('dash.next_run')}: {meta.get('next_scheduled_run') or '—'}"
         )
 
-        # Home / distance warning + last-run accounting
         loc = cfg.profile.location
         if not (loc.home_address or "").strip() and loc.home_latitude is None:
             self.home_warning_label.setText(tr("dash.home_missing"))

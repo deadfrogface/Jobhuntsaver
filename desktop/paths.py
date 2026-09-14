@@ -1,4 +1,8 @@
-"""Application data paths under %LOCALAPPDATA%\\Jobhuntsaver."""
+"""Application data paths under %LOCALAPPDATA%\\Jobhuntsaver.
+
+The filesystem folder stays ``Jobhuntsaver`` for compatibility even when the
+user-facing brand display name changes (see ``desktop.branding``).
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,9 @@ import os
 import sys
 from pathlib import Path
 
+from desktop.branding import DATA_DIR_NAME
 
-APP_NAME = "Jobhuntsaver"
+APP_NAME = DATA_DIR_NAME
 
 
 def project_root() -> Path:
