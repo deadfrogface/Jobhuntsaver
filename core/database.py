@@ -244,8 +244,9 @@ class Database:
         data["rejection_reasons"] = json.dumps(job.rejection_reasons, ensure_ascii=False)
         data["alt_sources"] = json.dumps(job.alt_sources, ensure_ascii=False)
         data["updated_at"] = utc_now_iso()
-        # Never wipe attempt/outcome statuses when soft-dedup losers are
-        # re-upserted with default status=new (keeps has_applied twin blocks).
+        # Soft-dedup losers re-upsert with status=new — do not wipe attempt /
+        # outcome rows (keeps has_applied twin blocks). Explicit transitions
+        # (e.g. applying → applied/failed/needs_review/captcha) must still win.
         existing = self.get_job(job.id) if job.id else None
         protected = {
             JobStatus.APPLIED.value,
@@ -254,7 +255,12 @@ class Database:
             JobStatus.CAPTCHA.value,
             JobStatus.APPLYING.value,
         }
-        if existing and existing.status in protected:
+        incoming = data.get("status") or JobStatus.NEW.value
+        if (
+            existing
+            and existing.status in protected
+            and incoming == JobStatus.NEW.value
+        ):
             data["status"] = existing.status
             job.status = existing.status
         cols = list(data.keys())

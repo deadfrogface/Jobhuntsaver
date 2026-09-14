@@ -67,6 +67,9 @@ def hard_exclude(job: Job, config: AppConfig, already_applied: bool = False) -> 
         return "hybrid not allowed"
     if is_remote and loc.allow_remote_germany:
         pass  # remote may ignore physical distance
+    elif job.distance_km is None and not is_remote:
+        # Unknown commute for onsite/hybrid must not enter auto-apply.
+        return "distance unknown (onsite/hybrid)"
     elif job.distance_km is not None and job.distance_km > loc.max_distance_km:
         if is_hybrid:
             return f"hybrid over {loc.max_distance_km} km ({job.distance_km} km)"

@@ -53,6 +53,8 @@ def test_matcher_does_not_exclude_straddling_range():
         salary_max=50000,
         salary_text="40.000 – 50.000 €",
         url="https://example.com/job/1",
+        distance_km=5,
+        remote_type="onsite",
     )
     result = score_job(job, cfg)
     assert result.excluded is False
