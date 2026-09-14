@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from core.models import ApplicationRecord, Job, JobStatus, utc_now_iso
+from core.deduplicator import company_key as _company_key, title_key as _title_key
 
 import re
 from urllib.parse import parse_qs, urlparse
@@ -39,35 +40,6 @@ def _url_identity(url: str) -> str:
             keep.append(f"{key.lower()}={val.lower()}")
     query = "&".join(keep)
     return f"{host}{path}?{query}" if query else f"{host}{path}"
-
-
-_LEGAL_SUFFIX = re.compile(
-    r"\b(gmbh|ag|kg|ug|se|inc|ltd|llc|co\.?|company|mbh)\b\.?",
-    re.I,
-)
-_GENDER_TAG = re.compile(
-    r"(?:"
-    r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)|"
-    r"\b(?:m/w/d|w/m/d|f/m/d|d/m/w)\b|"
-    r"\b(?:m/w|w/m)\b"
-    r")",
-    re.I,
-)
-
-
-
-def _company_key(company: str) -> str:
-    text = (company or "").lower().strip()
-    text = _LEGAL_SUFFIX.sub("", text)
-    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def _title_key(title: str) -> str:
-    text = (title or "").lower().strip()
-    text = _GENDER_TAG.sub(" ", text)
-    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 SCHEMA = """

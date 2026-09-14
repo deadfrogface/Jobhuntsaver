@@ -43,6 +43,29 @@ def test_fingerprint_and_likely_same():
     assert is_likely_same_job(a, b)
 
 
+def test_soft_dedup_strips_legal_suffix_and_gender_tag():
+    """Portal twins often differ by GmbH and (m/w/d) — must still collapse."""
+    a = Job(
+        id="1",
+        source="indeed",
+        title="Software Engineer (m/w/d)",
+        company="Acme GmbH",
+        city="Berlin",
+        url="https://indeed.example/1",
+    )
+    b = Job(
+        id="2",
+        source="stepstone",
+        title="Software Engineer",
+        company="Acme",
+        city="Berlin",
+        url="https://stepstone.example/2",
+    )
+    assert is_likely_same_job(a, b) is True
+    out = deduplicate([a, b])
+    assert sum(1 for j in out if j.duplicate_of) == 1
+
+
 def test_ba_beats_indeed_when_ats_type_unknown():
     """Default ats_type 'unknown' must not override source priority (BA > Indeed)."""
     ba = Job(
