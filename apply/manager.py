@@ -119,11 +119,32 @@ class ApplicationManager:
         submit = self._submit_allowed(settings, force_submit=force_submit)
 
         allowed, reason = self.can_auto_apply(job)
-        if not allowed and mode == OperatingMode.FULLY_AUTOMATIC.value:
-            job.status = JobStatus.NEEDS_REVIEW.value
-            job.rejection_reasons = list({*job.rejection_reasons, reason})
-            self.db.upsert_job(job)
-            return ApplyResult(success=False, needs_review=True, error_message=reason)
+        if not allowed:
+            # Hard safety blocks apply in every mode (review must not open ATS
+            # without CV / against duplicates). Soft reasons (score, ATS) still
+            # allow review-mode preview attempts.
+            hard_block = (
+                reason.startswith("already applied")
+                or reason.startswith("missing profile fields")
+                or reason.startswith("CV file missing")
+                or reason.startswith("max applications")
+                or reason.startswith("max failed")
+            )
+            if hard_block or mode == OperatingMode.FULLY_AUTOMATIC.value:
+                existing = self.db.get_job(job.id) if job.id else None
+                protected = {
+                    JobStatus.APPLIED.value,
+                    JobStatus.FAILED.value,
+                    JobStatus.NEEDS_REVIEW.value,
+                    JobStatus.CAPTCHA.value,
+                    JobStatus.APPLYING.value,
+                }
+                # Never demote an attempt/outcome row when blocking re-entry.
+                if existing is None or existing.status not in protected:
+                    job.status = JobStatus.NEEDS_REVIEW.value
+                    job.rejection_reasons = list({*job.rejection_reasons, reason})
+                    self.db.upsert_job(job)
+                return ApplyResult(success=False, needs_review=True, error_message=reason)
 
         ats = ATSDetector.detect(job.application_url or job.url)
         job.ats_type = ats

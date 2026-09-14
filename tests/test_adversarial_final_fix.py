@@ -149,8 +149,99 @@ def test_update_job_status_refuses_wipe_of_applied(tmp_path: Path):
     assert db.get_job("prot").status == JobStatus.APPLIED.value
     db.update_job_status("prot", JobStatus.IGNORED.value)
     assert db.get_job("prot").status == JobStatus.APPLIED.value
+    # APPLIED is terminal — even FAILED must not demote via this API.
     db.update_job_status("prot", JobStatus.FAILED.value)
-    assert db.get_job("prot").status == JobStatus.FAILED.value
+    assert db.get_job("prot").status == JobStatus.APPLIED.value
+
+
+def test_blocked_reapply_does_not_demote_applied(tmp_path: Path):
+    cfg = _cfg(
+        tmp_path,
+        dry_run=False,
+        auto_submit=True,
+        mode=OperatingMode.FULLY_AUTOMATIC.value,
+    )
+    db = Database(cfg.db_path, recover=False)
+    db.upsert_job(
+        Job(
+            id="kept",
+            source="t",
+            title="Sachbearbeiter",
+            company="Fiktiv GmbH",
+            url="https://boards.greenhouse.io/fiktiv/jobs/9",
+            status=JobStatus.APPLIED.value,
+            match_score=90,
+            ats_type="greenhouse",
+        )
+    )
+    from core.models import ApplicationRecord
+
+    db.save_application(
+        ApplicationRecord(
+            job_id="kept",
+            company="Fiktiv GmbH",
+            position="Sachbearbeiter",
+            status="applied",
+            result="submitted",
+        )
+    )
+    mgr = ApplicationManager(cfg, db, MagicMock())
+    result = mgr.prepare_and_apply(
+        Job(
+            id="kept",
+            source="t",
+            title="Sachbearbeiter",
+            company="Fiktiv GmbH",
+            url="https://boards.greenhouse.io/fiktiv/jobs/9",
+            match_score=90,
+            ats_type="greenhouse",
+            status=JobStatus.NEW.value,
+        )
+    )
+    assert "already applied" in (result.error_message or "")
+    assert db.get_job("kept").status == JobStatus.APPLIED.value
+
+
+def test_review_mode_missing_cv_does_not_open_applier(tmp_path: Path, monkeypatch):
+    cfg = _cfg(
+        tmp_path,
+        dry_run=True,
+        auto_submit=False,
+        mode=OperatingMode.REVIEW_BEFORE_SUBMIT.value,
+    )
+    cfg.application.cv_path = str(tmp_path / "missing.pdf")
+    db = Database(cfg.db_path, recover=False)
+    called = {"n": 0}
+
+    class Stub:
+        def __init__(self, page, *, dry_run=True, submit=False):
+            pass
+
+        def apply(self, *a, **k):
+            called["n"] += 1
+            return ApplyResult(success=True, dry_run_stopped=True)
+
+    monkeypatch.setattr("apply.manager.APPLIERS", {"greenhouse": Stub})
+    monkeypatch.setattr(
+        "apply.manager.ATSDetector.detect",
+        staticmethod(lambda url: "greenhouse"),
+    )
+    mgr = ApplicationManager(cfg, db, MagicMock())
+    result = mgr.prepare_and_apply(_job())
+    assert called["n"] == 0
+    assert result.needs_review is True
+    assert "CV" in (result.error_message or "")
+
+
+def test_upsert_never_demotes_applied_to_needs_review(tmp_path: Path):
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(id="a", source="t", title="T", company="C", status=JobStatus.APPLIED.value)
+    )
+    db.upsert_job(
+        Job(id="a", source="t", title="T", company="C", status=JobStatus.NEEDS_REVIEW.value)
+    )
+    assert db.get_job("a").status == JobStatus.APPLIED.value
 
 
 def test_start_pipeline_always_deepcopies_config():
