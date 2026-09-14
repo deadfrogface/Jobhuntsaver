@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 import sys
 from pathlib import Path
 
@@ -69,15 +71,26 @@ def render_cover_letter(job: Job, config: AppConfig) -> str:
     else:
         experience_sentence = "Gern bringe ich meine bisherigen beruflichen Erfahrungen in Ihr Team ein."
 
-    return template.format(
-        job_title=job.title,
-        company=job.company,
-        skills=skills,
-        experience_sentence=experience_sentence,
-        full_name=config.application.full_name or "[Ihr Name]",
-        first_name=config.application.first_name,
-        last_name=config.application.last_name,
-    )
+    mapping = {
+        "job_title": job.title,
+        "company": job.company,
+        "skills": skills,
+        "experience_sentence": experience_sentence,
+        "full_name": config.application.full_name or "[Ihr Name]",
+        "first_name": config.application.first_name,
+        "last_name": config.application.last_name,
+    }
+
+    class _Safe(dict):
+        def __missing__(self, key: str) -> str:
+            # Keep unknown placeholders visible instead of crashing apply.
+            return "{" + key + "}"
+
+    try:
+        return template.format_map(_Safe(mapping))
+    except (ValueError, IndexError):
+        # Malformed braces in a user template — fall back to default.
+        return DEFAULT_TEMPLATE.format_map(_Safe(mapping))
 
 
 def save_cover_letter(text: str, path: Path) -> Path:

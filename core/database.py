@@ -244,12 +244,19 @@ class Database:
         data["rejection_reasons"] = json.dumps(job.rejection_reasons, ensure_ascii=False)
         data["alt_sources"] = json.dumps(job.alt_sources, ensure_ascii=False)
         data["updated_at"] = utc_now_iso()
-        # Never downgrade a previously applied job when soft-dedup losers are
-        # re-upserted with default status=new.
+        # Never wipe attempt/outcome statuses when soft-dedup losers are
+        # re-upserted with default status=new (keeps has_applied twin blocks).
         existing = self.get_job(job.id) if job.id else None
-        if existing and existing.status == JobStatus.APPLIED.value:
-            data["status"] = JobStatus.APPLIED.value
-            job.status = JobStatus.APPLIED.value
+        protected = {
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        }
+        if existing and existing.status in protected:
+            data["status"] = existing.status
+            job.status = existing.status
         cols = list(data.keys())
         placeholders = ", ".join("?" for _ in cols)
         col_names = ", ".join(cols)
