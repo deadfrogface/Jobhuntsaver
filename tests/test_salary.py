@@ -59,11 +59,17 @@ def test_unknown_salary_returns_none_not_reject():
     assert meets_minimum(annual, 36000) is None
 
 
-def test_ambiguous_range_returns_none_not_reject():
+def test_ambiguous_range_returns_ceiling_not_low_end():
     annual, reason = normalize_to_annual_gross_eur(text="30.000 – 40.000 € / Jahr")
-    assert annual is None
-    assert "ambiguous" in reason.lower()
-    assert meets_minimum(annual, 36000) is None
+    assert annual == 40000
+    assert "ceiling" in reason.lower()
+    # Ceiling above minimum → soft meet (not unknown).
+    assert meets_minimum(annual, 36000) is True
+    # Entire band below minimum → hard miss via ceiling.
+    low, low_reason = normalize_to_annual_gross_eur(text="20.000 – 28.000 € / Jahr")
+    assert low == 28000
+    assert meets_minimum(low, 36000) is False
+    assert "ceiling" in low_reason.lower()
 
 
 def test_meets_minimum_true_false_none():

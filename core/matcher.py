@@ -55,20 +55,36 @@ def _token_in_text(token: str, haystack: str) -> bool:
     return bool(re.search(rf"(?<!\w){re.escape(t)}(?!\w)", haystack))
 
 
+def _normalize_lang_level_token(token: str) -> str:
+    """Map soft DE fluency phrases onto CEFR-ish tokens used by scoring."""
+    raw = (token or "").strip().lower()
+    raw = raw.replace("ß", "ss")
+    if raw in {"fliessend", "verhandlungssicher"}:
+        return "C1"
+    if raw in {"muttersprache", "native"}:
+        return "C2"
+    return token.upper() if len(token) == 2 else token
+
+
 def _required_language_levels(text: str) -> list[tuple[str, str]]:
-    """Detect language requirements like 'Englisch C1' in a job ad."""
+    """Detect language requirements like 'Englisch C1' / 'Englisch fließend'."""
     found: list[tuple[str, str]] = []
     patterns = [
-        r"(deutsch|german|englisch|english|französisch|franzoesisch|french|italienisch|italian|spanisch|spanish|ungarisch|hungarian)\s*(?:kenntnisse)?\s*[\(:]?\s*([abc][12]|muttersprache|native)",
-        r"([abc][12])\s+(deutsch|german|englisch|english)",
+        r"(deutsch|german|englisch|english|französisch|franzoesisch|french|italienisch|italian|spanisch|spanish|ungarisch|hungarian)\s*(?:kenntnisse)?\s*[\(:]?\s*([abc][12]|muttersprache|native|flie[sß]end|verhandlungssicher)",
+        r"([abc][12]|flie[sß]end|verhandlungssicher)\s+(deutsch|german|englisch|english|französisch|franzoesisch|french|spanisch|spanish)",
+        r"verhandlungssichere\s+(deutsch|german|englisch|english|französisch|franzoesisch|french|spanisch|spanish)\w*",
+        r"(deutsch|german|englisch|english|französisch|franzoesisch|french|spanisch|spanish)\s+flie[sß]end",
     ]
     for pat in patterns:
         for m in re.finditer(pat, text, re.I):
-            g1, g2 = m.group(1), m.group(2)
-            if re.fullmatch(r"[abc][12]", g1, re.I):
-                found.append((_norm(g2), g1.upper()))
+            groups = [g for g in m.groups() if g]
+            if len(groups) == 1:
+                lang, level = groups[0], "C1"
+            elif re.fullmatch(r"[abc][12]|flie[sß]end|verhandlungssicher|muttersprache|native", groups[0], re.I):
+                level, lang = groups[0], groups[1]
             else:
-                found.append((_norm(g1), g2.upper() if len(g2) == 2 else g2))
+                lang, level = groups[0], groups[1]
+            found.append((_norm(lang), _normalize_lang_level_token(level)))
     return found
 
 
@@ -78,6 +94,11 @@ def _profile_lang_level(languages: list[LanguageEntry], name: str) -> int:
         "german": {"deutsch", "german"},
         "englisch": {"englisch", "english"},
         "english": {"englisch", "english"},
+        "französisch": {"französisch", "franzoesisch", "french"},
+        "franzoesisch": {"französisch", "franzoesisch", "french"},
+        "french": {"französisch", "franzoesisch", "french"},
+        "spanisch": {"spanisch", "spanish"},
+        "spanish": {"spanisch", "spanish"},
         "italienisch": {"italienisch", "italian"},
         "ungarisch": {"ungarisch", "hungarian"},
     }
@@ -298,13 +319,20 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     else:
         annual, sal_note = job_annual_salary(job)
         verdict = meets_minimum(annual, min_sal)
+        note_l = (sal_note or "").lower()
+        bound_estimate = any(k in note_l for k in ("floor", "from", "ceiling"))
         if verdict is None:
             # Unknown / ambiguous — keep points, do not exclude.
             score += 4
             issues.append(sal_note or "Salary not listed")
         elif verdict:
-            score += 10
-            reasons.append(f"Salary meets minimum ({annual})")
+            if bound_estimate:
+                # Floor/ceiling that still clears the minimum — soft credit only.
+                score += 4
+                issues.append(sal_note)
+            else:
+                score += 10
+                reasons.append(f"Salary meets minimum ({annual})")
         else:
             reason = f"Salary below minimum ({annual} < {int(min_sal)})"
             return MatchResult(

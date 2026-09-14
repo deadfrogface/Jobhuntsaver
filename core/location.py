@@ -127,7 +127,13 @@ class LocationService:
 
         if loc.home_latitude is not None and loc.home_longitude is not None:
             # Persisted coords are only trusted when they still match the address text.
-            if stored_fp and current_fp and stored_fp != current_fp:
+            # Cleared / whitespace-only address must drop stale lat/lon.
+            if not current_fp:
+                loc.home_latitude = None
+                loc.home_longitude = None
+                loc.home_geocoded_address = ""
+                self.home_updated = True
+            elif stored_fp and stored_fp != current_fp:
                 loc.home_latitude = None
                 loc.home_longitude = None
                 loc.home_geocoded_address = ""

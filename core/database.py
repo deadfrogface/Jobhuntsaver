@@ -244,12 +244,32 @@ class Database:
         data["rejection_reasons"] = json.dumps(job.rejection_reasons, ensure_ascii=False)
         data["alt_sources"] = json.dumps(job.alt_sources, ensure_ascii=False)
         data["updated_at"] = utc_now_iso()
-        # Never downgrade a previously applied job when soft-dedup losers are
-        # re-upserted with default status=new.
+        # Soft-dedup losers re-upsert with status=new — do not wipe attempt /
+        # outcome rows (keeps has_applied twin blocks). Explicit transitions
+        # (e.g. applying → applied/failed/needs_review/captcha) must still win.
         existing = self.get_job(job.id) if job.id else None
-        if existing and existing.status == JobStatus.APPLIED.value:
-            data["status"] = JobStatus.APPLIED.value
-            job.status = JobStatus.APPLIED.value
+        protected = {
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        }
+        incoming = data.get("status") or JobStatus.NEW.value
+        # Soft-dedup uses NEW; rematch may try IGNORED/INTERESTING — neither
+        # may erase a prior attempt/outcome (twins must stay blocked).
+        wipe_statuses = {
+            JobStatus.NEW.value,
+            JobStatus.IGNORED.value,
+            JobStatus.INTERESTING.value,
+        }
+        if (
+            existing
+            and existing.status in protected
+            and incoming in wipe_statuses
+        ):
+            data["status"] = existing.status
+            job.status = existing.status
         cols = list(data.keys())
         placeholders = ", ".join("?" for _ in cols)
         col_names = ", ".join(cols)
@@ -287,7 +307,11 @@ class Database:
             clauses.append("match_score >= ?")
             params.append(min_match)
         if max_distance is not None:
-            clauses.append("(distance_km IS NULL OR distance_km <= ? OR remote_type = 'remote')")
+            # Remote always passes; hybrid/onsite need a known distance within radius.
+            # NULL distance must not slip through (was: IS NULL OR …).
+            clauses.append(
+                "(remote_type = 'remote' OR (distance_km IS NOT NULL AND distance_km <= ?))"
+            )
             params.append(max_distance)
         if statuses:
             clauses.append(f"status IN ({','.join('?' for _ in statuses)})")
@@ -330,11 +354,23 @@ class Database:
             )
 
     def has_applied(self, job: Job) -> bool:
-        """Hard safety: never apply twice (id, normalized URL, or company+title)."""
+        """Hard safety: never apply twice (id, normalized URL, or company+title).
+
+        Twin URL / company+title matching scans prior attempt statuses, not only
+        APPLIED — FAILED/NEEDS_REVIEW/CAPTCHA/APPLYING must also block re-apply.
+        """
+        prior_statuses = (
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        )
         url_keys = {_url_identity(u) for u in (job.url, job.application_url) if u}
         url_keys.discard("")
         company_key = _company_key(job.company)
         title_key = _title_key(job.title)
+        placeholders = ",".join("?" for _ in prior_statuses)
         with self.connection() as conn:
             row = conn.execute(
                 "SELECT id FROM jobs WHERE id = ? AND status = ?",
@@ -356,11 +392,11 @@ class Database:
             if row:
                 return True
             rows = conn.execute(
-                """
+                f"""
                 SELECT id, url, application_url, company, title FROM jobs
-                WHERE status = ?
+                WHERE status IN ({placeholders})
                 """,
-                (JobStatus.APPLIED.value,),
+                prior_statuses,
             ).fetchall()
             for r in rows:
                 for candidate in (r["url"], r["application_url"]):

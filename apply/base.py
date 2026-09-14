@@ -94,10 +94,13 @@ class BaseApplier(ABC):
         for selector in (
             "iframe[src*='captcha']",
             "iframe[src*='recaptcha']",
+            "iframe[src*='hcaptcha']",
             "iframe[src*='challenges.cloudflare']",
             "iframe[src*='turnstile']",
             "#captcha",
             ".g-recaptcha",
+            ".h-captcha",
+            "[data-hcaptcha-widget-id]",
             ".cf-turnstile",
             "[name='cf-turnstile-response']",
             "[data-sitekey]",
@@ -281,10 +284,15 @@ class BaseApplier(ABC):
 
     def _safe_click(self, selector: str, timeout: int | None = None) -> bool:
         el = self._wait_and_query(selector, timeout=timeout or 3000)
-        if el and el.is_visible():
-            el.click()
-            return True
-        return False
+        if not el or not el.is_visible():
+            return False
+        try:
+            if hasattr(el, "is_enabled") and not el.is_enabled():
+                return False
+        except Exception:
+            return False
+        el.click()
+        return True
 
     def _fill_cover_letter(
         self,
@@ -428,6 +436,17 @@ class BaseApplier(ABC):
                 manual_required=True,
                 needs_review=True,
                 error_message="Submit button not found",
+            )
+        try:
+            enabled = True if not hasattr(btn, "is_enabled") else bool(btn.is_enabled())
+        except Exception:
+            enabled = False
+        if not enabled:
+            return ApplyResult(
+                success=False,
+                manual_required=True,
+                needs_review=True,
+                error_message="Submit button disabled",
             )
         btn.click()
         self._random_pause(2, 4)

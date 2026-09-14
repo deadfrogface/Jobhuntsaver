@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
@@ -21,6 +22,8 @@ from core.models import JobStatus, OperatingMode
 from core.source_health import SourceHealthStatus
 from search.base import SearchQuery
 from search.registry import build_sources
+
+logger = logging.getLogger("jobhuntsaver")
 
 # Hard ceiling per job board so one hung source cannot freeze the whole run.
 SOURCE_SEARCH_TIMEOUT_S = 120
@@ -213,7 +216,7 @@ def run_pipeline(
         jobs, err, detail = _search_source_with_timeout(
             source, queries, should_stop=stopped
         )
-        if err:
+        if err and not jobs:
             run.error(f"{source.source_id}: {err}")
             source_errors.append(f"{source.source_id}: {err}")
             status = SourceHealthStatus.from_outcome(
@@ -235,6 +238,33 @@ def run_pipeline(
             progress(
                 f"{source.source_id}: {status.value} — andere Quellen laufen weiter."
             )
+            continue
+        if err and jobs:
+            run.error(f"{source.source_id}: {err}")
+            source_errors.append(f"{source.source_id}: {err}")
+            status = SourceHealthStatus.from_outcome(
+                jobs_found=len(jobs),
+                error=err,
+                detail_stage=getattr(detail, "stage", None) if detail else None,
+                source_id=source.source_id,
+                placeholder=placeholder,
+            )
+            msg = detail.short_message() if detail else err
+            if detail:
+                run.error(detail.detail())
+            db.set_source_status(source.source_id, status.value, msg, len(jobs))
+            source_results[source.source_id] = {
+                "status": status.value,
+                "jobs": len(jobs),
+                "error": msg,
+            }
+            progress(
+                f"{source.source_id}: degraded — {len(jobs)} Jobs behalten, "
+                "andere Quellen laufen weiter."
+            )
+            for job in jobs:
+                job.run_id = run_id
+            all_jobs.extend(jobs)
             continue
         status = SourceHealthStatus.from_outcome(
             jobs_found=len(jobs),
@@ -294,7 +324,13 @@ def run_pipeline(
             if job.source_job_id
             else None
         )
-        if existing and existing.status == JobStatus.APPLIED.value:
+        if existing and existing.status in {
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        }:
             known += 1
             continue
         already = db.has_applied(job)
@@ -466,15 +502,57 @@ def main(argv: list[str] | None = None) -> int:
         help="Run a single headless pipeline pass and exit (scheduler entrypoint).",
     )
     args = parser.parse_args(argv)
-    # Prefer AppData config when scheduled/packaged so GUI and task share profile.
-    try:
-        from desktop.services import ConfigService
 
-        config = ConfigService().load()
-    except Exception:
-        config = load_config()
-    run_pipeline(config, mode=args.mode)
-    return 0
+    # Explicit --config-dir wins (tests / portable installs).
+    if args.config_dir is not None:
+        root = Path(args.config_dir)
+        config = load_config(
+            profile_path=root / "config" / "profile.yaml",
+            application_path=root / "config" / "application_profile.yaml",
+            settings_path=root / "config" / "settings.yaml",
+            root=root,
+        )
+    else:
+        # Prefer AppData config when scheduled/packaged so GUI and task share profile.
+        try:
+            from desktop.services import ConfigService
+
+            config = ConfigService().load()
+        except Exception as exc:
+            if args.once:
+                logger.exception("AppData-Konfiguration fehlgeschlagen — Abbruch (--once)")
+                raise SystemExit(
+                    f"Config load failed (AppData): {exc}"
+                ) from exc
+            logger.exception(
+                "AppData-Konfiguration fehlgeschlagen — Fallback auf Paket-Root-Config"
+            )
+            config = load_config()
+
+    # Match frozen desktop --once: single-instance lock so scheduler cannot overlap GUI.
+    shared = None
+    if args.once and args.config_dir is None:
+        try:
+            from PySide6.QtCore import QCoreApplication
+            from desktop.app import acquire_single_instance_lock
+
+            _qt = QCoreApplication.instance() or QCoreApplication([])
+            shared = acquire_single_instance_lock()
+            if shared is None:
+                logger.info("--once skipped: another Jobhuntsaver instance holds the lock")
+                return 0
+        except Exception:
+            logger.exception("Single-instance lock unavailable; continuing --once without it")
+
+    try:
+        run_pipeline(config, mode=args.mode)
+        return 0
+    finally:
+        if shared is not None:
+            try:
+                shared.detach()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

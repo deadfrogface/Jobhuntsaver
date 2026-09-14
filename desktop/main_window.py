@@ -283,13 +283,25 @@ class MainWindow(QMainWindow):
                     f"unknown={stats.get('ats_unknown', 0)} "
                     f"unsupported={stats.get('ats_detected_unsupported', 0)}"
                 )
-            QMessageBox.information(
-                self,
-                tr("msg.run_done"),
-                f"{tr('msg.new')}: {stats.get('new', 0)} | {tr('msg.matches')}: {stats.get('matches', 0)} | "
-                f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}"
-                f"{extra}",
-            )
+            if stats.get("cancelled"):
+                self.progress_label.setText(tr("status.cancelled"))
+                self.dashboard.set_status(tr("status.cancelled"))
+                QMessageBox.information(
+                    self,
+                    tr("msg.run_cancelled"),
+                    f"{tr('msg.run_cancelled_body')}\n"
+                    f"{tr('msg.new')}: {stats.get('new', 0)} | {tr('msg.matches')}: {stats.get('matches', 0)} | "
+                    f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}"
+                    f"{extra}",
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    tr("msg.run_done"),
+                    f"{tr('msg.new')}: {stats.get('new', 0)} | {tr('msg.matches')}: {stats.get('matches', 0)} | "
+                    f"{tr('msg.applied')}: {stats.get('applied', 0)} | {tr('msg.review')}: {stats.get('needs_review', 0)}"
+                    f"{extra}",
+                )
 
         def on_failed(err: str) -> None:
             if self._shutting_down:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -44,6 +45,94 @@ def iter_job_postings(payload: Any) -> list[dict]:
     return out
 
 
+
+def _is_gender_only_title(title: str) -> bool:
+    cleaned = (title or "").strip()
+    if not cleaned:
+        return True
+    stripped = re.sub(
+        r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)|"
+        r"\b(?:m/w/d|w/m/d|f/m/d|d/m/w)\b",
+        " ",
+        cleaned,
+        flags=re.I,
+    )
+    stripped = re.sub(r"[\s|/\\-–—]+", " ", stripped).strip()
+    return len(stripped) < 2
+
+
+def _infer_remote(*parts: str) -> str:
+    blob = " ".join(p or "" for p in parts).lower()
+    blob_norm = (
+        blob.replace("home-office", "homeoffice")
+        .replace("home office", "homeoffice")
+    )
+    # Explicit onsite / no-remote phrasing wins over loose keyword hits.
+    if re.search(
+        r"\b(?:kein|keine|ohne|nicht|no)\s+(?:homeoffice|remote|telearbeit)\b"
+        r"|\bpräsenzpflicht\b|\bnur\s+vor\s+ort\b",
+        blob_norm,
+    ):
+        return RemoteType.ONSITE.value
+    # Remote-desktop / remote-access tooling is not a remote job.
+    if re.search(r"\bremote[\s\-_]?(?:desktop|access|support|verwaltung)\b", blob_norm):
+        if "homeoffice" not in blob_norm and "telearbeit" not in blob_norm and "hybrid" not in blob_norm:
+            return RemoteType.ONSITE.value
+    if "hybrid" in blob_norm:
+        return RemoteType.HYBRID.value
+    if any(
+        k in blob_norm
+        for k in ("remote", "homeoffice", "telearbeit", "telecommute", "mobil arbeiten")
+    ):
+        return RemoteType.REMOTE.value
+    city = (parts[-1] if parts else "") or ""
+    if city.strip().lower() in {"remote", "homeoffice", "home office", "telecommute"}:
+        return RemoteType.REMOTE.value
+    return RemoteType.ONSITE.value
+
+
+def _salary_from_base_salary(item: dict) -> tuple[float | None, float | None, str]:
+    """Map schema.org baseSalary → (min, max, text)."""
+    bs = item.get("baseSalary")
+    if not isinstance(bs, dict):
+        return None, None, ""
+    currency = str(bs.get("currency") or "").strip()
+    val = bs.get("value")
+    unit = ""
+    smin = smax = None
+    if isinstance(val, dict):
+        unit = str(val.get("unitText") or "").strip()
+        for key, target in (("minValue", "min"), ("maxValue", "max"), ("value", "single")):
+            raw = val.get(key)
+            if raw is None:
+                continue
+            try:
+                num = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if target == "min":
+                smin = num
+            elif target == "max":
+                smax = num
+            elif smin is None and smax is None:
+                smin = num
+    elif isinstance(val, (int, float)):
+        smin = float(val)
+        unit = str(bs.get("unitText") or "").strip()
+    bits: list[str] = []
+    if smin is not None and smax is not None and smin != smax:
+        bits.append(f"{smin:g} – {smax:g}")
+    elif smin is not None:
+        bits.append(f"{smin:g}")
+    elif smax is not None:
+        bits.append(f"{smax:g}")
+    if currency:
+        bits.append(currency)
+    if unit:
+        bits.append(unit)
+    return smin, smax, " ".join(bits).strip()
+
+
 def job_from_list_card(
     *,
     source: str,
@@ -58,6 +147,8 @@ def job_from_list_card(
     url = (url or "").strip()
     if len(title) < min_title_len or not url:
         return None
+    if _is_gender_only_title(title):
+        return None
     company = (company or "").strip()
     city = (city or "").strip()
     return Job(
@@ -69,7 +160,7 @@ def job_from_list_card(
         description="",
         city=city,
         address=city,
-        remote_type=RemoteType.ONSITE.value,
+        remote_type=_infer_remote(title, company, city),
         published_at="",
         url=url,
         application_url=url,
@@ -106,10 +197,11 @@ def job_from_job_posting(
     text = (
         BeautifulSoup(description, "lxml").get_text("\n", strip=True) if description else ""
     )
-    remote = RemoteType.ONSITE.value
-    blob = f"{title} {text}".lower()
-    if "remote" in blob or "homeoffice" in blob:
-        remote = RemoteType.HYBRID.value if "hybrid" in blob else RemoteType.REMOTE.value
+    location_type = str(item.get("jobLocationType") or "").upper()
+    remote = _infer_remote(title, text, city, location_type)
+    if "TELECOMMUTE" in location_type:
+        remote = RemoteType.REMOTE.value
+    smin, smax, salary_text = _salary_from_base_salary(item)
     return Job(
         id=make_job_id(source, url, url, title, company),
         source=source,
@@ -120,6 +212,9 @@ def job_from_job_posting(
         city=city,
         address=city,
         remote_type=remote,
+        salary_min=smin,
+        salary_max=smax,
+        salary_text=salary_text,
         published_at=str(item.get("datePosted") or ""),
         url=url,
         application_url=url,

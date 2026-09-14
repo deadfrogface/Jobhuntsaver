@@ -341,8 +341,10 @@ def test_ascii_hyphen_salary_range_is_ambiguous_not_negative():
     from core.salary import normalize_to_annual_gross_eur
 
     annual, reason = normalize_to_annual_gross_eur(text="40.000 - 50.000 € p.a.")
-    assert annual is None
-    assert "ambiguous" in reason
+    # High end is a ceiling (not a misread negative from "- 50.000").
+    assert annual == 50000
+    assert "ceiling" in reason
+    assert "negative" not in reason
     annual2, reason2 = normalize_to_annual_gross_eur(text="-5000 EUR jährlich")
     assert annual2 is None
     assert "negative" in reason2
@@ -388,7 +390,7 @@ def test_eg10_and_from_salary_are_unknown_not_hourly():
     assert annual is None
     assert "pay-scale" in reason or "collective" in reason
     annual2, reason2 = normalize_to_annual_gross_eur(text="ab 14,50 €")
-    assert annual2 is None
+    assert annual2 == (14.5 * 2080)
     assert "floor" in reason2 or "from" in reason2
 
 
@@ -451,3 +453,496 @@ def test_unknown_required_includes_nameless_and_aria_required():
     assert "unnamed_required" in src
     assert "aria-required" in src
 
+
+def test_salary_ceiling_and_floor_matcher_behavior():
+    from core.config import empty_app_config
+    from core.matcher import score_job
+    from core.models import Job
+
+    cfg = empty_app_config()
+    cfg.profile.employment.minimum_salary = 55000
+    below = score_job(
+        Job(
+            id="1",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_max=48000,
+        ),
+        cfg,
+    )
+    assert below.excluded is True
+
+    floor_low = score_job(
+        Job(
+            id="2",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_text="ab 40.000 €",
+        ),
+        cfg,
+    )
+    assert floor_low.excluded is True
+
+    floor_ok = score_job(
+        Job(
+            id="3",
+            title="Developer",
+            company="Acme",
+            remote_type="remote",
+            description="Python Entwickler Vollzeit",
+            salary_text="ab 60.000 €",
+        ),
+        cfg,
+    )
+    assert floor_ok.excluded is False
+    assert any("floor" in (i or "").lower() or "from" in (i or "").lower() for i in floor_ok.rejection_reasons)
+
+
+def test_has_applied_blocks_failed_url_twin(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "t.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="old",
+            title="Software Engineer",
+            company="Acme GmbH",
+            url="https://boards.greenhouse.io/acme/jobs/99",
+            application_url="https://boards.greenhouse.io/acme/jobs/99",
+            status=JobStatus.FAILED.value,
+        )
+    )
+    twin = Job(
+        id="new",
+        title="Software Engineer",
+        company="Acme GmbH",
+        url="https://boards.greenhouse.io/acme/jobs/99?gh_src=x",
+        application_url="https://boards.greenhouse.io/acme/jobs/99",
+    )
+    assert db.has_applied(twin) is True
+
+
+def test_list_jobs_excludes_unknown_distance_hybrid(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job
+
+    db = Database(tmp_path / "t.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="h",
+            title="H",
+            company="C",
+            remote_type="hybrid",
+            distance_km=None,
+            city="München",
+        )
+    )
+    db.upsert_job(
+        Job(
+            id="n",
+            title="N",
+            company="C",
+            remote_type="onsite",
+            distance_km=8,
+            city="Berlin",
+        )
+    )
+    db.upsert_job(
+        Job(id="r", title="R", company="C", remote_type="remote", distance_km=None)
+    )
+    rows = db.list_jobs(max_distance=15)
+    ids = {j.id for j in rows}
+    assert "h" not in ids
+    assert "n" in ids
+    assert "r" in ids
+
+
+def test_workday_submit_selectors_include_german_absenden():
+    import inspect
+    from apply import workday
+
+    src = inspect.getsource(workday)
+    assert "Absenden" in src
+    assert "Weiter" in src
+    assert workday._SUBMIT_SEL
+    assert workday._NEXT_SEL
+    assert "Absenden" in workday._SUBMIT_SEL
+    assert "Weiter" in workday._NEXT_SEL
+    assert "pageFooterNextButton'], button:has-text('Next')" not in src.replace(" ", "")
+
+
+def test_partial_source_results_keep_jobs_and_error():
+    from core.models import Job
+    from search.base import JobSource, PartialResultsError, SearchQuery
+
+    class Fake(JobSource):
+        source_id = "fake"
+
+        def search(self, queries):
+            raise PartialResultsError(
+                [Job(id="1", title="T", company="C", url="https://x")],
+                "dynlib fail",
+            )
+
+    jobs, err, detail = Fake().safe_search([SearchQuery(keyword="x")])
+    assert len(jobs) == 1
+    assert err and "degraded" in err
+    assert detail is not None
+
+
+def test_stepstone_one_query_failure_does_not_abort_others(monkeypatch):
+    from core.models import Job
+    from search.base import SearchQuery
+    from search.stepstone import StepstoneSource
+
+    src = StepstoneSource()
+
+    def _one(query):
+        if query.keyword == "bad":
+            raise ConnectionError("boom")
+        return [Job(id="ok", title="Ok", company="C", url="https://ok")]
+
+    monkeypatch.setattr(src, "_search_one", _one)
+    jobs, err, detail = src.safe_search(
+        [SearchQuery(keyword="bad"), SearchQuery(keyword="good")]
+    )
+    assert len(jobs) == 1
+    assert err and "degraded" in err
+
+
+def test_once_refuses_silent_config_fallback(monkeypatch):
+    from app.main import main
+
+    class BoomSvc:
+        def load(self):
+            raise RuntimeError("appdata down")
+
+    monkeypatch.setattr("desktop.services.ConfigService", BoomSvc)
+    raised = False
+    try:
+        main(["--once"])
+    except SystemExit as exc:
+        raised = True
+        assert "Config load failed" in str(exc)
+        assert "appdata" in str(exc).lower()
+    assert raised, "expected SystemExit"
+
+
+def test_upsert_preserves_failed_status_for_has_applied(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="indeed_failed",
+            source="indeed",
+            title="Dev",
+            company="Acme",
+            url="https://indeed.com/viewjob?jk=abc",
+            status=JobStatus.FAILED.value,
+        )
+    )
+    db.upsert_job(
+        Job(
+            id="indeed_failed",
+            source="indeed",
+            title="Dev",
+            company="Acme",
+            url="https://indeed.com/viewjob?jk=abc",
+            status=JobStatus.NEW.value,
+        )
+    )
+    assert db.get_job("indeed_failed").status == JobStatus.FAILED.value
+    twin = Job(
+        id="ss_twin",
+        source="stepstone",
+        title="Dev",
+        company="Acme",
+        url="https://stepstone.de/other",
+    )
+    assert db.has_applied(twin) is True
+
+
+def test_list_card_infers_remote_and_rejects_gender_only_title():
+    from search.jsonld import job_from_list_card
+
+    remote = job_from_list_card(
+        source="stepstone",
+        title="Remote Developer",
+        url="https://x/1",
+        company="C",
+        city="Remote",
+    )
+    assert remote is not None
+    assert remote.remote_type == "remote"
+    assert (
+        job_from_list_card(
+            source="stepstone",
+            title="m/w/d",
+            url="https://x/2",
+            company="Acme",
+            city="Berlin",
+        )
+        is None
+    )
+
+
+def test_jsonld_maps_base_salary():
+    from search.jsonld import job_from_job_posting
+
+    job = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Sachbearbeiter",
+            "description": "Büro",
+            "url": "https://stepstone.de/j",
+            "hiringOrganization": {"name": "C"},
+            "jobLocation": {"address": {"addressLocality": "Berlin"}},
+            "baseSalary": {
+                "currency": "EUR",
+                "value": {"minValue": 25000, "maxValue": 30000, "unitText": "YEAR"},
+            },
+        },
+        source="stepstone",
+    )
+    assert job is not None
+    assert job.salary_min == 25000
+    assert job.salary_max == 30000
+    assert "25000" in (job.salary_text or "")
+
+
+def test_hcaptcha_detected():
+    from apply.base import BaseApplier
+
+    class _Page:
+        def __init__(self, sel: str):
+            self.sel = sel
+
+        def query_selector(self, selector: str):
+            return object() if self.sel in selector else None
+
+    class _A(BaseApplier):
+        def _do_apply(self, *a, **k):
+            return None
+
+    assert _A(_Page("hcaptcha"), dry_run=True)._detect_captcha() is True
+    assert _A(_Page(".h-captcha"), dry_run=True)._detect_captcha() is True
+
+
+def test_cover_letter_unknown_placeholder_does_not_raise(tmp_path: Path):
+    from core.config import empty_app_config
+    from core.cover_letter import render_cover_letter
+    from core.models import Job
+
+    cfg = empty_app_config()
+    tpl = tmp_path / "cover.txt"
+    tpl.write_text("{job_title} {bonus_line} {company}", encoding="utf-8")
+    cfg.settings.cover_letter_template = str(tpl)
+    cfg.root = tmp_path
+    text = render_cover_letter(Job(id="1", source="t", title="Dev", company="Acme"), cfg)
+    assert "Dev" in text and "Acme" in text
+    assert "{bonus_line}" in text
+
+
+def test_cancelled_stats_change_run_done_copy():
+    from pathlib import Path as P
+
+    src = P("desktop/main_window.py").read_text(encoding="utf-8")
+    assert 'stats.get("cancelled")' in src
+    assert "msg.run_cancelled" in src
+
+
+def test_config_dir_flag_is_honored(tmp_path: Path, monkeypatch):
+    from app.main import main
+    from core.config import empty_app_config, save_config
+
+    cfg = empty_app_config(root=tmp_path)
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    save_config(cfg)
+    called = {}
+
+    def fake_run(config, mode=None, **kwargs):
+        called["root"] = str(config.root)
+        return {"cancelled": False, "new": 0}
+
+    monkeypatch.setattr("app.main.run_pipeline", fake_run)
+    assert main(["--config-dir", str(tmp_path)]) == 0
+    assert called["root"] == str(tmp_path)
+
+
+def test_upsert_allows_applying_to_outcome_but_blocks_new_wipe(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.APPLYING.value)
+    )
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.APPLIED.value)
+    )
+    assert db.get_job("j1").status == JobStatus.APPLIED.value
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.NEW.value)
+    )
+    assert db.get_job("j1").status == JobStatus.APPLIED.value
+
+
+def test_ba_remote_negation_and_hyphen_forms():
+    from search.bundesagentur import _detect_remote
+
+    assert _detect_remote({}, "kein Homeoffice, Präsenzpflicht") == "onsite"
+    assert _detect_remote({"homeofficemoeglich": "false"}, "Büro") == "onsite"
+    assert _detect_remote({}, "Home-Office möglich") == "remote"
+    assert _detect_remote({}, "Home Office möglich") == "remote"
+    assert _detect_remote({}, "Telearbeit möglich") == "remote"
+    assert _detect_remote({}, "Remote-Desktop Installation vor Ort") == "onsite"
+
+
+def test_hard_exclude_unknown_distance_onsite():
+    from core.config import empty_app_config
+    from core.hard_filter import hard_exclude
+    from core.models import Job
+
+    cfg = empty_app_config()
+    cfg.profile.location.max_distance_km = 30
+    cfg.profile.location.allow_remote_germany = True
+    reason = hard_exclude(
+        Job(id="m", source="t", title="T", company="C", city="München", remote_type="onsite", distance_km=None),
+        cfg,
+    )
+    assert reason and "distance" in reason.lower()
+    assert (
+        hard_exclude(
+            Job(id="r", source="t", title="T", company="C", remote_type="remote", distance_km=None),
+            cfg,
+        )
+        is None
+    )
+
+
+def test_safe_click_skips_disabled_and_maybe_submit_reports():
+    from apply.base import ApplyResult, BaseApplier
+
+    class El:
+        def __init__(self, enabled=True):
+            self._enabled = enabled
+            self.clicked = False
+
+        def is_visible(self):
+            return True
+
+        def is_enabled(self):
+            return self._enabled
+
+        def click(self):
+            self.clicked = True
+
+    class Page:
+        def __init__(self, el):
+            self.el = el
+
+        def query_selector(self, sel):
+            return self.el
+
+        def wait_for_selector(self, *a, **k):
+            return True
+
+    class A(BaseApplier):
+        def _do_apply(self, *a, **k):
+            return None
+
+        def _wait_and_query(self, selector, timeout=None):
+            return self.page.query_selector(selector)
+
+    disabled = El(False)
+    a = A(Page(disabled), dry_run=False, submit=True)
+    assert a._safe_click("#go") is False
+    assert disabled.clicked is False
+    result = a._maybe_submit("#submit")
+    assert isinstance(result, ApplyResult)
+    assert result.needs_review is True
+    assert "disabled" in (result.error_message or "").lower()
+
+
+def test_failed_status_not_wiped_to_ignored(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(id="a", source="indeed", title="Dev", company="Acme",
+            url="https://indeed.com/viewjob?jk=1", status=JobStatus.FAILED.value)
+    )
+    db.upsert_job(
+        Job(id="a", source="indeed", title="Dev", company="Acme",
+            url="https://indeed.com/viewjob?jk=1", status=JobStatus.IGNORED.value)
+    )
+    assert db.get_job("a").status == JobStatus.FAILED.value
+    twin = Job(id="b", source="ss", title="Dev", company="Acme", url="https://ss.de/other")
+    assert db.has_applied(twin) is True
+
+
+def test_jsonld_telecommute_and_negated_homeoffice():
+    from search.jsonld import job_from_job_posting
+
+    remote = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Developer",
+            "description": "Software",
+            "url": "https://x/1",
+            "hiringOrganization": {"name": "C"},
+            "jobLocationType": "TELECOMMUTE",
+        },
+        source="stepstone",
+    )
+    assert remote is not None and remote.remote_type == "remote"
+    onsite = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Büro",
+            "description": "Kein Homeoffice möglich. Präsenzpflicht.",
+            "url": "https://x/2",
+            "hiringOrganization": {"name": "C"},
+        },
+        source="xing",
+    )
+    assert onsite is not None and onsite.remote_type == "onsite"
+
+
+def test_cleared_home_address_drops_stale_coords(tmp_path: Path):
+    from core.config import empty_app_config
+    from core.database import Database
+    from core.location import LocationService
+
+    cfg = empty_app_config()
+    cfg.profile.location.home_address = ""
+    cfg.profile.location.home_latitude = 52.52
+    cfg.profile.location.home_longitude = 13.4
+    cfg.profile.location.home_geocoded_address = "Berlin"
+    db = Database(tmp_path / "jobs.db", recover=False)
+    svc = LocationService(db, cfg)
+    res = svc.resolve_home()
+    assert res.resolved is False
+    assert cfg.profile.location.home_latitude is None
+    assert cfg.profile.location.home_longitude is None
+
+
+def test_language_aliases_fr_es_and_soft_fluency():
+    from core.matcher import LanguageEntry, _profile_lang_level, _required_language_levels
+
+    reqs = _required_language_levels("Englisch fließend")
+    assert any(a == "englisch" and b == "C1" for a, b in reqs)
+    reqs2 = _required_language_levels("verhandlungssichere Deutschkenntnisse")
+    assert any(a.startswith("deutsch") for a, _ in reqs2)
+    langs = [LanguageEntry(language="French", level="C1")]
+    assert _profile_lang_level(langs, "französisch") >= 5
+    langs2 = [LanguageEntry(language="Spanish", level="B2")]
+    assert _profile_lang_level(langs2, "spanisch") >= 4

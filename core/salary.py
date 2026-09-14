@@ -165,23 +165,38 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         low,
     ):
         return None, None, "pay-scale / collective agreement (unknown amount)"
-    # Floor/"from" amounts ("ab 14,50 €") are not exact salaries.
+    # Floor/"from" amounts ("ab 40.000 €", "ab 14,50 €") — parse the floor number
+    # so the matcher can hard-exclude when floor < minimum.
     if re.search(r"(?i)\b(ab|from|starting(?:\s+at)?|mindestens)\b", low):
-        return None, None, "salary floor / 'from' amount (unknown exact)"
+        if not re.search(r"\d", cleaned):
+            return None, None, "salary floor / 'from' amount (unknown exact)"
+        # Ranges with "ab" still ambiguous exact; prefer floor of first number.
+        unit = _detect_unit_in_text(cleaned)
+        value = _pick_salary_number(cleaned)
+        if value is None:
+            return None, unit, "salary floor / 'from' amount (unknown exact)"
+        return value, unit, "salary floor / 'from' amount"
     if not re.search(r"\d", cleaned):
         return None, None, "no numeric salary"
     unit = _detect_unit_in_text(cleaned)
     # Ranges before negative check: "40.000 - 50.000" must not look like -50.000.
-    if re.search(
-        r"([\d.,]+)\s*k?\s*[-–—]\s*([\d.,]+)\s*k?",
+    # Use the high end as a ceiling so bands entirely below minimum hard-exclude,
+    # while straddling bands stay soft (ceiling may still meet the floor).
+    range_m = re.search(
+        r"([\d.,]+)\s*(k)?\s*[-–—]\s*([\d.,]+)\s*(k)?",
         cleaned,
         re.I,
     ) or re.search(
-        r"([\d.,]+)\s*k?\s*(?:bis|to)\s*([\d.,]+)\s*k?",
+        r"([\d.,]+)\s*(k)?\s*(?:bis|to)\s*([\d.,]+)\s*(k)?",
         cleaned,
         re.I,
-    ):
-        return None, unit, "ambiguous salary range"
+    )
+    if range_m:
+        lo = _parse_number(range_m.group(1) + ("k" if range_m.group(2) else ""))
+        hi = _parse_number(range_m.group(3) + ("k" if range_m.group(4) else ""))
+        if lo is None or hi is None:
+            return None, unit, "ambiguous salary range"
+        return max(lo, hi), unit, "salary range ceiling"
     # Leading / standalone minus → do not invent a positive salary.
     if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
         return None, None, "negative salary text"
@@ -260,8 +275,7 @@ def normalize_to_annual_gross_eur(
 
     if text:
         parsed_val, text_unit, status = _extract_from_text(text)
-        # Ambiguous ranges must never hard-reject — even when salary_min is set
-        # (Indeed/BA often populate min from the range low end).
+        # Legacy ambiguous marker (unparseable range) stays unknown.
         if status == "ambiguous salary range":
             return None, status
         if parsed_val is None:
@@ -272,10 +286,13 @@ def normalize_to_annual_gross_eur(
             if parsed_val <= 0:
                 return None, "non-positive salary"
             use_unit = explicit_unit or text_unit
-            if use_unit is None:
-                annual, how = _to_annual(parsed_val, None)
-                return annual, how
             annual, how = _to_annual(parsed_val, use_unit)
+            # Preserve floor/from (and similar) reason for matcher soft/hard rules.
+            status_l = status.lower()
+            if status != "ok" and (
+                "floor" in status_l or "from" in status_l or "ceiling" in status_l
+            ):
+                return annual, f"{status}; {how}"
             return annual, how
 
     if value is None or value == "":
@@ -311,11 +328,41 @@ def meets_minimum(
 
 
 def job_annual_salary(job: Any) -> tuple[int | None, str]:
-    """Resolve a Job's compensation to EUR gross / year using salary_min + salary_text."""
+    """Resolve a Job's compensation to EUR gross / year.
+
+    Uses salary_text when present; salary_max alone is treated as a ceiling;
+    min!=max both set is ambiguous (unknown exact).
+    """
     salary_min = getattr(job, "salary_min", None)
+    salary_max = getattr(job, "salary_max", None)
     salary_text = getattr(job, "salary_text", None) or None
+
+    if salary_text:
+        annual, reason = normalize_to_annual_gross_eur(
+            salary_min if salary_min is not None else None,
+            unit=None,
+            text=salary_text,
+        )
+        return annual, reason
+
+    if (
+        salary_min is not None
+        and salary_max is not None
+        and float(salary_min) != float(salary_max)
+    ):
+        annual, how = normalize_to_annual_gross_eur(salary_max, unit=None, text=None)
+        if annual is None:
+            return None, "ambiguous salary range (min!=max)"
+        return annual, f"salary range ceiling; {how}"
+
+    if salary_min is None and salary_max is not None:
+        annual, how = normalize_to_annual_gross_eur(salary_max, unit=None, text=None)
+        if annual is None:
+            return None, how
+        return annual, f"salary ceiling / max-only; {how}"
+
     return normalize_to_annual_gross_eur(
         salary_min if salary_min is not None else None,
         unit=None,
-        text=salary_text,
+        text=None,
     )
