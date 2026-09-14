@@ -17,7 +17,7 @@ def test_acquire_single_instance_lock_exclusive(qapp=None):
     import desktop.app as app_mod
 
     original = app_mod._INSTANCE_KEY
-    test_key = f"JobhuntsaverTestLock-{uuid.uuid4().hex}"
+    test_key = f"KarrierekrakeTestLock-{uuid.uuid4().hex}"
     app_mod._INSTANCE_KEY = test_key
     try:
         first = acquire_single_instance_lock()

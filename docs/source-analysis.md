@@ -1,4 +1,4 @@
-# Jobhuntsaver — Source Analysis (Phase 0)
+# Karrierekrake — Source Analysis (Phase 0)
 
 > **Historical (2026-09):** Analysis from the desktop conversion kickoff. The shipping UI is PySide6 (`desktop/`); Streamlit was removed. Keep this file for provenance of reused MIT/GPL adapters.
 
@@ -8,9 +8,9 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 |---------|-----|---------|----------|
 | JobRadar | https://github.com/jason-huanghao/jobradar | **GPL-3.0** | Yes (`LICENSE` = GNU GPL v3) |
 | AutoApply | https://github.com/AbhishekMandapmalvi/AutoApply | **MIT** | Yes (`LICENSE` = MIT) |
-| Jobhuntsaver (target) | https://github.com/deadfrogface/Jobhuntsaver | **GPL-3.0** (chosen) | Empty at analysis time |
+| Karrierekrake (target) | https://github.com/deadfrogface/Karrierekrake | **GPL-3.0** (chosen) | Empty at analysis time |
 
-**License decision:** Jobhuntsaver is GPL-3.0 so JobRadar-derived adapters can be reused legally. AutoApply MIT code is compatible with attribution in `NOTICE`.
+**License decision:** Karrierekrake is GPL-3.0 so JobRadar-derived adapters can be reused legally. AutoApply MIT code is compatible with attribution in `NOTICE`.
 
 ---
 
@@ -18,7 +18,7 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 
 | Feature | Source project | File / function | Current status | Reuse? | Modify? | Build new? |
 |---------|----------------|-----------------|----------------|--------|---------|------------|
-| BA Jobsuche REST API | JobRadar | `sources/adapters/arbeitsagentur.py` `ArbeitsagenturSource` | JobRadar used v4 list; **Jobhuntsaver updated to public v6 list + v4 jobdetails (base64 refnr)** | Yes | Yes → Job model + v6 | No |
+| BA Jobsuche REST API | JobRadar | `sources/adapters/arbeitsagentur.py` `ArbeitsagenturSource` | JobRadar used v4 list; **Karrierekrake updated to public v6 list + v4 jobdetails (base64 refnr)** | Yes | Yes → Job model + v6 | No |
 | Indeed / Google / LinkedIn search via JobSpy | JobRadar | `sources/adapters/jobspy_adapter.py` | Library wrapper; DE via `country_indeed=germany` | Yes (optional) | Yes | Thin adapter |
 | StepStone scrape | JobRadar | `sources/adapters/stepstone.py` | HTML/JSON-LD scraper | Yes | Yes | Later harden |
 | XING scrape | JobRadar | `sources/adapters/xing.py` | HTML/JSON-LD scraper | Yes | Yes | Later harden |
@@ -57,7 +57,7 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 
 ## Exact vendor / adapt list
 
-### From JobRadar (GPL-3.0) — adapt into Jobhuntsaver
+### From JobRadar (GPL-3.0) — adapt into Karrierekrake
 
 1. `arbeitsagentur.py` → `search/bundesagentur.py` (map to our `Job`)
 2. Ideas from `jobspy_adapter.py` → `search/indeed.py` / LinkedIn search via JobSpy
@@ -65,7 +65,7 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 4. Pattern from `hard_filter.py` → `core/hard_filter.py`
 5. Pattern from `normalizer.py` → part of `core/deduplicator.py`
 
-### From AutoApply (MIT) — adapt into Jobhuntsaver
+### From AutoApply (MIT) — adapt into Karrierekrake
 
 1. `bot/apply/base.py` → `apply/base.py`
 2. `bot/apply/{greenhouse,lever,ashby,indeed,linkedin,workday}.py` → `apply/`
@@ -80,9 +80,9 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 
 ---
 
-## Implementation mapping (Jobhuntsaver modules)
+## Implementation mapping (Karrierekrake modules)
 
-| Jobhuntsaver module | Primary origin | Notes |
+| Karrierekrake module | Primary origin | Notes |
 |---------------------|----------------|-------|
 | `search/bundesagentur.py` | JobRadar BA adapter | Highest priority DE source |
 | `search/indeed.py` | JobRadar JobSpy | Germany country |
@@ -99,7 +99,7 @@ Analyzed repositories (cloned to `/tmp/refs/` for reference only; not vendored w
 
 ## Verification notes
 
-- JobRadar README claims AI scoring and multi-source crawl; **scoring code confirms LLM dependency** — cannot be core for Jobhuntsaver.
+- JobRadar README claims AI scoring and multi-source crawl; **scoring code confirms LLM dependency** — cannot be core for Karrierekrake.
 - Arbeitsagentur adapter uses documented public Jobsuche REST endpoint — preferred over browser automation.
 - AutoApply Greenhouse/Lever are short, selector-based Playwright fillers suitable for adaptation.
 - AutoApply Workday is larger (~431 lines) — reuse carefully; expect `needs_review` fallbacks.

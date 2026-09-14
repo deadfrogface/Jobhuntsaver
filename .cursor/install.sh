@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Idempotent development-environment bootstrap for Jobhuntsaver (Linux / Cloud Agent).
+# Idempotent development-environment bootstrap for Karrierekrake (Linux / Cloud Agent).
 #
-# Jobhuntsaver ships for Windows (setup.bat), but its Python code runs on Linux
+# Karrierekrake ships for Windows (setup.bat), but its Python code runs on Linux
 # for development, CI-style testing, the CLI search pipeline, and the PySide6 GUI
 # (via the VNC desktop / offscreen Qt). This script installs the OS libraries Qt
 # and Playwright need, creates a virtualenv, installs Python dependencies, and
@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-echo "[install] Jobhuntsaver dev environment bootstrap in ${ROOT}"
+echo "[install] Karrierekrake dev environment bootstrap in ${ROOT}"
 
 # --- System libraries for PySide6 (Qt xcb), Playwright, and headless GUI ---------
 # The Qt "xcb" platform plugin needs the X/XCB client libraries even when running

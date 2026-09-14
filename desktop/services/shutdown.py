@@ -10,7 +10,7 @@ import sys
 import threading
 from typing import Any, Callable
 
-logger = logging.getLogger("jobhuntsaver.shutdown")
+logger = logging.getLogger("karrierekrake.shutdown")
 
 _DEFAULT_THREAD_WAIT_MS = 15000
 _DEFAULT_PROCESS_WAIT_S = 3.0
@@ -98,7 +98,7 @@ class ApplicationShutdownManager:
         # Windowed (noconsole) EXEs often have a closed/invalid stdout — never let
         # shutdown breadcrumbs crash the quit path. Opt-in console only.
         if getattr(sys, "frozen", False) and os.environ.get(
-            "JOBHUNTSAVER_FORCE_CONSOLE", ""
+            "KARRIEREKRAKE_FORCE_CONSOLE", ""
         ).strip().lower() in {"1", "true", "yes"}:
             try:
                 print(f"[shutdown] {message}", flush=True)

@@ -30,7 +30,7 @@ def test_database_path_with_spaces_and_umlauts(tmp_path: Path):
 
 
 def test_config_service_paths_with_spaces_umlauts(tmp_path, monkeypatch):
-    root = tmp_path / "App Data" / "Jobhuntsaver ÄÖÜ"
+    root = tmp_path / "App Data" / "Karrierekrake ÄÖÜ"
     monkeypatch.setenv("LOCALAPPDATA", str(root.parent))
     # Force AppData name under umlaut parent by patching ensure_app_dirs
     from desktop import paths as paths_mod

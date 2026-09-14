@@ -1,4 +1,4 @@
-"""Configuration loading for Jobhuntsaver."""
+"""Configuration loading for Karrierekrake."""
 
 from __future__ import annotations
 

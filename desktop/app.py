@@ -7,13 +7,13 @@ import sys
 from pathlib import Path
 
 # Early frozen diagnostics (before Qt) — opt-in only.
-if getattr(sys, "frozen", False) and os.environ.get("JOBHUNTSAVER_BOOT_DIAG", "").strip() in {
+if getattr(sys, "frozen", False) and os.environ.get("KARRIEREKRAKE_BOOT_DIAG", "").strip() in {
     "1",
     "true",
     "yes",
 }:
     try:
-        _diag = Path(os.environ.get("LOCALAPPDATA") or ".") / "Jobhuntsaver" / "logs"
+        _diag = Path(os.environ.get("LOCALAPPDATA") or ".") / "Karrierekrake" / "logs"
         _diag.mkdir(parents=True, exist_ok=True)
         (_diag / "boot.log").write_text(
             f"boot frozen exe={sys.executable} argv={sys.argv}\n",
@@ -136,7 +136,7 @@ def run() -> int:
 
     def _excepthook(exc_type, exc, tb) -> None:  # noqa: ANN001
         try:
-            logging.getLogger("jobhuntsaver").error(
+            logging.getLogger("karrierekrake").error(
                 "Uncaught exception:\n%s",
                 "".join(traceback.format_exception(exc_type, exc, tb)),
             )
@@ -184,8 +184,8 @@ def run() -> int:
         window.activateWindow()
 
     server.newConnection.connect(_on_connection)
-    app._jobhuntsaver_shared = shared  # type: ignore[attr-defined]
-    app._jobhuntsaver_server = server  # type: ignore[attr-defined]
+    app._karrierekrake_shared = shared  # type: ignore[attr-defined]
+    app._karrierekrake_server = server  # type: ignore[attr-defined]
 
     window.show()
     window.maybe_run_wizard()
@@ -193,7 +193,7 @@ def run() -> int:
 
 
 def main() -> int:
-    if os.environ.get("JOBHUNTSAVER_SMOKE_TEST", "").strip().lower() in {"1", "true", "yes"}:
+    if os.environ.get("KARRIEREKRAKE_SMOKE_TEST", "").strip().lower() in {"1", "true", "yes"}:
         return _smoke_test()
     if "--smoke-test" in sys.argv:
         return _smoke_test()
@@ -282,7 +282,7 @@ def _smoke_test() -> int:
     LOCALAPPDATA was left at the process default (CI must always override it).
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    token = (os.environ.get("JOBHUNTSAVER_SMOKE_TOKEN") or "").strip()
+    token = (os.environ.get("KARRIEREKRAKE_SMOKE_TOKEN") or "").strip()
     lines: list[str] = ["SMOKE_START"]
     if token:
         lines.append(f"token={token}")

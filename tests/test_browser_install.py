@@ -10,7 +10,7 @@ from desktop.services import browser_install as bi
 
 
 def test_playwright_driver_command_not_sys_executable(monkeypatch):
-    fake_exe = Path("C:/fake/Jobhuntsaver.exe")
+    fake_exe = Path("C:/fake/Karrierekrake.exe")
     monkeypatch.setattr(sys, "executable", str(fake_exe))
     monkeypatch.setattr(bi, "is_frozen", lambda: True)
 
@@ -23,7 +23,7 @@ def test_playwright_driver_command_not_sys_executable(monkeypatch):
 
 
 def test_repair_refuses_if_driver_is_exe(monkeypatch, tmp_path):
-    fake_exe = tmp_path / "Jobhuntsaver.exe"
+    fake_exe = tmp_path / "Karrierekrake.exe"
     fake_exe.write_bytes(b"MZ")
     monkeypatch.setattr(sys, "executable", str(fake_exe))
     monkeypatch.setattr(bi, "is_frozen", lambda: True)
@@ -38,7 +38,7 @@ def test_repair_refuses_if_driver_is_exe(monkeypatch, tmp_path):
 
     ok, msg = bi.repair_browser()
     assert ok is False
-    assert "Jobhuntsaver.exe" in msg
+    assert "Karrierekrake.exe" in msg
 
 
 def test_check_browser_finds_fake_chrome(monkeypatch, tmp_path):
@@ -58,7 +58,7 @@ def test_repair_browser_never_uses_frozen_sys_executable(monkeypatch, tmp_path):
 
     monkeypatch.setattr(bi, "is_frozen", lambda: True)
     monkeypatch.setattr(bi, "preferred_browsers_dir", lambda: tmp_path)
-    monkeypatch.setattr(bi.sys, "executable", str(tmp_path / "Jobhuntsaver.exe"))
+    monkeypatch.setattr(bi.sys, "executable", str(tmp_path / "Karrierekrake.exe"))
 
     calls = []
 
@@ -79,5 +79,5 @@ def test_repair_browser_never_uses_frozen_sys_executable(monkeypatch, tmp_path):
     monkeypatch.setattr(bi, "find_chromium_executable", lambda *a, **k: tmp_path / "chrome.exe")
     ok, msg = bi.repair_browser()
     assert calls, msg
-    assert calls[0][0] != str(tmp_path / "Jobhuntsaver.exe")
+    assert calls[0][0] != str(tmp_path / "Karrierekrake.exe")
     assert "-m" not in calls[0]

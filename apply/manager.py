@@ -24,7 +24,7 @@ from core.cover_letter import render_cover_letter, save_cover_letter
 from core.database import Database
 from core.models import ApplicationRecord, Job, JobStatus, OperatingMode, utc_now_iso
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 APPLIERS: dict[str, type[BaseApplier]] = {
     "greenhouse": GreenhouseApplier,

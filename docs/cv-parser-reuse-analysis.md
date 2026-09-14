@@ -2,7 +2,7 @@
 
 ## Goal
 
-Decide whether Jobhuntsaver should vendor or depend on an external CV/resume parser, or keep the lightweight local heuristic parser (`core/cv_parser.py`).
+Decide whether Karrierekrake should vendor or depend on an external CV/resume parser, or keep the lightweight local heuristic parser (`core/cv_parser.py`).
 
 ## Candidates
 
@@ -11,7 +11,7 @@ Decide whether Jobhuntsaver should vendor or depend on an external CV/resume par
 | **pyresume / leverparser-style** (MIT community parsers) | MIT | Regex / HTML form helpers | Ideas only — small patterns OK |
 | **pyresparser** | GPL / heavy deps (spaCy, NLTK) | NLP models | Poor fit — large download, GPL coupling, English-centric |
 | **open-resume** | AGPL / product UI | Next.js web app | Do **not** vendor — wrong runtime, license friction |
-| **Jobhuntsaver `core/cv_parser.py`** | GPL-3.0 (this repo) | pdfplumber/docx + DE heuristics | Current choice |
+| **Karrierekrake `core/cv_parser.py`** | GPL-3.0 (this repo) | pdfplumber/docx + DE heuristics | Current choice |
 
 ## Findings
 

@@ -1,4 +1,4 @@
-# Desktop Conversion Plan – Jobhuntsaver
+# Desktop Conversion Plan – Karrierekrake
 
 ## Phase 2 decision
 
@@ -20,9 +20,9 @@
 ## Target architecture
 
 ```
-Jobhuntsaver.exe
+Karrierekrake.exe
   └── desktop/ (PySide6)
-        ├── ConfigService  → YAML in %LOCALAPPDATA%\Jobhuntsaver\config
+        ├── ConfigService  → YAML in %LOCALAPPDATA%\Karrierekrake\config
         ├── Workers        → QThread calling run_pipeline
         ├── Pages          → Dashboard, Jobs, Applications, Profile, Settings, Logs
         ├── Wizard         → first run
@@ -32,7 +32,7 @@ Jobhuntsaver.exe
 
 ## App data location
 
-`%LOCALAPPDATA%\Jobhuntsaver\`
+`%LOCALAPPDATA%\Karrierekrake\`
 
 - `config/` – profile, application_profile, settings YAML
 - `data/jobs.db`
@@ -58,7 +58,7 @@ Jobhuntsaver.exe
 
 | Criterion | Implementation |
 | --------- | -------------- |
-| Double-click EXE | PyInstaller **onefile** `dist/Jobhuntsaver.exe` (CI artifact `Jobhuntsaver-Windows`) |
+| Double-click EXE | PyInstaller **onefile** `dist/Karrierekrake.exe` (CI artifact `Karrierekrake-Windows`) |
 | First-run setup | Wizard; defaults: Search Only, Dry Run ON, Auto OFF |
 | GUI settings | ConfigService read/write YAML |
 | Search button | Worker → `run_pipeline(..., mode=search_only)` |

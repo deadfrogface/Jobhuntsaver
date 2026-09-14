@@ -18,7 +18,7 @@ def config_service(tmp_path, monkeypatch):
     from desktop import paths as paths_mod
 
     def fake_dirs():
-        root = tmp_path / "Jobhuntsaver"
+        root = tmp_path / "Karrierekrake"
         dirs = {
             "root": root,
             "config": root / "config",

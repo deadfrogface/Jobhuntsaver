@@ -1,4 +1,4 @@
-"""Packaged EXE: close via WM_CLOSE must terminate Jobhuntsaver.exe."""
+"""Packaged EXE: close via WM_CLOSE must terminate Karrierekrake.exe."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / "dist" / "Jobhuntsaver.exe"
+EXE = ROOT / "dist" / "Karrierekrake.exe"
 WM_CLOSE = 0x0010
 TIMEOUT_S = 90.0
 EXIT_TIMEOUT_S = 20.0
@@ -34,7 +34,7 @@ def _process_tree_pids(root_pid: int) -> list[int]:
         pass
     try:
         out = subprocess.check_output(
-            ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe", "/FO", "CSV", "/NH"],
+            ["tasklist", "/FI", "IMAGENAME eq Karrierekrake.exe", "/FO", "CSV", "/NH"],
             text=True,
             errors="ignore",
         )
@@ -70,12 +70,12 @@ def _find_main_hwnd(pid: int) -> int:
     return any_visible[0] if any_visible else 0
 
 
-def _jobhuntsaver_still_running() -> bool:
+def _karrierekrake_still_running() -> bool:
     listing = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe"],
+        ["tasklist", "/FI", "IMAGENAME eq Karrierekrake.exe"],
         capture_output=True,
     ).stdout or b""
-    return b"Jobhuntsaver.exe" in listing
+    return b"Karrierekrake.exe" in listing
 
 
 def main() -> int:
@@ -87,7 +87,7 @@ def main() -> int:
         return 0
 
     subprocess.run(
-        ["taskkill", "/F", "/IM", "Jobhuntsaver.exe"],
+        ["taskkill", "/F", "/IM", "Karrierekrake.exe"],
         capture_output=True,
         text=True,
     )
@@ -98,7 +98,7 @@ def main() -> int:
         env = os.environ.copy()
         env["LOCALAPPDATA"] = tmp
         # Pre-seed completed first-run so the wizard does not steal WM_CLOSE.
-        appdata = Path(tmp) / "Jobhuntsaver"
+        appdata = Path(tmp) / "Karrierekrake"
         (appdata / "config").mkdir(parents=True, exist_ok=True)
         (appdata / "meta.json").write_text(
             '{"first_run_completed": true, "shutdown_fix_v1": true}\n',
@@ -116,13 +116,13 @@ def main() -> int:
             hwnd = _find_main_hwnd(proc.pid)
             if hwnd:
                 break
-            if proc.poll() is not None and not _jobhuntsaver_still_running():
+            if proc.poll() is not None and not _karrierekrake_still_running():
                 print("FAIL: process exited before window appeared", proc.returncode)
                 return 1
             time.sleep(0.25)
         if not hwnd:
             print("FAIL: main window not found")
-            subprocess.run(["taskkill", "/F", "/IM", "Jobhuntsaver.exe"], capture_output=True)
+            subprocess.run(["taskkill", "/F", "/IM", "Karrierekrake.exe"], capture_output=True)
             return 1
 
         print(f"Sending WM_CLOSE to hwnd={hwnd}")
@@ -130,7 +130,7 @@ def main() -> int:
 
         end = time.time() + EXIT_TIMEOUT_S
         while time.time() < end:
-            if not _jobhuntsaver_still_running():
+            if not _karrierekrake_still_running():
                 elapsed = EXIT_TIMEOUT_S - (end - time.time())
                 print(f"OK: process exited after {elapsed:.1f}s")
                 try:
@@ -145,7 +145,7 @@ def main() -> int:
 
         print("FAIL: process still running after timeout")
         print("hwnd still?", _find_main_hwnd(proc.pid))
-        subprocess.run(["taskkill", "/F", "/IM", "Jobhuntsaver.exe"], capture_output=True)
+        subprocess.run(["taskkill", "/F", "/IM", "Karrierekrake.exe"], capture_output=True)
         return 1
 
 

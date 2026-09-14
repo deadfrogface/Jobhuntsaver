@@ -45,23 +45,23 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Build onefile EXE (no bundled Chromium)
         run: |
-          python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
-          if (!(Test-Path "dist\Jobhuntsaver.exe")) {
-            Write-Error "Onefile EXE missing at dist\Jobhuntsaver.exe"
+          python -m PyInstaller --noconfirm --clean packaging/Karrierekrake.spec
+          if (!(Test-Path "dist\Karrierekrake.exe")) {
+            Write-Error "Onefile EXE missing at dist\Karrierekrake.exe"
             exit 1
           }
-          $item = Get-Item "dist\Jobhuntsaver.exe"
+          $item = Get-Item "dist\Karrierekrake.exe"
           if ($item.Length -lt 1000000) { Write-Error "EXE too small"; exit 1 }
-          $hash = (Get-FileHash "dist\Jobhuntsaver.exe" -Algorithm SHA256).Hash
+          $hash = (Get-FileHash "dist\Karrierekrake.exe" -Algorithm SHA256).Hash
           @"
           commit=$env:GITHUB_SHA
           size=$($item.Length)
           sha256=$hash
           console=false
           "@ | Set-Content dist\build_metadata.txt
-          Get-Item "dist\Jobhuntsaver.exe" | Format-List FullName, Length
+          Get-Item "dist\Karrierekrake.exe" | Format-List FullName, Length
           # Fail if this is a console subsystem EXE (users must not see a terminal).
-          $bytes = [System.IO.File]::ReadAllBytes("dist\Jobhuntsaver.exe")
+          $bytes = [System.IO.File]::ReadAllBytes("dist\Karrierekrake.exe")
           $pe = [BitConverter]::ToInt32($bytes, 0x3C)
           $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
           # 2 = WINDOWS_GUI, 3 = WINDOWS_CUI
@@ -73,13 +73,13 @@ jobs:
         run: |
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-rel-$([guid]::NewGuid())"
           $env:QT_QPA_PLATFORM = "offscreen"
-          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Jobhuntsaver.exe") -LocalAppData $tmp.FullName
-      - name: Upload Jobhuntsaver.exe
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Karrierekrake.exe") -LocalAppData $tmp.FullName
+      - name: Upload Karrierekrake.exe
         uses: actions/upload-artifact@v4
         with:
-          name: Jobhuntsaver-Windows
+          name: Karrierekrake-Windows
           path: |
-            dist/Jobhuntsaver.exe
+            dist/Karrierekrake.exe
             dist/build_metadata.txt
           if-no-files-found: error
           retention-days: 30

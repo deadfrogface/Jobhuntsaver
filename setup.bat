@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo ========================================
-echo   Jobhuntsaver Setup
+echo   Karrierekrake Setup
 echo ========================================
 
 where python >nul 2>&1
@@ -69,7 +69,7 @@ echo   Setup erfolgreich!
 echo ========================================
 echo 1. Start Desktop-App: start.bat
 echo 2. Profil/Einstellungen in der App bearbeiten
-echo    (Daten: %%LOCALAPPDATA%%\Jobhuntsaver)
+echo    (Daten: %%LOCALAPPDATA%%\Karrierekrake)
 echo 3. Optional CLI-Suche:  run_search.bat
 echo 4. EXE bauen:           build.bat
 echo 5. Dev-Tools:           pip install -r requirements-dev.txt

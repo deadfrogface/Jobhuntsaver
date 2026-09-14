@@ -23,7 +23,7 @@ from core.source_health import SourceHealthStatus
 from search.base import SearchQuery
 from search.registry import build_sources
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 # Hard ceiling per job board so one hung source cannot freeze the whole run.
 SOURCE_SEARCH_TIMEOUT_S = 120
@@ -494,7 +494,7 @@ def run_pipeline(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Jobhuntsaver")
+    parser = argparse.ArgumentParser(description="Karrierekrake")
     parser.add_argument(
         "--mode",
         choices=[m.value for m in OperatingMode],
@@ -545,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
             _qt = QCoreApplication.instance() or QCoreApplication([])
             shared = acquire_single_instance_lock()
             if shared is None:
-                logger.info("--once skipped: another Jobhuntsaver instance holds the lock")
+                logger.info("--once skipped: another Karrierekrake instance holds the lock")
                 return 0
         except Exception:
             logger.exception("Single-instance lock unavailable; continuing --once without it")

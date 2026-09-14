@@ -9,7 +9,7 @@ from desktop.services import ConfigService
 
 
 def _fake_dirs(tmp_path: Path):
-    root = tmp_path / "Jobhuntsaver"
+    root = tmp_path / "Karrierekrake"
     dirs = {
         "root": root,
         "config": root / "config",

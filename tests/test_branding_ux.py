@@ -23,7 +23,7 @@ from desktop.wizard import FirstRunWizard
 
 def test_display_brand_changeable_without_data_dir_rename():
     assert DISPLAY_NAME == "Karrierekrake"
-    assert DATA_DIR_NAME == "Jobhuntsaver"
+    assert DATA_DIR_NAME == "Karrierekrake"
     assert TAGLINE_DE.startswith("FINDE.")
     assert COLOR_NAVY == "#132238"
     assert COLOR_TEAL == "#18A999"
@@ -114,6 +114,6 @@ def test_demo_seed_is_fictional(tmp_path):
 
 
 def test_packaging_spec_embeds_icon_and_brand_assets():
-    spec = Path("packaging/Jobhuntsaver.spec").read_text(encoding="utf-8")
+    spec = Path("packaging/Karrierekrake.spec").read_text(encoding="utf-8")
     assert "assets" in spec and "brand" in spec
     assert "icon=_ICON" in spec or "icon=_ICON" in spec.replace(" ", "")

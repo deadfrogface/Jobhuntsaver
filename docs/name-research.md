@@ -1,7 +1,7 @@
 # Product name research — Karrierekrake (display brand)
 
-Repo / technical identity remains **Jobhuntsaver**
-(`%LOCALAPPDATA%\Jobhuntsaver`, `Jobhuntsaver.exe`, GitHub repo name unchanged).
+Repo / technical identity remains **Karrierekrake**
+(`%LOCALAPPDATA%\Karrierekrake`, `Karrierekrake.exe`, GitHub repo name unchanged).
 
 ## Decision
 

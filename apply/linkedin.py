@@ -9,7 +9,7 @@ from apply.base import ApplyResult, BaseApplier
 from core.config import ApplicationProfile
 from core.models import Job
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 _SUBMIT_SEL = (
     "button[aria-label*='Submit application'], button[aria-label*='Submit']"

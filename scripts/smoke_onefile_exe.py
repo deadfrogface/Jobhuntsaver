@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / "dist" / "Jobhuntsaver.exe"
+EXE = ROOT / "dist" / "Karrierekrake.exe"
 WM_CLOSE = 0x0010
 # Onefile cold extract can take a long time on first run.
 WINDOW_TIMEOUT_S = 90.0
@@ -35,10 +35,10 @@ def _process_tree_pids(root_pid: int) -> list[int]:
                 pids.append(int(line))
     except Exception:
         pass
-    # Fallback: all Jobhuntsaver.exe PIDs
+    # Fallback: all Karrierekrake.exe PIDs
     try:
         out = subprocess.check_output(
-            ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe", "/FO", "CSV", "/NH"],
+            ["tasklist", "/FI", "IMAGENAME eq Karrierekrake.exe", "/FO", "CSV", "/NH"],
             text=True,
             errors="ignore",
         )
@@ -87,13 +87,13 @@ def main() -> int:
         print(f"FAIL: {EXE} missing")
         return 1
 
-    subprocess.run(["taskkill", "/F", "/IM", "Jobhuntsaver.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "Karrierekrake.exe"], capture_output=True)
     time.sleep(0.5)
 
     with tempfile.TemporaryDirectory(prefix="jhs_smoke_", ignore_cleanup_errors=True) as tmp:
         env = os.environ.copy()
         env["LOCALAPPDATA"] = tmp
-        appdata = Path(tmp) / "Jobhuntsaver"
+        appdata = Path(tmp) / "Karrierekrake"
         (appdata / "config").mkdir(parents=True, exist_ok=True)
         (appdata / "meta.json").write_text(
             '{"first_run_completed": true, "shutdown_fix_v1": true}\n',
@@ -131,7 +131,7 @@ def main() -> int:
         startup_s = time.perf_counter() - t0
         print(f"WINDOW_OK startup_s={startup_s:.2f}")
 
-        # Working set: prefer largest Jobhuntsaver process (child GUI)
+        # Working set: prefer largest Karrierekrake process (child GUI)
         ram_mb = 0.0
         for pid in _process_tree_pids(proc.pid):
             try:
@@ -157,10 +157,10 @@ def main() -> int:
         deadline = time.perf_counter() + EXIT_TIMEOUT_S
         while time.perf_counter() < deadline:
             listing = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe"],
+                ["tasklist", "/FI", "IMAGENAME eq Karrierekrake.exe"],
                 capture_output=True,
             ).stdout or b""
-            if b"Jobhuntsaver.exe" not in listing:
+            if b"Karrierekrake.exe" not in listing:
                 break
             time.sleep(0.25)
         else:
@@ -173,10 +173,10 @@ def main() -> int:
         except Exception:
             pass
         leftover = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq Jobhuntsaver.exe"],
+            ["tasklist", "/FI", "IMAGENAME eq Karrierekrake.exe"],
             capture_output=True,
         ).stdout or b""
-        if b"Jobhuntsaver.exe" in leftover:
+        if b"Karrierekrake.exe" in leftover:
             print("WARN: leftover process")
             _terminate_tree(proc.pid)
             return 1

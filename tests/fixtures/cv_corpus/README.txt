@@ -1,4 +1,4 @@
-# Jobhuntsaver - Fictional CV Regression Corpus
+# Karrierekrake - Fictional CV Regression Corpus
 
 This corpus contains 10 fully fictional CVs:
 - 5 German

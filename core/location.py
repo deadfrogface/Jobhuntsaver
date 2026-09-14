@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from core.config import AppConfig
     from core.database import Database
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 # Sentinel display_name for failed lookups (persisted so we do not retry forever).
 UNRESOLVED_MARKER = "__unresolved__"
@@ -269,7 +269,7 @@ class LocationService:
                             self.config.profile.location.country or "DE"
                         ).lower(),
                     },
-                    headers={"User-Agent": "Jobhuntsaver/1.0 (local personal use)"},
+                    headers={"User-Agent": "Karrierekrake/1.0 (local personal use)"},
                 )
                 resp.raise_for_status()
                 data = resp.json()

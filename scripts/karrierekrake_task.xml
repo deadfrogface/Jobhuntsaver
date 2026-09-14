@@ -2,7 +2,7 @@
 <!-- Import via Task Scheduler: Action -> Import Task -->
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Jobhuntsaver daily run</Description>
+    <Description>Karrierekrake daily run</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -28,9 +28,9 @@
   <Actions Context="Author">
     <Exec>
       <Command>CMD</Command>
-      <!-- Update StartIn to your Jobhuntsaver folder -->
+      <!-- Update StartIn to your Karrierekrake folder -->
       <Arguments>/C "scripts\scheduled_run.bat"</Arguments>
-      <WorkingDirectory>C:\Path\To\Jobhuntsaver</WorkingDirectory>
+      <WorkingDirectory>C:\Path\To\Karrierekrake</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>

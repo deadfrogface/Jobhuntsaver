@@ -14,7 +14,7 @@ from core.deduplicator import make_job_id
 from core.models import Job, RemoteType
 from search.base import JobSource, PartialResultsError, SearchQuery
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 
 def _remote_from_row(row) -> str:

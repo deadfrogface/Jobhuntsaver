@@ -34,4 +34,4 @@ EN_05_Skills_Heavy.pdf               PASS     PASS     PASS     PASS     PASS   
 
 - `tests/fixtures/cv_corpus/` — 10 fictional PDFs + `expected_results.json` + `README.txt`
 - Automated: `tests/test_cv_corpus.py`, `tests/test_cv_parser_generic.py`
-- Packaged smoke: `Jobhuntsaver.exe --smoke-cv-corpus <pdf>…`
+- Packaged smoke: `Karrierekrake.exe --smoke-cv-corpus <pdf>…`

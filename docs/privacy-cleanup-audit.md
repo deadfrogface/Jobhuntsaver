@@ -6,7 +6,7 @@
 ## Summary
 
 Real personal CV-derived content was present in the public GitHub repository
-`deadfrogface/Jobhuntsaver`, primarily as test fixtures and comments introduced
+`deadfrogface/Karrierekrake`, primarily as test fixtures and comments introduced
 when CV parsing was expanded. This cleanup removes that content from the
 **current tree** and from **reachable Git history** via `git filter-repo`
 (`--replace-text`), then force-pushes rewritten `main`.
@@ -78,7 +78,7 @@ objects. Direct checks of pre-rewrite commit SHAs still returned HTTP 200 from
 `git ls-remote` showed only the new `main` tip and retargeted tag `Vers.1.0`.
 
 **Action for the repository owner:** open a GitHub Support ticket requesting
-removal of cached/unreachable sensitive blobs for `deadfrogface/Jobhuntsaver`,
+removal of cached/unreachable sensitive blobs for `deadfrogface/Karrierekrake`,
 and re-check code search + old commit URLs after their purge.
 
 Do not rely only on the new branch tip. If a direct object URL still serves

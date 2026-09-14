@@ -1,4 +1,4 @@
-# Wait for windowed Jobhuntsaver onefile smoke to finish.
+# Wait for windowed Karrierekrake onefile smoke to finish.
 # PyInstaller console=False parents can return before the child writes SMOKE_TEST_OK;
 # never treat process exit alone as success — poll marker + per-run token.
 param(
@@ -10,23 +10,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Stop-JobhuntsaverProcesses {
-    Get-Process -Name "Jobhuntsaver" -ErrorAction SilentlyContinue | ForEach-Object {
+function Stop-KarrierekrakeProcesses {
+    Get-Process -Name "Karrierekrake" -ErrorAction SilentlyContinue | ForEach-Object {
         try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
     }
     Start-Sleep -Milliseconds 400
 }
 
-$markerApp = Join-Path $LocalAppData "Jobhuntsaver\smoke_test_result.txt"
+$markerApp = Join-Path $LocalAppData "Karrierekrake\smoke_test_result.txt"
 $markerDist = Join-Path (Split-Path -Parent $ExePath) "smoke_test_result.txt"
 $token = [guid]::NewGuid().ToString("N")
 
-Stop-JobhuntsaverProcesses
+Stop-KarrierekrakeProcesses
 Remove-Item $markerApp, $markerDist -Force -ErrorAction SilentlyContinue
 
 $env:LOCALAPPDATA = $LocalAppData
-$env:JOBHUNTSAVER_SMOKE_TEST = "1"
-$env:JOBHUNTSAVER_SMOKE_TOKEN = $token
+$env:KARRIEREKRAKE_SMOKE_TEST = "1"
+$env:KARRIEREKRAKE_SMOKE_TOKEN = $token
 if (-not $env:QT_QPA_PLATFORM) { $env:QT_QPA_PLATFORM = "offscreen" }
 
 $proc = Start-Process -FilePath $ExePath -PassThru -WindowStyle Hidden
@@ -41,13 +41,13 @@ while ((Get-Date) -lt $deadline) {
         if (-not $text) { continue }
         if ($text -match ("token=" + [regex]::Escape($token)) -and $text -match "FAIL:") {
             Write-Host $text
-            Stop-JobhuntsaverProcesses
+            Stop-KarrierekrakeProcesses
             throw "EXE smoke reported FAIL (marker=$marker)"
         }
         if ($text -match ("token=" + [regex]::Escape($token)) -and $text -match "SMOKE_TEST_OK") {
             if ($ExpectedDbSubstring -and ($text -notmatch [regex]::Escape($ExpectedDbSubstring))) {
                 Write-Host $text
-                Stop-JobhuntsaverProcesses
+                Stop-KarrierekrakeProcesses
                 throw "EXE smoke OK but db path missing expected substring '$ExpectedDbSubstring'"
             }
             $finalText = $text
@@ -58,7 +58,7 @@ while ((Get-Date) -lt $deadline) {
 }
 
 if ($null -eq $finalText) {
-    Stop-JobhuntsaverProcesses
+    Stop-KarrierekrakeProcesses
     $appTxt = if (Test-Path $markerApp) { Get-Content $markerApp -Raw } else { "<missing>" }
     $distTxt = if (Test-Path $markerDist) { Get-Content $markerDist -Raw } else { "<missing>" }
     throw "EXE smoke timeout after ${TimeoutSec}s. appdata=$appTxt dist=$distTxt"
@@ -67,11 +67,11 @@ if ($null -eq $finalText) {
 # Allow child to exit; force-kill leftovers so the next smoke is isolated.
 $exitDeadline = (Get-Date).AddSeconds(30)
 while ((Get-Date) -lt $exitDeadline) {
-    $alive = Get-Process -Name "Jobhuntsaver" -ErrorAction SilentlyContinue
+    $alive = Get-Process -Name "Karrierekrake" -ErrorAction SilentlyContinue
     if (-not $alive) { break }
     Start-Sleep -Milliseconds 300
 }
-Stop-JobhuntsaverProcesses
+Stop-KarrierekrakeProcesses
 
 Write-Host $finalText
 Write-Output $finalText

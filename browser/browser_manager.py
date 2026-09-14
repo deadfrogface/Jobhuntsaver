@@ -12,7 +12,7 @@ import platform
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 
 def _find_system_chrome() -> str | None:

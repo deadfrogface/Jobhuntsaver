@@ -7,9 +7,12 @@ import sys
 from pathlib import Path
 
 from core.config import AppConfig
+from desktop.branding import TASK_SCHEDULER_NAME
+from desktop.legacy_migration import legacy_data_dir_name
 from desktop.paths import project_root
 
-TASK_NAME = "JobhuntsaverAutoRun"
+TASK_NAME = TASK_SCHEDULER_NAME
+_LEGACY_TASK_NAME = f"{legacy_data_dir_name()}AutoRun"
 
 
 class ScheduleService:
@@ -126,7 +129,14 @@ class ScheduleService:
     def remove_task(self) -> tuple[bool, str]:
         if sys.platform != "win32":
             return True, "Task-Planer nur unter Windows verfügbar."
-        names = [TASK_NAME, f"{TASK_NAME}Evening"] + [f"{TASK_NAME}_{i}" for i in range(1, 6)]
+        names = [
+            TASK_NAME,
+            f"{TASK_NAME}Evening",
+            _LEGACY_TASK_NAME,
+            f"{_LEGACY_TASK_NAME}Evening",
+        ] + [f"{TASK_NAME}_{i}" for i in range(1, 6)] + [
+            f"{_LEGACY_TASK_NAME}_{i}" for i in range(1, 6)
+        ]
         any_ok = False
         for name in names:
             try:

@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / "dist" / "Jobhuntsaver.exe"
+EXE = ROOT / "dist" / "Karrierekrake.exe"
 sys.path.insert(0, str(ROOT))
 
 from tests.test_db_migration_run_id import LEGACY_JOBS_SCHEMA, _make_legacy_db  # noqa: E402
@@ -24,7 +24,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="jhs-legacy-", ignore_cleanup_errors=True) as tmp:
         local = Path(tmp)
-        app = local / "Jobhuntsaver"
+        app = local / "Karrierekrake"
         data = app / "data"
         data.mkdir(parents=True)
         (app / "logs").mkdir(parents=True)

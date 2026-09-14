@@ -1,7 +1,7 @@
-"""Application data paths under %LOCALAPPDATA%\\Jobhuntsaver.
+"""Application data paths under %LOCALAPPDATA%\\Karrierekrake.
 
-The filesystem folder stays ``Jobhuntsaver`` for compatibility even when the
-user-facing brand display name changes (see ``desktop.branding``).
+On first launch after upgrade, legacy AppData may be migrated once via
+``desktop.legacy_migration`` (isolated legacy folder recognition).
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from desktop.branding import DATA_DIR_NAME
+from desktop.legacy_migration import migrate_legacy_appdata_if_needed
 
 APP_NAME = DATA_DIR_NAME
 
@@ -24,7 +25,10 @@ def project_root() -> Path:
 
 def app_data_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    path = Path(base) / APP_NAME
+    canonical = Path(base) / APP_NAME
+    # Skip migration when tests/CI point LOCALAPPDATA at an isolated temp tree
+    # that already is the intended root parent — still run migrate (cheap/idempotent).
+    path = migrate_legacy_appdata_if_needed(canonical)
     path.mkdir(parents=True, exist_ok=True)
     return path
 

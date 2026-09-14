@@ -17,7 +17,7 @@ from core.models import Job
 from search.base import JobSource, PartialResultsError, SearchQuery
 from search.jsonld import iter_job_postings, job_from_job_posting, job_from_list_card
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 _HEADERS = {
     "User-Agent": (

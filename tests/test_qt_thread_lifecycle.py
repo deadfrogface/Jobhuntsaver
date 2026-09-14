@@ -96,13 +96,13 @@ def test_spec_defaults_to_windowed_production_exe() -> None:
     import re
     from pathlib import Path
 
-    spec = Path("packaging/Jobhuntsaver.spec").read_text(encoding="utf-8")
-    assert "JOBHUNTSAVER_FORCE_CONSOLE" in spec
-    assert "JOBHUNTSAVER_CI_CONSOLE" not in spec
+    spec = Path("packaging/Karrierekrake.spec").read_text(encoding="utf-8")
+    assert "KARRIEREKRAKE_FORCE_CONSOLE" in spec
+    assert "KARRIEREKRAKE_CI_CONSOLE" not in spec
     assert "console=bool(os.environ.get" not in spec.replace(" ", "")
 
     match = re.search(
-        r"console=\(os\.environ\.get\(\"JOBHUNTSAVER_FORCE_CONSOLE\",\s*\"\"\)\.strip\(\)\.lower\(\)\s+in\s+(\{[^}]+\})\)",
+        r"console=\(os\.environ\.get\(\"KARRIEREKRAKE_FORCE_CONSOLE\",\s*\"\"\)\.strip\(\)\.lower\(\)\s+in\s+(\{[^}]+\})\)",
         spec,
     )
     assert match, "FORCE_CONSOLE must use explicit membership check, not bool(non-empty)"

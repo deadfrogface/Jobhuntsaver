@@ -1,4 +1,4 @@
-"""SQLite persistence for Jobhuntsaver."""
+"""SQLite persistence for Karrierekrake."""
 
 from __future__ import annotations
 
