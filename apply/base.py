@@ -94,10 +94,13 @@ class BaseApplier(ABC):
         for selector in (
             "iframe[src*='captcha']",
             "iframe[src*='recaptcha']",
+            "iframe[src*='hcaptcha']",
             "iframe[src*='challenges.cloudflare']",
             "iframe[src*='turnstile']",
             "#captcha",
             ".g-recaptcha",
+            ".h-captcha",
+            "[data-hcaptcha-widget-id]",
             ".cf-turnstile",
             "[name='cf-turnstile-response']",
             "[data-sitekey]",

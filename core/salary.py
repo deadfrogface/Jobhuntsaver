@@ -180,16 +180,23 @@ def _extract_from_text(text: str) -> tuple[float | None, str | None, str]:
         return None, None, "no numeric salary"
     unit = _detect_unit_in_text(cleaned)
     # Ranges before negative check: "40.000 - 50.000" must not look like -50.000.
-    if re.search(
-        r"([\d.,]+)\s*k?\s*[-–—]\s*([\d.,]+)\s*k?",
+    # Use the high end as a ceiling so bands entirely below minimum hard-exclude,
+    # while straddling bands stay soft (ceiling may still meet the floor).
+    range_m = re.search(
+        r"([\d.,]+)\s*(k)?\s*[-–—]\s*([\d.,]+)\s*(k)?",
         cleaned,
         re.I,
     ) or re.search(
-        r"([\d.,]+)\s*k?\s*(?:bis|to)\s*([\d.,]+)\s*k?",
+        r"([\d.,]+)\s*(k)?\s*(?:bis|to)\s*([\d.,]+)\s*(k)?",
         cleaned,
         re.I,
-    ):
-        return None, unit, "ambiguous salary range"
+    )
+    if range_m:
+        lo = _parse_number(range_m.group(1) + ("k" if range_m.group(2) else ""))
+        hi = _parse_number(range_m.group(3) + ("k" if range_m.group(4) else ""))
+        if lo is None or hi is None:
+            return None, unit, "ambiguous salary range"
+        return max(lo, hi), unit, "salary range ceiling"
     # Leading / standalone minus → do not invent a positive salary.
     if re.search(r"(?<![\d.,])-\s*[\d.,]+", cleaned):
         return None, None, "negative salary text"
@@ -268,8 +275,7 @@ def normalize_to_annual_gross_eur(
 
     if text:
         parsed_val, text_unit, status = _extract_from_text(text)
-        # Ambiguous ranges must never hard-reject — even when salary_min is set
-        # (Indeed/BA often populate min from the range low end).
+        # Legacy ambiguous marker (unparseable range) stays unknown.
         if status == "ambiguous salary range":
             return None, status
         if parsed_val is None:
@@ -344,7 +350,10 @@ def job_annual_salary(job: Any) -> tuple[int | None, str]:
         and salary_max is not None
         and float(salary_min) != float(salary_max)
     ):
-        return None, "ambiguous salary range (min!=max)"
+        annual, how = normalize_to_annual_gross_eur(salary_max, unit=None, text=None)
+        if annual is None:
+            return None, "ambiguous salary range (min!=max)"
+        return annual, f"salary range ceiling; {how}"
 
     if salary_min is None and salary_max is not None:
         annual, how = normalize_to_annual_gross_eur(salary_max, unit=None, text=None)

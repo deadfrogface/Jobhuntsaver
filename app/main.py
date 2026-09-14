@@ -496,23 +496,57 @@ def main(argv: list[str] | None = None) -> int:
         help="Run a single headless pipeline pass and exit (scheduler entrypoint).",
     )
     args = parser.parse_args(argv)
-    # Prefer AppData config when scheduled/packaged so GUI and task share profile.
-    try:
-        from desktop.services import ConfigService
 
-        config = ConfigService().load()
-    except Exception as exc:
-        if args.once:
-            logger.exception("AppData-Konfiguration fehlgeschlagen — Abbruch (--once)")
-            raise SystemExit(
-                f"Config load failed (AppData): {exc}"
-            ) from exc
-        logger.exception(
-            "AppData-Konfiguration fehlgeschlagen — Fallback auf Paket-Root-Config"
+    # Explicit --config-dir wins (tests / portable installs).
+    if args.config_dir is not None:
+        root = Path(args.config_dir)
+        config = load_config(
+            profile_path=root / "config" / "profile.yaml",
+            application_path=root / "config" / "application_profile.yaml",
+            settings_path=root / "config" / "settings.yaml",
+            root=root,
         )
-        config = load_config()
-    run_pipeline(config, mode=args.mode)
-    return 0
+    else:
+        # Prefer AppData config when scheduled/packaged so GUI and task share profile.
+        try:
+            from desktop.services import ConfigService
+
+            config = ConfigService().load()
+        except Exception as exc:
+            if args.once:
+                logger.exception("AppData-Konfiguration fehlgeschlagen — Abbruch (--once)")
+                raise SystemExit(
+                    f"Config load failed (AppData): {exc}"
+                ) from exc
+            logger.exception(
+                "AppData-Konfiguration fehlgeschlagen — Fallback auf Paket-Root-Config"
+            )
+            config = load_config()
+
+    # Match frozen desktop --once: single-instance lock so scheduler cannot overlap GUI.
+    shared = None
+    if args.once and args.config_dir is None:
+        try:
+            from PySide6.QtCore import QCoreApplication
+            from desktop.app import acquire_single_instance_lock
+
+            _qt = QCoreApplication.instance() or QCoreApplication([])
+            shared = acquire_single_instance_lock()
+            if shared is None:
+                logger.info("--once skipped: another Jobhuntsaver instance holds the lock")
+                return 0
+        except Exception:
+            logger.exception("Single-instance lock unavailable; continuing --once without it")
+
+    try:
+        run_pipeline(config, mode=args.mode)
+        return 0
+    finally:
+        if shared is not None:
+            try:
+                shared.detach()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

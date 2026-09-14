@@ -341,8 +341,10 @@ def test_ascii_hyphen_salary_range_is_ambiguous_not_negative():
     from core.salary import normalize_to_annual_gross_eur
 
     annual, reason = normalize_to_annual_gross_eur(text="40.000 - 50.000 € p.a.")
-    assert annual is None
-    assert "ambiguous" in reason
+    # High end is a ceiling (not a misread negative from "- 50.000").
+    assert annual == 50000
+    assert "ceiling" in reason
+    assert "negative" not in reason
     annual2, reason2 = normalize_to_annual_gross_eur(text="-5000 EUR jährlich")
     assert annual2 is None
     assert "negative" in reason2
@@ -630,3 +632,145 @@ def test_once_refuses_silent_config_fallback(monkeypatch):
         assert "appdata" in str(exc).lower()
     assert raised, "expected SystemExit"
 
+
+def test_upsert_preserves_failed_status_for_has_applied(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(
+            id="indeed_failed",
+            source="indeed",
+            title="Dev",
+            company="Acme",
+            url="https://indeed.com/viewjob?jk=abc",
+            status=JobStatus.FAILED.value,
+        )
+    )
+    db.upsert_job(
+        Job(
+            id="indeed_failed",
+            source="indeed",
+            title="Dev",
+            company="Acme",
+            url="https://indeed.com/viewjob?jk=abc",
+            status=JobStatus.NEW.value,
+        )
+    )
+    assert db.get_job("indeed_failed").status == JobStatus.FAILED.value
+    twin = Job(
+        id="ss_twin",
+        source="stepstone",
+        title="Dev",
+        company="Acme",
+        url="https://stepstone.de/other",
+    )
+    assert db.has_applied(twin) is True
+
+
+def test_list_card_infers_remote_and_rejects_gender_only_title():
+    from search.jsonld import job_from_list_card
+
+    remote = job_from_list_card(
+        source="stepstone",
+        title="Remote Developer",
+        url="https://x/1",
+        company="C",
+        city="Remote",
+    )
+    assert remote is not None
+    assert remote.remote_type == "remote"
+    assert (
+        job_from_list_card(
+            source="stepstone",
+            title="m/w/d",
+            url="https://x/2",
+            company="Acme",
+            city="Berlin",
+        )
+        is None
+    )
+
+
+def test_jsonld_maps_base_salary():
+    from search.jsonld import job_from_job_posting
+
+    job = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Sachbearbeiter",
+            "description": "Büro",
+            "url": "https://stepstone.de/j",
+            "hiringOrganization": {"name": "C"},
+            "jobLocation": {"address": {"addressLocality": "Berlin"}},
+            "baseSalary": {
+                "currency": "EUR",
+                "value": {"minValue": 25000, "maxValue": 30000, "unitText": "YEAR"},
+            },
+        },
+        source="stepstone",
+    )
+    assert job is not None
+    assert job.salary_min == 25000
+    assert job.salary_max == 30000
+    assert "25000" in (job.salary_text or "")
+
+
+def test_hcaptcha_detected():
+    from apply.base import BaseApplier
+
+    class _Page:
+        def __init__(self, sel: str):
+            self.sel = sel
+
+        def query_selector(self, selector: str):
+            return object() if self.sel in selector else None
+
+    class _A(BaseApplier):
+        def _do_apply(self, *a, **k):
+            return None
+
+    assert _A(_Page("hcaptcha"), dry_run=True)._detect_captcha() is True
+    assert _A(_Page(".h-captcha"), dry_run=True)._detect_captcha() is True
+
+
+def test_cover_letter_unknown_placeholder_does_not_raise(tmp_path: Path):
+    from core.config import empty_app_config
+    from core.cover_letter import render_cover_letter
+    from core.models import Job
+
+    cfg = empty_app_config()
+    tpl = tmp_path / "cover.txt"
+    tpl.write_text("{job_title} {bonus_line} {company}", encoding="utf-8")
+    cfg.settings.cover_letter_template = str(tpl)
+    cfg.root = tmp_path
+    text = render_cover_letter(Job(id="1", source="t", title="Dev", company="Acme"), cfg)
+    assert "Dev" in text and "Acme" in text
+    assert "{bonus_line}" in text
+
+
+def test_cancelled_stats_change_run_done_copy():
+    from pathlib import Path as P
+
+    src = P("desktop/main_window.py").read_text(encoding="utf-8")
+    assert 'stats.get("cancelled")' in src
+    assert "msg.run_cancelled" in src
+
+
+def test_config_dir_flag_is_honored(tmp_path: Path, monkeypatch):
+    from app.main import main
+    from core.config import empty_app_config, save_config
+
+    cfg = empty_app_config(root=tmp_path)
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    save_config(cfg)
+    called = {}
+
+    def fake_run(config, mode=None, **kwargs):
+        called["root"] = str(config.root)
+        return {"cancelled": False, "new": 0}
+
+    monkeypatch.setattr("app.main.run_pipeline", fake_run)
+    assert main(["--config-dir", str(tmp_path)]) == 0
+    assert called["root"] == str(tmp_path)
