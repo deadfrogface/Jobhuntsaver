@@ -23,6 +23,7 @@ class PipelineWorker(QObject):
         self.config = config
         self.mode = mode
         self._cancel = threading.Event()
+        self._pause = threading.Event()
 
     def request_cancel(self) -> None:
         self._cancel.set()
@@ -33,6 +34,13 @@ class PipelineWorker(QObject):
         except Exception:
             pass
 
+    def set_paused(self, paused: bool) -> None:
+        """Mid-run pause: stop further search/apply work (fail-closed)."""
+        if paused:
+            self._pause.set()
+        else:
+            self._pause.clear()
+
     def run(self) -> None:
         try:
             # Lazy: avoids importing playwright/jobspy at desktop startup
@@ -42,10 +50,15 @@ class PipelineWorker(QObject):
                 self.config,
                 mode=self.mode,
                 progress_callback=self.progress.emit,
-                should_stop=self._cancel.is_set,
+                should_stop=lambda: self._cancel.is_set() or self._pause.is_set(),
             )
             if self._cancel.is_set():
                 self.progress.emit("Abgebrochen.")
+            elif self._pause.is_set():
+                stats = dict(stats or {})
+                stats["paused"] = True
+                stats["cancelled"] = True
+                self.progress.emit("Pausiert.")
             self.finished.emit(stats or {})
         except Exception as exc:  # noqa: BLE001 — surface user-friendly via failed
             self.failed.emit(str(exc))

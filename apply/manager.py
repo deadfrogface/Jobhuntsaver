@@ -47,6 +47,36 @@ class ApplicationManager:
         self.page = page
         self.applied_this_run = 0
         self.failed_this_run = 0
+        # Fail-closed submit gate: snapshot at manager creation. A mid-run settings
+        # escalate (dry_run off / auto-submit on) must never open this gate.
+        # Tightening safety live still closes submit via _submit_allowed().
+        settings = config.settings
+        self._submit_gate_open = (
+            settings.mode == OperatingMode.FULLY_AUTOMATIC.value
+            and not bool(settings.dry_run)
+            and bool(getattr(settings, "automatic_submission", False))
+        )
+
+    def _resolve_cv_path(self) -> Path | None:
+        raw = (self.config.application.cv_path or "").strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            path = self.config.root / path
+        return path
+
+    def _submit_allowed(self, settings, *, force_submit: bool | None) -> bool:
+        """Final submit only when start-of-run gate AND live settings permit it."""
+        live_dry = bool(settings.dry_run)
+        if force_submit is not None:
+            return bool(force_submit) and not live_dry and self._submit_gate_open
+        live_ok = (
+            settings.mode == OperatingMode.FULLY_AUTOMATIC.value
+            and not live_dry
+            and bool(getattr(settings, "automatic_submission", False))
+        )
+        return bool(self._submit_gate_open and live_ok)
 
     def can_auto_apply(self, job: Job) -> tuple[bool, str]:
         settings = self.config.settings
@@ -61,15 +91,22 @@ class ApplicationManager:
         if self.failed_this_run >= settings.max_failed_applications_per_run:
             return False, "max failed applications per run reached"
         app = self.config.application
-        missing = [f for f, v in {
-            "first_name": app.first_name,
-            "last_name": app.last_name,
-            "email": app.email,
-            "phone": app.phone,
-            "cv_path": app.cv_path,
-        }.items() if not v]
+        missing = [
+            f
+            for f, v in {
+                "first_name": app.first_name,
+                "last_name": app.last_name,
+                "email": app.email,
+                "phone": app.phone,
+                "cv_path": app.cv_path,
+            }.items()
+            if not str(v or "").strip()
+        ]
         if missing:
             return False, f"missing profile fields: {', '.join(missing)}"
+        cv_path = self._resolve_cv_path()
+        if cv_path is None or not cv_path.is_file():
+            return False, "CV file missing or unreadable"
         # Treat stored "unknown" like empty so URL re-detection can still win.
         ats = (
             job.ats_type
@@ -83,23 +120,35 @@ class ApplicationManager:
     def prepare_and_apply(self, job: Job, *, force_submit: bool | None = None) -> ApplyResult:
         settings = self.config.settings
         mode = settings.mode
-        submit = False
-        if force_submit is not None:
-            # Force may request submit only when dry_run is off (safety never overridden).
-            submit = bool(force_submit) and not bool(settings.dry_run)
-        elif (
-            mode == OperatingMode.FULLY_AUTOMATIC.value
-            and not settings.dry_run
-            and bool(getattr(settings, "automatic_submission", False))
-        ):
-            submit = True
+        submit = self._submit_allowed(settings, force_submit=force_submit)
 
         allowed, reason = self.can_auto_apply(job)
-        if not allowed and mode == OperatingMode.FULLY_AUTOMATIC.value:
-            job.status = JobStatus.NEEDS_REVIEW.value
-            job.rejection_reasons = list({*job.rejection_reasons, reason})
-            self.db.upsert_job(job)
-            return ApplyResult(success=False, needs_review=True, error_message=reason)
+        if not allowed:
+            # Hard safety blocks apply in every mode (review must not open ATS
+            # without CV / against duplicates). Soft reasons (score, ATS) still
+            # allow review-mode preview attempts.
+            hard_block = (
+                reason.startswith("already applied")
+                or reason.startswith("missing profile fields")
+                or reason.startswith("CV file missing")
+                or reason.startswith("max applications")
+                or reason.startswith("max failed")
+            )
+            if hard_block or mode == OperatingMode.FULLY_AUTOMATIC.value:
+                existing = self.db.get_job(job.id) if job.id else None
+                protected = {
+                    JobStatus.APPLIED.value,
+                    JobStatus.FAILED.value,
+                    JobStatus.NEEDS_REVIEW.value,
+                    JobStatus.CAPTCHA.value,
+                    JobStatus.APPLYING.value,
+                }
+                # Never demote an attempt/outcome row when blocking re-entry.
+                if existing is None or existing.status not in protected:
+                    job.status = JobStatus.NEEDS_REVIEW.value
+                    job.rejection_reasons = list({*job.rejection_reasons, reason})
+                    self.db.upsert_job(job)
+                return ApplyResult(success=False, needs_review=True, error_message=reason)
 
         ats = ATSDetector.detect(job.application_url or job.url)
         job.ats_type = ats
@@ -158,29 +207,34 @@ class ApplicationManager:
         cover = render_cover_letter(job, self.config)
         cover_path = self.config.root / "cover_letters" / f"{job.id}.txt"
         save_cover_letter(cover, cover_path)
-        cv_path = Path(self.config.application.cv_path) if self.config.application.cv_path else None
-        if cv_path and not cv_path.is_absolute():
-            cv_path = self.config.root / cv_path
+        cv_path = self._resolve_cv_path()
 
         job.status = JobStatus.APPLYING.value
         self.db.upsert_job(job)
 
         # Central safety: dry_run always forces submit=False on every applier.
-        effective_dry_run = bool(settings.dry_run) or not submit
+        # Fail-closed: live dry_run OR closed start gate both force dry.
+        effective_dry_run = bool(settings.dry_run) or not submit or not self._submit_gate_open
         effective_submit = bool(submit) and not effective_dry_run
         if effective_dry_run:
             logger.info(
                 "TEST MODE: ApplicationManager will not allow final submit "
-                "(settings.dry_run=%s, mode=%s, force_submit=%s)",
+                "(settings.dry_run=%s, mode=%s, force_submit=%s, gate_open=%s)",
                 settings.dry_run,
                 mode,
                 force_submit,
+                self._submit_gate_open,
             )
         applier_cls = APPLIERS[ats]
         applier = applier_cls(
             self.page, dry_run=effective_dry_run, submit=effective_submit
         )
-        result = applier.apply(job, cv_path if cv_path and cv_path.exists() else None, cover, self.config.application)
+        result = applier.apply(
+            job,
+            cv_path if cv_path is not None and cv_path.is_file() else None,
+            cover,
+            self.config.application,
+        )
 
         # Always attach intended preview for dry-run / review inspection.
         preview_blob = preview.text_report()

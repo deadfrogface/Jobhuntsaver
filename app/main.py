@@ -136,7 +136,13 @@ def run_pipeline(
 
     def stopped() -> bool:
         try:
-            return bool(should_stop and should_stop())
+            if should_stop and should_stop():
+                return True
+        except Exception:
+            return False
+        # Fail-closed: pause flipped mid-run stops further search/apply work.
+        try:
+            return bool(getattr(config.settings, "automation_paused", False))
         except Exception:
             return False
 
