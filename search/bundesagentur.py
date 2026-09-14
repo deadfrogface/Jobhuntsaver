@@ -85,7 +85,8 @@ def _detect_remote(item: dict, text: str = "") -> str:
     if full_remote and not remote_tooling:
         return RemoteType.REMOTE.value
     mentions_remote = homeoffice_flag or any(
-        tok in blob_norm for tok in ("homeoffice", "telearbeit")
+        tok in blob_norm
+        for tok in ("homeoffice", "telearbeit", "telecommute", "mobil arbeiten")
     ) or (bool(re.search(r"\bremote\b", blob_norm)) and not remote_tooling)
     mentions_hybrid = "hybrid" in blob_norm or (
         mentions_remote and any(tok in blob_norm for tok in ("tage", "teilweise", "anteil"))
