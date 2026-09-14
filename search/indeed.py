@@ -6,6 +6,7 @@ Pattern adapted from JobRadar jobspy_adapter.py (GPL-3.0).
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -17,14 +18,35 @@ logger = logging.getLogger("jobhuntsaver")
 
 
 def _remote_from_row(row) -> str:
+    """Classify remote/hybrid from JobSpy row location + is_remote flag.
+
+    Normalizes DE/EN Home-Office spellings (space/hyphen) like JSON-LD/BA.
+    Explicit negations and Remote-Desktop / remote-access tooling must not
+    count as a remote job.
+    """
     loc = str(row.get("location") or "").lower()
-    is_remote = row.get("is_remote")
-    if is_remote or "remote" in loc or "homeoffice" in loc:
-        if "hybrid" in loc:
-            return RemoteType.HYBRID.value
-        return RemoteType.REMOTE.value
-    if "hybrid" in loc:
+    loc_norm = (
+        loc.replace("home-office", "homeoffice").replace("home office", "homeoffice")
+    )
+    is_remote = bool(row.get("is_remote"))
+    if re.search(
+        r"\b(?:kein|keine|ohne|nicht|no)\s+(?:homeoffice|remote|telearbeit)\b"
+        r"|\bpräsenzpflicht\b|\bnur\s+vor\s+ort\b",
+        loc_norm,
+    ):
+        return RemoteType.ONSITE.value
+    remote_tooling = bool(
+        re.search(r"\bremote[\s\-_]?(?:desktop|access|support|verwaltung)\b", loc_norm)
+    )
+    mentions_home = any(
+        tok in loc_norm
+        for tok in ("homeoffice", "telearbeit", "telecommute", "mobil arbeiten")
+    )
+    mentions_remote_word = bool(re.search(r"\bremote\b", loc_norm)) and not remote_tooling
+    if "hybrid" in loc_norm:
         return RemoteType.HYBRID.value
+    if is_remote or mentions_home or mentions_remote_word:
+        return RemoteType.REMOTE.value
     return RemoteType.ONSITE.value
 
 

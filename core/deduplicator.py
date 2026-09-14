@@ -26,6 +26,19 @@ SOURCE_PRIORITY = {
     "unknown": 10,
 }
 
+_LEGAL_SUFFIX = re.compile(
+    r"\b(gmbh|ag|kg|ug|se|inc|ltd|llc|co\.?|company|mbh)\b\.?",
+    re.I,
+)
+_GENDER_TAG = re.compile(
+    r"(?:"
+    r"\((?:m/w/d|w/m/d|m/w|w/m|f/m/d|d/m/w|all genders|alle geschlechter)\)|"
+    r"\b(?:m/w/d|w/m/d|f/m/d|d/m/w)\b|"
+    r"\b(?:m/w|w/m)\b"
+    r")",
+    re.I,
+)
+
 
 def make_job_id(source: str, source_job_id: str = "", url: str = "", title: str = "", company: str = "") -> str:
     key = source + "|" + (source_job_id or url.strip().lower() or f"{title}|{company}".lower())
@@ -38,12 +51,32 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def company_key(company: str) -> str:
+    """Normalize company for twin matching (strip GmbH/AG/… legal suffixes)."""
+    text = (company or "").lower().strip()
+    text = _LEGAL_SUFFIX.sub("", text)
+    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def title_key(title: str) -> str:
+    """Normalize title for twin matching (strip German gender tags)."""
+    text = (title or "").lower().strip()
+    text = _GENDER_TAG.sub(" ", text)
+    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def fingerprint(job: Job) -> str:
-    """Soft fingerprint for cross-platform duplicates."""
+    """Soft fingerprint for cross-platform duplicates.
+
+    Uses the same company/title keys as ``Database.has_applied`` so portal twins
+    (Acme GmbH vs Acme, title with/without m/w/d) collapse consistently.
+    """
     return "|".join(
         [
-            _norm(job.company),
-            _norm(job.title),
+            company_key(job.company),
+            title_key(job.title),
             _norm(job.city or job.address),
         ]
     )
@@ -51,8 +84,8 @@ def fingerprint(job: Job) -> str:
 
 def soft_fingerprint_usable(job: Job) -> bool:
     """Require company + title + place so bare titles cannot collapse portals."""
-    company = _norm(job.company)
-    title = _norm(job.title)
+    company = company_key(job.company)
+    title = title_key(job.title)
     place = _norm(job.city or job.address)
     return bool(company and title and place)
 
