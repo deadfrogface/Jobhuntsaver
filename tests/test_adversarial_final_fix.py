@@ -19,7 +19,7 @@ def _cfg(tmp_path: Path, *, dry_run: bool, auto_submit: bool, mode: str) -> obje
     cfg = empty_app_config(root=tmp_path)
     cfg.application.first_name = "Ada"
     cfg.application.last_name = "Tester"
-    cfg.application.email = "ada.tester@example.test"
+    cfg.application.email = "ada.tester@example.com"
     cfg.application.phone = "+491701234567"
     cfg.application.cv_path = str(tmp_path / "cv.pdf")
     (tmp_path / "cv.pdf").write_bytes(b"%PDF-1.4")
