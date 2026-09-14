@@ -68,6 +68,10 @@ Themes: System / Hell / Dunkel · Fenster mindestens ca. 900×650
 
 Demo-Video: [`docs/assets/demo/karrierekrake-demo.mp4`](docs/assets/demo/karrierekrake-demo.mp4)
 
+<p align="center">
+  <img src="docs/assets/screenshots/07-about.png" alt="Über Karrierekrake" width="360" />
+</p>
+
 ---
 
 ## Marke & Icons

@@ -21,14 +21,14 @@
 - All user-facing Stellenanker / old anchor assets removed
 
 ## Media / docs
-- Screenshots: `docs/assets/screenshots/01–06` (regenerated)
-- Demo: `docs/assets/demo/karrierekrake-demo.mp4`
+- Screenshots: `docs/assets/screenshots/01–06` (+ `07-about.png`)
+- Demo: `docs/assets/demo/karrierekrake-demo.mp4` (~45s H.264)
 - README landing rewritten for Karrierekrake
 - `docs/name-research.md`, `docs/release-notes-template.md` updated
 
-## Verification checklist
-- [ ] Pytest green
-- [ ] Tiny icons inspected (16/24/32)
-- [ ] Screenshots + demo reviewed
-- [ ] Push + PR
-- [ ] CI + Windows Smoke
+## Verification
+- Pytest: **299 passed**
+- Privacy scan: **PASS**
+- Offscreen smoke: **SMOKE_TEST_OK**
+- Tiny icons 16/24/32 inspected (legible octopus silhouette)
+- Screenshots + About + demo regenerated from real app + fictional data
