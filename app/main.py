@@ -324,7 +324,13 @@ def run_pipeline(
             if job.source_job_id
             else None
         )
-        if existing and existing.status == JobStatus.APPLIED.value:
+        if existing and existing.status in {
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        }:
             known += 1
             continue
         already = db.has_applied(job)

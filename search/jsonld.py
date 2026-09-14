@@ -63,15 +63,30 @@ def _is_gender_only_title(title: str) -> bool:
 
 def _infer_remote(*parts: str) -> str:
     blob = " ".join(p or "" for p in parts).lower()
-    if "hybrid" in blob:
+    blob_norm = (
+        blob.replace("home-office", "homeoffice")
+        .replace("home office", "homeoffice")
+    )
+    # Explicit onsite / no-remote phrasing wins over loose keyword hits.
+    if re.search(
+        r"\b(?:kein|keine|ohne|nicht|no)\s+(?:homeoffice|remote|telearbeit)\b"
+        r"|\bpräsenzpflicht\b|\bnur\s+vor\s+ort\b",
+        blob_norm,
+    ):
+        return RemoteType.ONSITE.value
+    # Remote-desktop / remote-access tooling is not a remote job.
+    if re.search(r"\bremote[\s\-_]?(?:desktop|access|support|verwaltung)\b", blob_norm):
+        if "homeoffice" not in blob_norm and "telearbeit" not in blob_norm and "hybrid" not in blob_norm:
+            return RemoteType.ONSITE.value
+    if "hybrid" in blob_norm:
         return RemoteType.HYBRID.value
     if any(
-        k in blob
-        for k in ("remote", "homeoffice", "home office", "home-office", "mobil arbeiten")
+        k in blob_norm
+        for k in ("remote", "homeoffice", "telearbeit", "telecommute", "mobil arbeiten")
     ):
         return RemoteType.REMOTE.value
     city = (parts[-1] if parts else "") or ""
-    if city.strip().lower() in {"remote", "homeoffice", "home office"}:
+    if city.strip().lower() in {"remote", "homeoffice", "home office", "telecommute"}:
         return RemoteType.REMOTE.value
     return RemoteType.ONSITE.value
 
@@ -182,7 +197,10 @@ def job_from_job_posting(
     text = (
         BeautifulSoup(description, "lxml").get_text("\n", strip=True) if description else ""
     )
-    remote = _infer_remote(title, text, city)
+    location_type = str(item.get("jobLocationType") or "").upper()
+    remote = _infer_remote(title, text, city, location_type)
+    if "TELECOMMUTE" in location_type:
+        remote = RemoteType.REMOTE.value
     smin, smax, salary_text = _salary_from_base_salary(item)
     return Job(
         id=make_job_id(source, url, url, title, company),

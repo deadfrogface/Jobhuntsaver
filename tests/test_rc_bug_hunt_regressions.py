@@ -869,3 +869,80 @@ def test_safe_click_skips_disabled_and_maybe_submit_reports():
     assert isinstance(result, ApplyResult)
     assert result.needs_review is True
     assert "disabled" in (result.error_message or "").lower()
+
+
+def test_failed_status_not_wiped_to_ignored(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(id="a", source="indeed", title="Dev", company="Acme",
+            url="https://indeed.com/viewjob?jk=1", status=JobStatus.FAILED.value)
+    )
+    db.upsert_job(
+        Job(id="a", source="indeed", title="Dev", company="Acme",
+            url="https://indeed.com/viewjob?jk=1", status=JobStatus.IGNORED.value)
+    )
+    assert db.get_job("a").status == JobStatus.FAILED.value
+    twin = Job(id="b", source="ss", title="Dev", company="Acme", url="https://ss.de/other")
+    assert db.has_applied(twin) is True
+
+
+def test_jsonld_telecommute_and_negated_homeoffice():
+    from search.jsonld import job_from_job_posting
+
+    remote = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Developer",
+            "description": "Software",
+            "url": "https://x/1",
+            "hiringOrganization": {"name": "C"},
+            "jobLocationType": "TELECOMMUTE",
+        },
+        source="stepstone",
+    )
+    assert remote is not None and remote.remote_type == "remote"
+    onsite = job_from_job_posting(
+        {
+            "@type": "JobPosting",
+            "title": "Büro",
+            "description": "Kein Homeoffice möglich. Präsenzpflicht.",
+            "url": "https://x/2",
+            "hiringOrganization": {"name": "C"},
+        },
+        source="xing",
+    )
+    assert onsite is not None and onsite.remote_type == "onsite"
+
+
+def test_cleared_home_address_drops_stale_coords(tmp_path: Path):
+    from core.config import empty_app_config
+    from core.database import Database
+    from core.location import LocationService
+
+    cfg = empty_app_config()
+    cfg.profile.location.home_address = ""
+    cfg.profile.location.home_latitude = 52.52
+    cfg.profile.location.home_longitude = 13.4
+    cfg.profile.location.home_geocoded_address = "Berlin"
+    db = Database(tmp_path / "jobs.db", recover=False)
+    svc = LocationService(db, cfg)
+    res = svc.resolve_home()
+    assert res.resolved is False
+    assert cfg.profile.location.home_latitude is None
+    assert cfg.profile.location.home_longitude is None
+
+
+def test_language_aliases_fr_es_and_soft_fluency():
+    from core.matcher import LanguageEntry, _profile_lang_level, _required_language_levels
+
+    reqs = _required_language_levels("Englisch fließend")
+    assert any(a == "englisch" and b == "C1" for a, b in reqs)
+    reqs2 = _required_language_levels("verhandlungssichere Deutschkenntnisse")
+    assert any(a.startswith("deutsch") for a, _ in reqs2)
+    langs = [LanguageEntry(language="French", level="C1")]
+    assert _profile_lang_level(langs, "französisch") >= 5
+    langs2 = [LanguageEntry(language="Spanish", level="B2")]
+    assert _profile_lang_level(langs2, "spanisch") >= 4

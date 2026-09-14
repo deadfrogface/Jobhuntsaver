@@ -256,10 +256,17 @@ class Database:
             JobStatus.APPLYING.value,
         }
         incoming = data.get("status") or JobStatus.NEW.value
+        # Soft-dedup uses NEW; rematch may try IGNORED/INTERESTING — neither
+        # may erase a prior attempt/outcome (twins must stay blocked).
+        wipe_statuses = {
+            JobStatus.NEW.value,
+            JobStatus.IGNORED.value,
+            JobStatus.INTERESTING.value,
+        }
         if (
             existing
             and existing.status in protected
-            and incoming == JobStatus.NEW.value
+            and incoming in wipe_statuses
         ):
             data["status"] = existing.status
             job.status = existing.status
