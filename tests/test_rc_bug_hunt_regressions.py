@@ -821,6 +821,13 @@ def test_indeed_home_office_spellings_and_remote_desktop():
     )
     assert _remote_from_row({"is_remote": True, "location": "Berlin"}) == "remote"
     assert _remote_from_row({"is_remote": False, "location": "Remote"}) == "remote"
+    assert _remote_from_row({"is_remote": False, "location": "Berlin (kein Homeoffice)"}) == "onsite"
+    # JobSpy is_remote=True still wins over bare onsite city text, but not over
+    # explicit onsite negations in the location string.
+    assert (
+        _remote_from_row({"is_remote": True, "location": "kein Homeoffice, nur vor Ort"})
+        == "onsite"
+    )
 
 
 def test_hard_exclude_unknown_distance_onsite():

@@ -21,13 +21,20 @@ def _remote_from_row(row) -> str:
     """Classify remote/hybrid from JobSpy row location + is_remote flag.
 
     Normalizes DE/EN Home-Office spellings (space/hyphen) like JSON-LD/BA.
-    Remote-Desktop / remote-access tooling must not count as a remote job.
+    Explicit negations and Remote-Desktop / remote-access tooling must not
+    count as a remote job.
     """
     loc = str(row.get("location") or "").lower()
     loc_norm = (
         loc.replace("home-office", "homeoffice").replace("home office", "homeoffice")
     )
     is_remote = bool(row.get("is_remote"))
+    if re.search(
+        r"\b(?:kein|keine|ohne|nicht|no)\s+(?:homeoffice|remote|telearbeit)\b"
+        r"|\bpräsenzpflicht\b|\bnur\s+vor\s+ort\b",
+        loc_norm,
+    ):
+        return RemoteType.ONSITE.value
     remote_tooling = bool(
         re.search(r"\bremote[\s\-_]?(?:desktop|access|support|verwaltung)\b", loc_norm)
     )
