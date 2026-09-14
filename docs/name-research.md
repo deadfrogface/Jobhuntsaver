@@ -1,14 +1,22 @@
-# Product name research — Karrierekrake (display brand)
+# Product name — Karrierekrake
 
-Repo / technical identity remains **Karrierekrake**
-(`%LOCALAPPDATA%\Karrierekrake`, `Karrierekrake.exe`, GitHub repo name unchanged).
+Canonical product identity (display **and** technical):
 
-## Decision
+| Surface | Value |
+|---------|--------|
+| Display name | **Karrierekrake** |
+| EXE | `Karrierekrake.exe` |
+| AppData | `%LOCALAPPDATA%\Karrierekrake` |
+| Logger / env prefix | `karrierekrake` / `KARRIEREKRAKE_*` |
+| GitHub repository | Prefer `deadfrogface/Karrierekrake` (manual rename if required) |
+
+## Decision history
 
 | # | Name | Notes |
 |---|------|-------|
-| 1 | **Karrierekrake** | Distinctive German compound (“career octopus”). Matches locked master artwork (octopus + glasses + laptop). Strong mnemonic for multi-task job search. **Winner.** |
-| — | Stellenanker | Prior working title; **retired** from all user-facing surfaces. |
+| 1 | **Karrierekrake** | Distinctive German compound (“career octopus”). Matches locked master artwork. **Canonical.** |
+| — | Stellenanker | Prior working title; retired from all surfaces. |
+| — | Former technical identity | Removed from the active tree. One-time AppData migration lives only in `desktop/legacy_migration.py`. |
 | — | Bewpfad / Stellweg / Bewmate | Earlier shortlist; not selected. |
 | — | Joblotse | Rejected — collision with [joblotse.de](https://joblotse.de/). |
 
@@ -18,11 +26,10 @@ Repo / technical identity remains **Karrierekrake**
 
 ## Assets
 
-- MASTER A (large): `assets/brand/karrierekrake-logo-master.png` — README, onboarding, About, social
-- MASTER B (icon): `assets/brand/karrierekrake-app-icon-master.png` — EXE / tray / small UI
-- Derivatives only via `scripts/generate_brand_assets.py` (Pillow resize — no redraw)
+- MASTER A (large): `assets/brand/karrierekrake-logo-master.png`
+- MASTER B (icon): `assets/brand/karrierekrake-app-icon-master.png`
+- Derivatives via `scripts/generate_brand_assets.py` (Pillow resize — no redraw)
 
-## Change surface
+## Spelling
 
-`desktop/branding.py` (`DISPLAY_NAME`, palette tokens, asset helpers).  
-Do **not** rename the GitHub repository or wipe AppData without a tested migration.
+Always **Karrierekrake** / `karrierekrake`. Never split or camel-case the second half.

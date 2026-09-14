@@ -2,19 +2,19 @@
 
 ## Baseline
 
-- Base `origin/main`: `d300d27` (after adversarial abuse PR #14)
+- Base `origin/main`: after adversarial abuse PR #14
 - Branch: `cursor/karrierekrake-final-rename-d85b`
 - Product name (display + technical): **Karrierekrake**
 - Tagline: **FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.**
 
 ## What changed
 
-- Technical identity migrated from Jobhuntsaver → Karrierekrake (constants, loggers, env vars, UA, scheduler, single-instance keys)
+- Technical identity fully migrated to Karrierekrake (constants, loggers, env vars, UA, scheduler, single-instance keys)
 - EXE / PyInstaller: `packaging/Karrierekrake.spec` → `Karrierekrake.exe`
 - AppData canonical path: `%LOCALAPPDATA%\Karrierekrake`
-- One-time safe migration from legacy AppData folder (isolated in `desktop/legacy_migration.py`)
+- One-time safe migration from the retired AppData folder name (isolated in `desktop/legacy_migration.py`)
 - CI / Windows Smoke / build scripts / docs / README updated
-- Regression: `tests/test_product_rename_migration.py` (zero-legacy scan + migration matrix)
+- Regression: `tests/test_product_rename_migration.py` (migration matrix + zero-legacy scan)
 
 ## Migration rules
 
