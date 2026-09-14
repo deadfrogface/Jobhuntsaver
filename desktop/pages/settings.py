@@ -60,6 +60,7 @@ def _scroll_form() -> tuple[QWidget, QVBoxLayout]:
 
 class SettingsPage(QWidget):
     appearance_changed = Signal()
+    settings_saved = Signal()
 
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
@@ -420,6 +421,7 @@ class SettingsPage(QWidget):
         self.config_service.save(cfg)
         ok, msg = ScheduleService(cfg).sync_from_config()
         self.appearance_changed.emit()
+        self.settings_saved.emit()
         note = tr("settings.saved")
         if (cfg.settings.language or "de").lower() != old_lang:
             note = f"{note}\n{tr('settings.lang_restart')}"

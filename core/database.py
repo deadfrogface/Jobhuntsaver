@@ -318,10 +318,31 @@ class Database:
         return [self._row_to_job(r) for r in rows]
 
     def update_job_status(self, job_id: str, status: str) -> None:
+        """Update status with the same rematch protections as upsert_job.
+
+        Soft/wipe statuses (new/ignored/interesting) must not erase attempt or
+        outcome rows (applied/failed/needs_review/captcha/applying).
+        """
+        protected = {
+            JobStatus.APPLIED.value,
+            JobStatus.FAILED.value,
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.APPLYING.value,
+        }
+        wipe_statuses = {
+            JobStatus.NEW.value,
+            JobStatus.IGNORED.value,
+            JobStatus.INTERESTING.value,
+        }
+        incoming = status or JobStatus.NEW.value
+        existing = self.get_job(job_id)
+        if existing and existing.status in protected and incoming in wipe_statuses:
+            return
         with self.connection() as conn:
             conn.execute(
                 "UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?",
-                (status, utc_now_iso(), job_id),
+                (incoming, utc_now_iso(), job_id),
             )
 
     def has_applied(self, job: Job) -> bool:

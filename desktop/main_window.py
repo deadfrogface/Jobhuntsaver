@@ -146,6 +146,7 @@ class MainWindow(QMainWindow):
         self.dashboard.cancel_requested.connect(self.cancel_pipeline)
         self.dashboard.clear_jobs_requested.connect(self.clear_job_data)
         self.settings.appearance_changed.connect(self.apply_appearance_from_settings)
+        self.settings.settings_saved.connect(self._sync_worker_pause_from_settings)
 
         self.tray = AppTray(self)
         self.tray.show()
@@ -256,7 +257,9 @@ class MainWindow(QMainWindow):
         if thread_is_running(self._thread):
             QMessageBox.information(self, tr("app.name"), tr("msg.pipeline_running"))
             return
-        cfg = config_override or self.config_service.load()
+        # Always snapshot: GUI load()/save() and ConfigService.config must not
+        # mutate a live worker's safety settings mid-search / mid-apply.
+        cfg = deepcopy(config_override or self.config_service.load())
         if bool(getattr(cfg.settings, "automation_paused", False)):
             QMessageBox.information(self, tr("app.name"), tr("msg.automation_paused"))
             return
@@ -393,11 +396,22 @@ class MainWindow(QMainWindow):
         cfg.settings.automation_paused = paused
         self.config_service.save(cfg)
         ScheduleService(cfg).sync_from_config()
+        # Fail-closed: pause must stop an in-flight pipeline (config is snapshotted).
+        self._sync_worker_pause(paused)
         self.dashboard.refresh()
         self.settings.load_from_config()
         self.progress_label.setText(
             tr("status.paused") if paused else tr("status.resumed")
         )
+
+    def _sync_worker_pause_from_settings(self) -> None:
+        cfg = self.config_service.load()
+        self._sync_worker_pause(bool(cfg.settings.automation_paused))
+
+    def _sync_worker_pause(self, paused: bool) -> None:
+        worker = getattr(self, "_worker", None)
+        if worker is not None and hasattr(worker, "set_paused"):
+            worker.set_paused(paused)
 
     def force_quit(self) -> None:
         """Explicit exit (tray menu). Always terminates the process."""
