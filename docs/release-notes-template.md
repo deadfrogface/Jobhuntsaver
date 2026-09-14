@@ -1,10 +1,11 @@
 # Release notes template
 
-## Stellenanker (Jobhuntsaver) — vX.Y.Z
+## Karrierekrake (Jobhuntsaver) — vX.Y.Z
 
 **Date:** YYYY-MM-DD  
 **Platform:** Windows 10/11 (x64)  
-**Artifact:** `Jobhuntsaver.exe` (onefile)
+**Artifact:** `Jobhuntsaver.exe` (onefile)  
+**Display brand:** Karrierekrake · Tagline: FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.
 
 ### Highlights
 
@@ -32,6 +33,7 @@ Optional: clone the repo and run `setup.bat` for a development install.
 
 - SHA256: `<paste from CI Windows Smoke log>`
 - Approximate size: ~160 MB (Chromium downloaded separately on demand)
+- EXE icon: multi-size `assets/brand/app.ico` (MASTER B octopus)
 
 ### Known limitations
 
@@ -42,5 +44,5 @@ Optional: clone the repo and run `setup.bat` for a development install.
 ### Links
 
 - Screenshots: `docs/assets/screenshots/`
-- Demo: `docs/assets/demo/` (if present in the release tree)
+- Demo: `docs/assets/demo/karrierekrake-demo.mp4`
 - Brand assets: `assets/brand/`

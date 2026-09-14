@@ -1,20 +1,28 @@
-# Product name research — Stellenanker (display brand)
+# Product name research — Karrierekrake (display brand)
 
 Repo / technical identity remains **Jobhuntsaver**
 (`%LOCALAPPDATA%\Jobhuntsaver`, `Jobhuntsaver.exe`, GitHub repo name unchanged).
 
-## Top 5 candidates
+## Decision
 
 | # | Name | Notes |
 |---|------|-------|
-| 1 | **Stellenanker** | Distinctive German compound (“anchor for job posts”). Clear local/stability metaphor. No competing job-search software found. **Winner.** |
-| 2 | **Bewpfad** | Short inventable compound (“application path”). Easy to say. Lower distinctiveness; possible generic feel. |
-| 3 | **Stellweg** | “Path to positions.” Art-world name collision (Carla Stellweg curator) — not software, but searchable noise. |
-| 4 | **Bewmate** | Soft EN hybrid. Crowded “*-mate” product pattern; weaker DE brand signal. |
-| 5 | **Joblotse** | Strong metaphor, but **direct collision** with existing German SaaS [joblotse.de](https://joblotse.de/) (workflow management). Rejected as winner. |
+| 1 | **Karrierekrake** | Distinctive German compound (“career octopus”). Matches locked master artwork (octopus + glasses + laptop). Strong mnemonic for multi-task job search. **Winner.** |
+| — | Stellenanker | Prior working title; **retired** from all user-facing surfaces. |
+| — | Bewpfad / Stellweg / Bewmate | Earlier shortlist; not selected. |
+| — | Joblotse | Rejected — collision with [joblotse.de](https://joblotse.de/). |
 
-## Winner
+## Tagline
 
-**Stellenanker** — user-facing display name, tagline, icons, README hero.
+**FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.**
 
-Change via `desktop/branding.py` (`DISPLAY_NAME`, colors, assets). Do **not** rename the GitHub repository or wipe AppData without a tested migration.
+## Assets
+
+- MASTER A (large): `assets/brand/karrierekrake-logo-master.png` — README, onboarding, About, social
+- MASTER B (icon): `assets/brand/karrierekrake-app-icon-master.png` — EXE / tray / small UI
+- Derivatives only via `scripts/generate_brand_assets.py` (Pillow resize — no redraw)
+
+## Change surface
+
+`desktop/branding.py` (`DISPLAY_NAME`, palette tokens, asset helpers).  
+Do **not** rename the GitHub repository or wipe AppData without a tested migration.

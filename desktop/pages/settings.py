@@ -26,6 +26,7 @@ from desktop.i18n import tr
 from desktop.services import ConfigService
 from desktop.services.browser_install import playwright_available
 from desktop.services.schedule_service import ScheduleService
+from desktop.widgets.about_dialog import AboutDialog
 from desktop.widgets.scroll_page import wrap_scrollable
 from desktop.workers import (
     BrowserCheckWorker,
@@ -89,6 +90,10 @@ class SettingsPage(QWidget):
         self.general_form.addRow(self.theme_label, self.theme_combo)
         self.general_form.addRow(self.start_windows)
         self.general_form.addRow(self.minimize_tray)
+        self.about_btn = QPushButton()
+        self.about_btn.setObjectName("SecondaryButton")
+        self.about_btn.clicked.connect(self.open_about)
+        self.general_form.addRow(self.about_btn)
         general_box = QGroupBox()
         self.general_box = general_box
         self.appear_box = general_box  # back-compat attribute
@@ -295,7 +300,11 @@ class SettingsPage(QWidget):
         self.custom_times.setPlaceholderText("08:00, 17:00")
         self.check_browser_btn.setText(tr("btn.check_browser"))
         self.repair_browser_btn.setText(tr("btn.repair_browser"))
+        self.about_btn.setText(tr("about.open"))
         self.save_btn.setText(tr("btn.save_settings"))
+
+    def open_about(self) -> None:
+        AboutDialog(self).exec()
 
     def load_from_config(self) -> None:
         cfg = self.config_service.load()

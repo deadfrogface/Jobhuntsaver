@@ -3,6 +3,8 @@
 Internal / filesystem identity remains ``Jobhuntsaver`` so existing
 ``%LOCALAPPDATA%\\Jobhuntsaver`` trees, Task Scheduler names, smoke markers,
 and EXE filenames keep working without a risky migration.
+
+User-facing brand: **Karrierekrake**.
 """
 
 from __future__ import annotations
@@ -20,9 +22,9 @@ ORG_DOMAIN = "jobhuntsaver.local"
 USER_AGENT = "Jobhuntsaver/1.0 (local personal use)"
 
 # --- User-facing product brand (changeable) ---
-DISPLAY_NAME = "Stellenanker"
-TAGLINE_DE = "Lokale Jobsuche & Bewerbungen für Deutschland"
-TAGLINE_EN = "Local job search & applications for Germany"
+DISPLAY_NAME = "Karrierekrake"
+TAGLINE_DE = "FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK."
+TAGLINE_EN = "FIND. APPLY. KEEP THE OVERVIEW."
 SHORT_DESCRIPTION_DE = (
     "Desktop-App für die Jobsuche in Deutschland: finden, bewerten, "
     "Bewerbungen vorbereiten — alles lokal auf Ihrem PC."
@@ -32,18 +34,40 @@ SHORT_DESCRIPTION_EN = (
     "applications — everything stays on your PC."
 )
 
-# Brand colors (restrained teal / slate — not purple-on-white)
-COLOR_PRIMARY = "#1F6B5C"
-COLOR_PRIMARY_HOVER = "#18574B"
-COLOR_ACCENT = "#C45C26"
-COLOR_SIDEBAR_TOP = "#143D48"
-COLOR_SIDEBAR_BOTTOM = "#0B282F"
-COLOR_LIGHT_BG = "#F0F4F7"
-COLOR_DARK_BG = "#121820"
+# ---------------------------------------------------------------------------
+# Canonical palette (centralized design tokens)
+# Orange is reserved for brand artwork — not general UI chrome.
+# ---------------------------------------------------------------------------
+COLOR_NAVY = "#132238"
+COLOR_TEAL = "#18A999"
+COLOR_TEAL_HOVER = "#148F82"
+COLOR_ORANGE = "#E86A45"  # brand / illustration only
+COLOR_SUCCESS = "#1F7A4C"
+COLOR_WARN = "#C47A1A"
+COLOR_ERROR = "#B83A3A"
+COLOR_LIGHT_BG = "#EEF2F5"
+COLOR_LIGHT_SURFACE = "#FFFFFF"
+COLOR_LIGHT_BORDER = "#D5DEE8"
+COLOR_LIGHT_TEXT = "#1C2430"
+COLOR_LIGHT_MUTED = "#5A6B7A"
+COLOR_DARK_BG = "#0E1620"
+COLOR_DARK_SURFACE = "#1A2430"
+COLOR_DARK_BORDER = "#2B3A4A"
+COLOR_DARK_TEXT = "#E8EEF4"
+COLOR_DARK_MUTED = "#9AB5B6"
 COLOR_MARK = "#F4F7FA"
+
+# Back-compat aliases used by theme / tray
+COLOR_PRIMARY = COLOR_TEAL
+COLOR_PRIMARY_HOVER = COLOR_TEAL_HOVER
+COLOR_ACCENT = COLOR_WARN  # warnings — not brand orange
+COLOR_SIDEBAR_TOP = COLOR_NAVY
+COLOR_SIDEBAR_BOTTOM = "#0A1520"
 
 # Asset layout relative to repo / frozen bundle
 ASSET_REL = Path("assets") / "brand"
+ICON_MASTER_NAME = "karrierekrake-app-icon-master.png"
+LOGO_MASTER_NAME = "karrierekrake-logo-master.png"
 
 
 def _asset_roots() -> list[Path]:
@@ -79,7 +103,7 @@ def project_assets_dir() -> Path:
 
 
 def icon_path(size: int | None = None) -> Path | None:
-    """Prefer ICO for Windows, then sized PNG, then logo PNG."""
+    """Prefer sized PNG for UI, then ICO, then master icon."""
     for root in _asset_roots():
         base = root / ASSET_REL
         candidates: list[Path] = []
@@ -90,6 +114,7 @@ def icon_path(size: int | None = None) -> Path | None:
                 base / "app.ico",
                 base / "icons" / "icon-256.png",
                 base / "icons" / "icon-128.png",
+                base / ICON_MASTER_NAME,
                 base / "logo.png",
             ]
         )
@@ -97,6 +122,22 @@ def icon_path(size: int | None = None) -> Path | None:
             if path.is_file():
                 return path
     return None
+
+
+def logo_path(*, master: bool = False) -> Path | None:
+    """Large brand artwork (MASTER A) for README / onboarding / About."""
+    name = LOGO_MASTER_NAME if master else "logo.png"
+    for root in _asset_roots():
+        base = root / ASSET_REL
+        for candidate in (base / name, base / LOGO_MASTER_NAME, base / "logo.png"):
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def app_icon_master_path() -> Path | None:
+    path = project_assets_dir() / ICON_MASTER_NAME
+    return path if path.is_file() else None
 
 
 def social_preview_path() -> Path | None:

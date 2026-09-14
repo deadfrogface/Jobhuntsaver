@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desktop.branding import DATA_DIR_NAME, DISPLAY_NAME, icon_path
+from desktop.branding import (
+    COLOR_NAVY,
+    COLOR_ORANGE,
+    COLOR_TEAL,
+    DATA_DIR_NAME,
+    DISPLAY_NAME,
+    TAGLINE_DE,
+    icon_path,
+    logo_path,
+)
 from desktop.demo_data import seed_demo_database
 from desktop.i18n import TRANSLATIONS, i18n
 from desktop.status_labels import status_badge_kind, status_label
@@ -13,12 +22,31 @@ from desktop.wizard import FirstRunWizard
 
 
 def test_display_brand_changeable_without_data_dir_rename():
-    assert DISPLAY_NAME == "Stellenanker"
+    assert DISPLAY_NAME == "Karrierekrake"
     assert DATA_DIR_NAME == "Jobhuntsaver"
+    assert TAGLINE_DE.startswith("FINDE.")
+    assert COLOR_NAVY == "#132238"
+    assert COLOR_TEAL == "#18A999"
+    assert COLOR_ORANGE == "#E86A45"
     assert icon_path(256) is not None
     assert icon_path(256).is_file()
+    assert logo_path(master=True) is not None and logo_path(master=True).is_file()
     assert (Path("assets/brand/app.ico")).is_file()
     assert (Path("assets/brand/social-preview.png")).is_file()
+    assert (Path("assets/brand/karrierekrake-app-icon-master.png")).is_file()
+    assert (Path("assets/brand/karrierekrake-logo-master.png")).is_file()
+    for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+        p = Path(f"assets/brand/icons/icon-{size}.png")
+        assert p.is_file(), p
+
+
+def test_no_user_facing_stellenanker_strings():
+    for lang, table in TRANSLATIONS.items():
+        blob = " ".join(table.values()).lower()
+        assert "stellenanker" not in blob, lang
+    readme = Path("README.md").read_text(encoding="utf-8").lower()
+    assert "stellenanker" not in readme
+    assert "karrierekrake" in readme
 
 
 def test_status_labels_map_without_changing_enums():
@@ -39,10 +67,15 @@ def test_new_i18n_keys_present_both_languages():
         "settings.advanced",
         "status_label.captcha",
         "brand.tagline",
+        "about.title",
+        "about.open",
+        "about.tech",
     ):
         assert key in TRANSLATIONS["de"]
         assert key in TRANSLATIONS["en"]
     assert set(TRANSLATIONS["de"]) == set(TRANSLATIONS["en"])
+    assert TRANSLATIONS["de"]["app.name"] == "Karrierekrake"
+    assert TRANSLATIONS["en"]["app.name"] == "Karrierekrake"
 
 
 def test_wizard_has_three_pages(tmp_path, monkeypatch):
@@ -64,6 +97,8 @@ def test_stylesheets_include_design_tokens():
     dark = stylesheet_for("dark")
     assert "HeroCard" in light and "HeroCard" in dark
     assert "PrimaryButton" in light
+    assert COLOR_TEAL in light or COLOR_TEAL.lower() in light.lower()
+    assert COLOR_NAVY in light
     assert light != dark
 
 
