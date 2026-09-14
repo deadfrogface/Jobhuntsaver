@@ -55,11 +55,11 @@ jobs:
         run: python scripts/privacy_scan.py
       - name: Build onefile EXE
         run: |
-          python -m PyInstaller --noconfirm --clean packaging/Jobhuntsaver.spec
-          if (!(Test-Path "dist\Jobhuntsaver.exe")) { Write-Error "EXE missing"; exit 1 }
-          $item = Get-Item "dist\Jobhuntsaver.exe"
+          python -m PyInstaller --noconfirm --clean packaging/Karrierekrake.spec
+          if (!(Test-Path "dist\Karrierekrake.exe")) { Write-Error "EXE missing"; exit 1 }
+          $item = Get-Item "dist\Karrierekrake.exe"
           if ($item.Length -lt 1000000) { Write-Error "EXE too small: $($item.Length)"; exit 1 }
-          $hash = (Get-FileHash "dist\Jobhuntsaver.exe" -Algorithm SHA256).Hash
+          $hash = (Get-FileHash "dist\Karrierekrake.exe" -Algorithm SHA256).Hash
           @"
           commit=$env:GITHUB_SHA
           size=$($item.Length)
@@ -69,7 +69,7 @@ jobs:
           "@ | Set-Content dist\build_metadata.txt
           Get-Content dist\build_metadata.txt
           # Fail if this is a console subsystem EXE (users must not see a terminal).
-          $bytes = [System.IO.File]::ReadAllBytes("dist\Jobhuntsaver.exe")
+          $bytes = [System.IO.File]::ReadAllBytes("dist\Karrierekrake.exe")
           $pe = [BitConverter]::ToInt32($bytes, 0x3C)
           $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
           # 2 = WINDOWS_GUI, 3 = WINDOWS_CUI
@@ -82,13 +82,13 @@ jobs:
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-smoke-$([guid]::NewGuid())"
           $env:QT_QPA_PLATFORM = "offscreen"
           # Windowed onefile: poll tokenized marker (do not trust process exit alone).
-          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Jobhuntsaver.exe") -LocalAppData $tmp.FullName
+          & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath (Resolve-Path "dist\Karrierekrake.exe") -LocalAppData $tmp.FullName
       - name: Packaged legacy DB migration (library + EXE smoke)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $tmp = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\jhs-legacy-$([guid]::NewGuid())"
-          $app = Join-Path $tmp.FullName "Jobhuntsaver"
+          $app = Join-Path $tmp.FullName "Karrierekrake"
           $data = Join-Path $app "data"
           New-Item -ItemType Directory -Force -Path $data, (Join-Path $app "logs"), (Join-Path $app "config") | Out-Null
           python -c @"
@@ -99,7 +99,7 @@ jobs:
           "@
           if ($LASTEXITCODE -ne 0) { throw "legacy db seed failed" }
           $env:QT_QPA_PLATFORM = "offscreen"
-          $exe = (Resolve-Path "dist\Jobhuntsaver.exe").Path
+          $exe = (Resolve-Path "dist\Karrierekrake.exe").Path
           # Require marker db= line to point at this isolated legacy jobs.db.
           & ".\scripts\ci_wait_exe_smoke.ps1" -ExePath $exe -LocalAppData $tmp.FullName -ExpectedDbSubstring $data
           python -c @"
@@ -121,9 +121,9 @@ jobs:
       - name: Upload EXE + metadata
         uses: actions/upload-artifact@v4
         with:
-          name: Jobhuntsaver-Windows-Smoke
+          name: Karrierekrake-Windows-Smoke
           path: |
-            dist/Jobhuntsaver.exe
+            dist/Karrierekrake.exe
             dist/build_metadata.txt
             dist/smoke_test_result.txt
           if-no-files-found: error

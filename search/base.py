@@ -11,7 +11,7 @@ from typing import Any
 
 from core.models import Job
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 
 @dataclass

@@ -1,6 +1,6 @@
 """Packaged EXE + clean AppData: launch, confirm UI, run CLI pipeline smoke.
 
-1) Launch Jobhuntsaver.exe with temp LOCALAPPDATA (empty DB).
+1) Launch Karrierekrake.exe with temp LOCALAPPDATA (empty DB).
 2) Confirm window appears (UI process alive / responsive enough to paint).
 3) Close EXE.
 4) Run search_only pipeline against empty DB with BA (network) if available,
@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / "dist" / "Jobhuntsaver.exe"
+EXE = ROOT / "dist" / "Karrierekrake.exe"
 sys.path.insert(0, str(ROOT))
 
 
@@ -65,7 +65,7 @@ def _run_pipeline_smoke(local_appdata: Path) -> dict:
     from core.database import Database
     from app.main import run_pipeline
 
-    root = local_appdata / "Jobhuntsaver"
+    root = local_appdata / "Karrierekrake"
     (root / "data").mkdir(parents=True, exist_ok=True)
     (root / "logs").mkdir(parents=True, exist_ok=True)
     (root / "config").mkdir(parents=True, exist_ok=True)

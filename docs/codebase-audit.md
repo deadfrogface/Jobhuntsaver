@@ -72,5 +72,5 @@ See `core/database.py` SCHEMA. Added for existing query patterns:
 - Search adapters: `SearchAdapter` alias + `normalize`/`health_check` on `JobSource`; StepStone/XING share `search/jsonld.py`.
 - ATS: submits via `_maybe_submit`; common contact fills via `_fill_identity_fields`.
 - CAPTCHA stops AutoApply in `app/main.py`; Reset-all uses `reset_to_empty_profile`.
-- `boot.log` only with `JOBHUNTSAVER_BOOT_DIAG=1`.
+- `boot.log` only with `KARRIEREKRAKE_BOOT_DIAG=1`.
 - Profile UI sections live in `desktop/pages/profile_sections.py`; `SearchPreferences` is the canonical dataclass (`ProfileConfig` alias kept).

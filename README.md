@@ -11,8 +11,8 @@ Kein Cloud-Konto · kein Pflicht-KI-Abo · Daten bleiben auf Ihrem PC</p>
   <img src="docs/assets/screenshots/01-dashboard.png" alt="Dashboard" width="720" />
 </p>
 
-Technischer Projektname / GitHub-Repo: **Jobhuntsaver** (unverändert).  
-Anzeige-Marke: **Karrierekrake**. EXE-Dateiname bleibt `Jobhuntsaver.exe` für Kompatibilität.
+Lokale Windows-Desktop-App. Ausführdatei: `Karrierekrake.exe`.  
+Datenverzeichnis: `%LOCALAPPDATA%\Karrierekrake`
 
 ---
 
@@ -20,18 +20,18 @@ Anzeige-Marke: **Karrierekrake**. EXE-Dateiname bleibt `Jobhuntsaver.exe` für K
 
 ### Variante A: Fertige EXE
 
-1. Neueste **Release**-Datei `Jobhuntsaver.exe` herunterladen  
+1. Neueste **Release**-Datei `Karrierekrake.exe` herunterladen  
 2. Starten (bei SmartScreen: „Weitere Informationen“ → trotzdem ausführen)  
 3. Kurzer 3-Schritt-Assistent: Lebenslauf → Sucheinstellungen → Bereit  
 4. **Jobs finden**
 
-Profil & Daten: `%LOCALAPPDATA%\Jobhuntsaver`
+Profil & Daten: `%LOCALAPPDATA%\Karrierekrake`
 
 ### Variante B: Aus dem Quellcode
 
 1. Doppelklick auf **`setup.bat`** (Python 3.11+, `.venv`, Playwright Chromium, Basistests)  
 2. Start: **`start.bat`**  
-3. Optional EXE bauen: **`build.bat`** → `dist\Jobhuntsaver.exe`
+3. Optional EXE bauen: **`build.bat`** → `dist\Karrierekrake.exe`
 
 ---
 

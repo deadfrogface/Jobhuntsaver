@@ -27,7 +27,7 @@ Site-packages total (this venv): **~1039 MB** (dominated by PySide6 + Playwright
 ## Packaging implications
 
 - Runtime install should follow `requirements-runtime.txt` (no Streamlit).
-- Chromium browser binaries live under `%LOCALAPPDATA%\Jobhuntsaver\browsers` — not counted in site-packages.
+- Chromium browser binaries live under `%LOCALAPPDATA%\Karrierekrake\browsers` — not counted in site-packages.
 - Further size cuts would mean dropping Indeed/JobSpy (tls_client+pandas) or Qt widgets — out of scope for V1.
 
 ## KEEP / REMOVE summary

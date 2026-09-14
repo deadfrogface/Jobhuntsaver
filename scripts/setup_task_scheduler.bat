@@ -1,9 +1,9 @@
 @echo off
 REM Optional: Windows Task Scheduler helper
-REM Creates a daily task at 08:00 to run Jobhuntsaver search/apply once and exit.
+REM Creates a daily task at 08:00 to run Karrierekrake search/apply once and exit.
 setlocal
 cd /d "%~dp0"
-set TASK_NAME=JobhuntsaverMorning
+set TASK_NAME=KarrierekrakeMorning
 set SCRIPT=%cd%\scripts\scheduled_run.bat
 
 schtasks /Create /F /TN "%TASK_NAME%" /SC DAILY /ST 08:00 /TR "\"%SCRIPT%\"" /RL LIMITED

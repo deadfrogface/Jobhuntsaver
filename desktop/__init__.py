@@ -1,3 +1,3 @@
-"""Jobhuntsaver desktop application package."""
+"""Karrierekrake desktop application package."""
 
 __version__ = "1.0.0"

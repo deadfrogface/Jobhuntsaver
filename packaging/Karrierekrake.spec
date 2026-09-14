@@ -1,7 +1,7 @@
 ﻿# -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for Jobhuntsaver desktop app (onefile, no bundled Chromium).
+"""PyInstaller spec for Karrierekrake desktop app (onefile, no bundled Chromium).
 
-Chromium is installed at runtime into %%LOCALAPPDATA%%\\Jobhuntsaver\\browsers
+Chromium is installed at runtime into %%LOCALAPPDATA%%\\Karrierekrake\\browsers
 via desktop.services.browser_install â€” never shipped inside the EXE.
 """
 
@@ -89,7 +89,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="Jobhuntsaver",
+    name="Karrierekrake",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -98,8 +98,8 @@ exe = EXE(
     runtime_tmpdir=None,
     # Production GUI app: NEVER attach a Windows console.
     # CI smoke uses SMOKE_TEST_OK file markers (exit codes may be null for windowed EXEs).
-    # Opt-in console only via JOBHUNTSAVER_FORCE_CONSOLE=1/true/yes for local debugging.
-    console=(os.environ.get("JOBHUNTSAVER_FORCE_CONSOLE", "").strip().lower() in {"1", "true", "yes"}),
+    # Opt-in console only via KARRIEREKRAKE_FORCE_CONSOLE=1/true/yes for local debugging.
+    console=(os.environ.get("KARRIEREKRAKE_FORCE_CONSOLE", "").strip().lower() in {"1", "true", "yes"}),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

@@ -1,4 +1,4 @@
-"""Human-readable run logging for Jobhuntsaver.
+"""Human-readable run logging for Karrierekrake.
 
 Privacy: never log CV/resume body text at INFO. Prefer paths, lengths, counts.
 """
@@ -40,7 +40,7 @@ class RunLogger:
         self.path = self.logs_dir / f"run_{name or stamp}.log"
         self._lines: list[str] = []
 
-        self.logger = logging.getLogger("jobhuntsaver")
+        self.logger = logging.getLogger("karrierekrake")
         if not self.logger.handlers:
             self.logger.setLevel(logging.INFO)
             # Frozen/windowed EXE has no console — file logging only.
@@ -69,8 +69,8 @@ class RunLogger:
 
 
 def setup_logging(logs_dir: Path | None = None) -> logging.Logger:
-    """Configure root jobhuntsaver logger with rotating file under logs_dir."""
-    logger = logging.getLogger("jobhuntsaver")
+    """Configure root karrierekrake logger with rotating file under logs_dir."""
+    logger = logging.getLogger("karrierekrake")
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
@@ -87,5 +87,5 @@ def setup_logging(logs_dir: Path | None = None) -> logging.Logger:
             logs_dir = ensure_app_dirs()["logs"]
         except Exception:
             logs_dir = Path("logs")
-    _attach_rotating_file(logger, Path(logs_dir) / "jobhuntsaver.log")
+    _attach_rotating_file(logger, Path(logs_dir) / "karrierekrake.log")
     return logger

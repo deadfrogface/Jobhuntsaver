@@ -1,27 +1,28 @@
-"""Central product branding — display name is changeable; data paths stay stable.
+"""Central Karrierekrake product identity (display + technical).
 
-Internal / filesystem identity remains ``Jobhuntsaver`` so existing
-``%LOCALAPPDATA%\\Jobhuntsaver`` trees, Task Scheduler names, smoke markers,
-and EXE filenames keep working without a risky migration.
+Canonical human spelling: ``Karrierekrake``
+Canonical technical slug: ``karrierekrake``
 
-User-facing brand: **Karrierekrake**.
+Legacy AppData folder recognition lives only in ``desktop.legacy_migration``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-# --- Stable technical identity (do not change lightly) ---
-TECHNICAL_NAME = "Jobhuntsaver"
-DATA_DIR_NAME = "Jobhuntsaver"
-EXE_BASENAME = "Jobhuntsaver"
-SINGLE_INSTANCE_KEY = "JobhuntsaverSingleInstance"
-LOCAL_SERVER_NAME = "JobhuntsaverLocalServer"
-TASK_SCHEDULER_NAME = "JobhuntsaverAutoRun"
-ORG_DOMAIN = "jobhuntsaver.local"
-USER_AGENT = "Jobhuntsaver/1.0 (local personal use)"
+# --- Canonical technical identity ---
+TECHNICAL_NAME = "Karrierekrake"
+DATA_DIR_NAME = "Karrierekrake"
+EXE_BASENAME = "Karrierekrake"
+SINGLE_INSTANCE_KEY = "KarrierekrakeSingleInstance"
+LOCAL_SERVER_NAME = "KarrierekrakeLocalServer"
+TASK_SCHEDULER_NAME = "KarrierekrakeAutoRun"
+ORG_DOMAIN = "karrierekrake.local"
+USER_AGENT = "Karrierekrake/1.0 (local personal use)"
+LOGGER_NAME = "karrierekrake"
+ENV_PREFIX = "KARRIEREKRAKE"
 
-# --- User-facing product brand (changeable) ---
+# --- User-facing product brand ---
 DISPLAY_NAME = "Karrierekrake"
 TAGLINE_DE = "FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK."
 TAGLINE_EN = "FIND. APPLY. KEEP THE OVERVIEW."

@@ -1,8 +1,8 @@
 """Playwright Chromium detection and AppData install (never beside EXE).
 
 Packaged EXE must NEVER run ``sys.executable -m playwright`` — that relaunches
-Jobhuntsaver.exe. Use the Playwright driver binary. Browsers live under
-``%LOCALAPPDATA%\\Jobhuntsaver\\browsers`` (not next to the EXE, not bundled).
+Karrierekrake.exe. Use the Playwright driver binary. Browsers live under
+``%LOCALAPPDATA%\\Karrierekrake\\browsers`` (not next to the EXE, not bundled).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 BROWSERS_DIRNAME = "browsers"
 LEGACY_MS_PLAYWRIGHT = "ms-playwright"
@@ -37,9 +37,9 @@ def meipass_dir() -> Path | None:
 
 
 def appdata_browsers_dir() -> Path:
-    """Canonical install location: %LOCALAPPDATA%\\Jobhuntsaver\\browsers."""
+    """Canonical install location: %LOCALAPPDATA%\\Karrierekrake\\browsers."""
     local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    return Path(local) / "Jobhuntsaver" / BROWSERS_DIRNAME
+    return Path(local) / "Karrierekrake" / BROWSERS_DIRNAME
 
 
 def candidate_browsers_dirs() -> list[Path]:
@@ -152,9 +152,9 @@ def _run_playwright_install(browsers_path: Path) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"Playwright-Treiber nicht gefunden: {exc}"
 
-    # Safety: never pass Jobhuntsaver.exe as interpreter
+    # Safety: never pass Karrierekrake.exe as interpreter
     if is_frozen() and Path(cmd[0]).resolve() == Path(sys.executable).resolve():
-        return False, "Interner Fehler: Playwright-Treiber zeigt auf Jobhuntsaver.exe."
+        return False, "Interner Fehler: Playwright-Treiber zeigt auf Karrierekrake.exe."
 
     env = os.environ.copy()
     env.update(get_driver_env())
@@ -201,7 +201,7 @@ def check_browser() -> tuple[bool, str]:
 
 
 def repair_browser() -> tuple[bool, str]:
-    """Install/repair Chromium into %LOCALAPPDATA%\\Jobhuntsaver\\browsers.
+    """Install/repair Chromium into %LOCALAPPDATA%\\Karrierekrake\\browsers.
 
     Uses the Playwright driver binary — never relaunches the frozen EXE.
     Always attempts a driver-based install/repair (even if a previous binary
@@ -216,7 +216,7 @@ def repair_browser() -> tuple[bool, str]:
         except Exception as exc:  # noqa: BLE001
             return False, f"Playwright-Treiber nicht verfügbar: {exc}"
         if Path(cmd[0]).resolve() == Path(sys.executable).resolve():
-            return False, "Interner Fehler: Playwright-Treiber zeigt auf Jobhuntsaver.exe."
+            return False, "Interner Fehler: Playwright-Treiber zeigt auf Karrierekrake.exe."
 
     ok, msg = _run_playwright_install(target)
     if ok:

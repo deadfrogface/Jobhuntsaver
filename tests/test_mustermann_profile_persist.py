@@ -127,7 +127,7 @@ def test_config_service_save_reload_keeps_mustermann(tmp_path: Path, monkeypatch
     reloaded = svc.load()
     assert reloaded.application.first_name == "Max"
     assert reloaded.application.email == "max.bewerbung@example.org"
-    yaml_text = (tmp_path / "Jobhuntsaver" / "config" / "application_profile.yaml").read_text(
+    yaml_text = (tmp_path / "Karrierekrake" / "config" / "application_profile.yaml").read_text(
         encoding="utf-8"
     )
     assert "Max" in yaml_text

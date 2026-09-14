@@ -9,7 +9,7 @@ from apply.base import ApplyResult, BaseApplier
 from core.config import ApplicationProfile
 from core.models import Job
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 # Submit must go through _maybe_submit (dry_run / review guards). Include DE labels.
 _SUBMIT_SEL = (

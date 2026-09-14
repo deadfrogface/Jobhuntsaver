@@ -7,5 +7,5 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 call .venv\Scripts\activate.bat
 set PYTHONPATH=%cd%
-echo Starte Jobhuntsaver Desktop-App...
+echo Starte Karrierekrake Desktop-App...
 python -m desktop.app

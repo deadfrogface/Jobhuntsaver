@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-echo === Jobhuntsaver Onefile Build ===
+echo === Karrierekrake Onefile Build ===
 
 if not exist ".venv\Scripts\python.exe" (
   echo [1/5] Creating virtual environment...
@@ -36,25 +36,25 @@ if errorlevel 1 (
 echo [4/5] Building ONEFILE EXE (Chromium NOT bundled)...
 if not exist "dist" mkdir dist
 if not exist "build" mkdir build
-python -m PyInstaller --noconfirm --clean packaging\Jobhuntsaver.spec
+python -m PyInstaller --noconfirm --clean packaging\Karrierekrake.spec
 if errorlevel 1 (
   echo PyInstaller failed.
   exit /b 1
 )
 
 echo [5/5] Verifying output...
-if not exist "dist\Jobhuntsaver.exe" (
-  echo EXE missing: dist\Jobhuntsaver.exe
+if not exist "dist\Karrierekrake.exe" (
+  echo EXE missing: dist\Karrierekrake.exe
   exit /b 1
 )
-if exist "dist\Jobhuntsaver\ms-playwright" (
+if exist "dist\Karrierekrake\ms-playwright" (
   echo ERROR: Chromium must not be bundled.
   exit /b 1
 )
 
 echo.
 echo Final artifact:
-echo   %CD%\dist\Jobhuntsaver.exe
+echo   %CD%\dist\Karrierekrake.exe
 echo Browser installs on demand to:
-echo   %%LOCALAPPDATA%%\Jobhuntsaver\browsers
+echo   %%LOCALAPPDATA%%\Karrierekrake\browsers
 exit /b 0

@@ -373,7 +373,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_label.ignored": "Ignoriert",
         "about.title": "Über Karrierekrake",
         "about.open": "Über Karrierekrake…",
-        "about.tech": "Anzeige-Marke: {display}. Technisch: {technical} ({exe}, %LOCALAPPDATA%\\{data}).",
+        "about.tech": "{display} — {exe} · Daten: %LOCALAPPDATA%\\{data}",
         "brand.tagline": "FINDE. BEWIRB. BEHALTE DEN ÜBERBLICK.",
     },
     "en": {
@@ -743,7 +743,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_label.ignored": "Ignored",
         "about.title": "About Karrierekrake",
         "about.open": "About Karrierekrake…",
-        "about.tech": "Display brand: {display}. Technical: {technical} ({exe}, %LOCALAPPDATA%\\{data}).",
+        "about.tech": "{display} — {exe} · data: %LOCALAPPDATA%\\{data}",
         "brand.tagline": "FIND. APPLY. KEEP THE OVERVIEW.",
     },
 }

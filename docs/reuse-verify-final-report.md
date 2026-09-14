@@ -46,7 +46,7 @@ Baseline tests: **165 passed** (`not network`); CV corpus **10/10**.
 | SearchPreferences | KEEP | Canonical search prefs |
 | Database / migrations | KEEP | Legacy path fixed |
 | Search orchestration | KEEP | Timeouts/cancel already solid |
-| Dedup / location / radius / salary / matcher | KEEP | Jobhuntsaver-specific, tested |
+| Dedup / location / radius / salary / matcher | KEEP | Karrierekrake-specific, tested |
 | Bundesagentur adapter | KEEP | Already ahead of JobRadar (API v6) |
 | Indeed / JobSpy | KEEP | Working |
 | StepStone / XING | ADAPT | JobRadar ItemList + HTML + page-2 fallbacks |
@@ -116,7 +116,7 @@ Linux cloud agent cannot open Windows EXE.
 - **CI unit suite** on HEAD: success (`34539697999` — privacy, static-smoke, unit-tests, database-migration, cv-regression).
 - **Windows Smoke qt-smoke**: success.
 - **Windows Smoke build-and-exe-smoke**: failed on packaged EXE smoke with empty `$LASTEXITCODE` — **same failure already on `main`** (`34537119429`). Root cause: `console=False` windowed onefile so PowerShell does not reliably receive exit codes (`$null -ne 0` → false failure).
-- **Fix in this branch:** CI builds set `JOBHUNTSAVER_CI_CONSOLE=1` (console subsystem for runners only) and smoke steps require `SMOKE_TEST_OK` in `dist/smoke_test_result.txt` instead of trusting a null exit code. End-user builds remain windowed.
+- **Fix in this branch:** CI builds set `KARRIEREKRAKE_CI_CONSOLE=1` (console subsystem for runners only) and smoke steps require `SMOKE_TEST_OK` in `dist/smoke_test_result.txt` instead of trusting a null exit code. End-user builds remain windowed.
 
 ## 10. REAL SEARCH-ONLY RESULT
 
@@ -150,10 +150,10 @@ Pipeline cancel + source timeout tests remain in green full suite (KEEP).
 
 ## 17. WINDOWS BUILD PATH
 
-- Spec: `packaging/Jobhuntsaver.spec`  
+- Spec: `packaging/Karrierekrake.spec`  
 - Local: `build.bat` (venv → pytest → PyInstaller)  
 - CI: `.github/workflows/build-windows.yml` / `windows-smoke.yml`  
-- Chromium on-demand under `%LOCALAPPDATA%\Jobhuntsaver\browsers`  
+- Chromium on-demand under `%LOCALAPPDATA%\Karrierekrake\browsers`  
 
 ## 18. FILE SIZE
 
@@ -162,7 +162,7 @@ Site-packages audit (~1039 MB venv) documented in `docs/package-size-audit.md`.
 
 ## 19. SHA256
 
-Packaged EXE SHA256 (Windows Smoke artifact `Jobhuntsaver-Windows-Smoke`, run `34540449642`):
+Packaged EXE SHA256 (Windows Smoke artifact `Karrierekrake-Windows-Smoke`, run `34540449642`):
 `48E867EEE1F3E0B832FEC469F9C5EB31DE491E111728AE71341C7A72AA849D13`
 
 ## 20. REMAINING TRUE EXTERNAL LIMITATIONS

@@ -1,5 +1,5 @@
 {
-  "purpose": "Fictional-only regression corpus for Jobhuntsaver CV parser. No real user data.",
+  "purpose": "Fictional-only regression corpus for Karrierekrake CV parser. No real user data.",
   "rules": [
     "Do not hard-code names, employers, headings, or exact values from these files into parser logic.",
     "Use these PDFs only as black-box acceptance/regression fixtures.",

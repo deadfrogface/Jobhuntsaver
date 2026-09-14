@@ -16,7 +16,7 @@ from typing import Any
 from core.config import ApplicationProfile
 from core.models import Job
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 MAX_RETRIES = 2
 RETRY_DELAYS = [3, 8]

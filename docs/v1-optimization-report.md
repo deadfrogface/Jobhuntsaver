@@ -1,17 +1,17 @@
-# Jobhuntsaver V1 Optimization Report
+# Karrierekrake V1 Optimization Report
 
 Date: 2026-09-08  
-Repo: https://github.com/deadfrogface/Jobhuntsaver
+Repo: https://github.com/deadfrogface/Karrierekrake
 
 ## PACKAGE
 
 | Metric | Value |
 |--------|-------|
 | Previous distribution size (onedir + Chromium) | **1214.6 MB** |
-| Final `Jobhuntsaver.exe` (onefile) | **160.5 MB** |
-| Optional Chromium (not in artifact) | ~200–400 MB when installed to `%LOCALAPPDATA%\Jobhuntsaver\browsers` (old bundle was **701 MB**) |
+| Final `Karrierekrake.exe` (onefile) | **160.5 MB** |
+| Optional Chromium (not in artifact) | ~200–400 MB when installed to `%LOCALAPPDATA%\Karrierekrake\browsers` (old bundle was **701 MB**) |
 | Reduction vs previous folder | **~1054 MB** (~**87%**) |
-| Artifact contents | `Jobhuntsaver.exe` **only** (no `_internal`, no `ms-playwright`, no ZIP packaging step) |
+| Artifact contents | `Karrierekrake.exe` **only** (no `_internal`, no `ms-playwright`, no ZIP packaging step) |
 
 ## DEPENDENCIES
 
@@ -37,7 +37,7 @@ Repo: https://github.com/deadfrogface/Jobhuntsaver
 | Metric | Value |
 |--------|-------|
 | Cold onefile startup (window visible) | **~13–19 s** (extract + Qt) |
-| Shutdown after WM_CLOSE | **~1.8 s** (no leftover `Jobhuntsaver.exe`) |
+| Shutdown after WM_CLOSE | **~1.8 s** (no leftover `Karrierekrake.exe`) |
 | EXE replaceable after exit | Yes (smoke rename check / process gone) |
 
 ## CODE
@@ -57,7 +57,7 @@ Repo: https://github.com/deadfrogface/Jobhuntsaver
 
 **Remaining debt:** None material for V1.
 
-Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapter` alias + `health_check` on BA/Indeed; GitHub artifact verified as single `Jobhuntsaver.exe`.
+Follow-up (2026-09-09): Indeed/LinkedIn submit via `_maybe_submit`; `SearchAdapter` alias + `health_check` on BA/Indeed; GitHub artifact verified as single `Karrierekrake.exe`.
 
 Follow-up (2026-09-09 b): Shared `search/jsonld.py`; SuccessFactors via `_maybe_submit`; `BaseApplier._fill_identity_fields`; CV text in `core/cv_extract.py`.
 
@@ -90,7 +90,7 @@ Follow-up (2026-09-09 f): Cover letters on Indeed/SmartRecruiters/SuccessFactors
 
 | Item | Result |
 |------|--------|
-| Final artifact | `Jobhuntsaver-Windows` → `Jobhuntsaver.exe` |
+| Final artifact | `Karrierekrake-Windows` → `Karrierekrake.exe` |
 | Chromium in artifact | **No** |
 | Clean Windows smoke | Launch / empty profile / close / process exit — **OK** (`scripts/smoke_onefile_exe.py`) |
 | GitHub workflow | Updated; no Compress-Archive; upload EXE only |
@@ -100,7 +100,7 @@ Follow-up (2026-09-09 f): Cover letters on Indeed/SmartRecruiters/SuccessFactors
 - `pytest`: **88** (incl. search adapters, apply helpers, captcha stop, hard filter, reset helpers, profile sections)
 - Privacy scan: **OK**
 - Packaged smoke: **SMOKE_OK** (`scripts/smoke_onefile_exe.py`)
-- GitHub artifact verified: only `Jobhuntsaver.exe`
+- GitHub artifact verified: only `Karrierekrake.exe`
 
 ## FOLLOW-UPS (2026-09-09)
 
@@ -108,4 +108,4 @@ Follow-up (2026-09-09 f): Cover letters on Indeed/SmartRecruiters/SuccessFactors
 - Reset-all uses `reset_to_empty_profile`
 - Deleted dead `packaging/prepare_browsers.py`
 - Browser smoke → AppData path
-- `boot.log` gated behind `JOBHUNTSAVER_BOOT_DIAG`
+- `boot.log` gated behind `KARRIEREKRAKE_BOOT_DIAG`

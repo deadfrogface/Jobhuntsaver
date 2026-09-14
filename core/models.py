@@ -1,4 +1,4 @@
-"""Core domain models for Jobhuntsaver."""
+"""Core domain models for Karrierekrake."""
 
 from __future__ import annotations
 

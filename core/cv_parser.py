@@ -28,7 +28,7 @@ from core.cv_sections import (
     split_named_sections as _split_named_sections,
 )
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 _MONTH = (
     r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"

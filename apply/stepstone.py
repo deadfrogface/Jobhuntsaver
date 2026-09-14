@@ -13,7 +13,7 @@ from apply.detector import ATSDetector
 from core.config import ApplicationProfile
 from core.models import Job
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 
 class StepstoneApplier(BaseApplier):

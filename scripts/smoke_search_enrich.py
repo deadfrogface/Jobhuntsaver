@@ -25,7 +25,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="jhs-smoke-") as tmp:
         os.environ["LOCALAPPDATA"] = tmp
-        db_path = Path(tmp) / "Jobhuntsaver" / "data" / "jobs.db"
+        db_path = Path(tmp) / "Karrierekrake" / "data" / "jobs.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         db = Database(db_path)
         stats0 = db.dashboard_stats()
@@ -40,7 +40,7 @@ def main() -> int:
                 )
             ),
             settings=SettingsConfig(mode="search_only", dry_run=True),
-            root=Path(tmp) / "Jobhuntsaver",
+            root=Path(tmp) / "Karrierekrake",
         )
         svc = LocationService(db, cfg, timeout_s=2.0)
 

@@ -26,7 +26,7 @@ from core.deduplicator import make_job_id
 from core.models import Job, RemoteType
 from search.base import JobSource, SearchQuery
 
-logger = logging.getLogger("jobhuntsaver")
+logger = logging.getLogger("karrierekrake")
 
 _BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 _LIST_URL = f"{_BASE}/pc/v6/jobs"
@@ -37,7 +37,7 @@ _DETAIL_WORKERS = 8
 _HEADERS = {
     "X-API-Key": _API_KEY,
     "Accept": "application/json",
-    "User-Agent": "Jobhuntsaver/1.0 (local personal use)",
+    "User-Agent": "Karrierekrake/1.0 (local personal use)",
 }
 
 
