@@ -23,9 +23,13 @@ datas = [
     (os.path.join(ROOT, "config", "profile.yaml.example"), "config"),
     (os.path.join(ROOT, "config", "application_profile.yaml.example"), "config"),
     (os.path.join(ROOT, "config", "settings.yaml.example"), "config"),
+    (os.path.join(ROOT, "assets", "brand"), os.path.join("assets", "brand")),
     (os.path.join(ROOT, "NOTICE"), "."),
     (os.path.join(ROOT, "LICENSE"), "."),
 ]
+_ICON = os.path.join(ROOT, "assets", "brand", "app.ico")
+if not os.path.isfile(_ICON):
+    _ICON = None
 binaries = []
 # python-jobspy -> tls_client ships Windows DLLs under dependencies/
 # Do NOT collect Playwright browser binaries â€” only the Python driver package.
@@ -101,6 +105,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=_ICON,
 )
 
 

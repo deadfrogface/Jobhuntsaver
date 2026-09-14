@@ -71,40 +71,31 @@ class SettingsPage(QWidget):
         self.tabs = QTabWidget()
         root.addWidget(self.tabs)
 
-        # --- General ---
+        # --- General (language, theme, Windows) ---
         general_page, general_layout = _scroll_form()
         self.lang_combo = QComboBox()
         self.lang_combo.addItem("", "de")
         self.lang_combo.addItem("", "en")
-        self.start_windows = QCheckBox()
-        self.minimize_tray = QCheckBox()
-        self.general_form = QFormLayout()
-        self.lang_label = QLabel()
-        self.general_form.addRow(self.lang_label, self.lang_combo)
-        self.general_form.addRow(self.start_windows)
-        self.general_form.addRow(self.minimize_tray)
-        general_box = QGroupBox()
-        self.general_box = general_box
-        general_box.setLayout(self.general_form)
-        general_layout.addWidget(general_box)
-        general_layout.addStretch(1)
-        self.tabs.addTab(general_page, "")
-
-        # --- Appearance ---
-        appear_page, appear_layout = _scroll_form()
         self.theme_combo = QComboBox()
         self.theme_combo.addItem("", "system")
         self.theme_combo.addItem("", "light")
         self.theme_combo.addItem("", "dark")
-        self.appear_form = QFormLayout()
+        self.start_windows = QCheckBox()
+        self.minimize_tray = QCheckBox()
+        self.general_form = QFormLayout()
+        self.lang_label = QLabel()
         self.theme_label = QLabel()
-        self.appear_form.addRow(self.theme_label, self.theme_combo)
-        appear_box = QGroupBox()
-        self.appear_box = appear_box
-        appear_box.setLayout(self.appear_form)
-        appear_layout.addWidget(appear_box)
-        appear_layout.addStretch(1)
-        self.tabs.addTab(appear_page, "")
+        self.general_form.addRow(self.lang_label, self.lang_combo)
+        self.general_form.addRow(self.theme_label, self.theme_combo)
+        self.general_form.addRow(self.start_windows)
+        self.general_form.addRow(self.minimize_tray)
+        general_box = QGroupBox()
+        self.general_box = general_box
+        self.appear_box = general_box  # back-compat attribute
+        general_box.setLayout(self.general_form)
+        general_layout.addWidget(general_box)
+        general_layout.addStretch(1)
+        self.tabs.addTab(general_page, "")
 
         # --- Search ---
         search_page, search_layout = _scroll_form()
@@ -187,7 +178,7 @@ class SettingsPage(QWidget):
         apps_layout.addStretch(1)
         self.tabs.addTab(apps_page, "")
 
-        # --- Automation ---
+        # --- Advanced (automation + browser) ---
         auto_page, auto_layout = _scroll_form()
         bg_box = QGroupBox()
         self.bg_box = bg_box
@@ -207,11 +198,7 @@ class SettingsPage(QWidget):
         bform.addRow(self.lbl_times, self.custom_times)
         bform.addRow(self.paused)
         auto_layout.addWidget(bg_box)
-        auto_layout.addStretch(1)
-        self.tabs.addTab(auto_page, "")
 
-        # --- Browser ---
-        browser_page, browser_layout = _scroll_form()
         br_box = QGroupBox()
         self.br_box = br_box
         br_layout = QVBoxLayout(br_box)
@@ -229,9 +216,9 @@ class SettingsPage(QWidget):
         btn_row.addStretch(1)
         br_layout.addWidget(self.browser_status)
         br_layout.addLayout(btn_row)
-        browser_layout.addWidget(br_box)
-        browser_layout.addStretch(1)
-        self.tabs.addTab(browser_page, "")
+        auto_layout.addWidget(br_box)
+        auto_layout.addStretch(1)
+        self.tabs.addTab(auto_page, "")
         self._browser_busy = False
 
         self.save_btn = QPushButton()
@@ -243,13 +230,11 @@ class SettingsPage(QWidget):
 
     def retranslate_ui(self) -> None:
         self.tabs.setTabText(0, tr("settings.general"))
-        self.tabs.setTabText(1, tr("settings.appearance"))
-        self.tabs.setTabText(2, tr("settings.search"))
-        self.tabs.setTabText(3, tr("settings.applications"))
-        self.tabs.setTabText(4, tr("settings.automation"))
-        self.tabs.setTabText(5, tr("settings.browser"))
+        self.tabs.setTabText(1, tr("settings.search"))
+        self.tabs.setTabText(2, tr("settings.applications"))
+        self.tabs.setTabText(3, tr("settings.advanced"))
         self.general_box.setTitle(tr("settings.general"))
-        self.appear_box.setTitle(tr("settings.appearance"))
+        self.appear_box.setTitle(tr("settings.general"))
         self.src_box.setTitle(tr("settings.sources"))
         self.search_box.setTitle(tr("settings.search"))
         self.mode_box.setTitle(tr("settings.mode"))

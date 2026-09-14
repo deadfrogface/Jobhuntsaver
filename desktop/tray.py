@@ -6,7 +6,28 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from desktop.branding import COLOR_PRIMARY, COLOR_SIDEBAR_TOP, display_name, icon_path
 from desktop.i18n import tr
+
+
+def app_icon() -> QIcon:
+    """Load packaged brand icon, with a painted fallback if assets are missing."""
+    path = icon_path(256) or icon_path()
+    if path is not None:
+        icon = QIcon(str(path))
+        if not icon.isNull():
+            return icon
+    pix = QPixmap(64, 64)
+    pix.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(COLOR_SIDEBAR_TOP))
+    painter.setPen(QColor(COLOR_PRIMARY))
+    painter.drawRoundedRect(4, 4, 56, 56, 12, 12)
+    painter.setPen(QColor("#F4F7FA"))
+    painter.drawText(pix.rect(), int(Qt.AlignmentFlag.AlignCenter), display_name()[:1])
+    painter.end()
+    return QIcon(pix)
 
 
 def _fallback_app_icon() -> QIcon:
@@ -14,32 +35,13 @@ def _fallback_app_icon() -> QIcon:
     return app_icon()
 
 
-def app_icon() -> QIcon:
-    """Simple generated icon so tray/window never show without an icon on Windows."""
-    pix = QPixmap(64, 64)
-    pix.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pix)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#1F6FEB"))
-    painter.setPen(QColor("#0B3D91"))
-    painter.drawRoundedRect(4, 4, 56, 56, 12, 12)
-    painter.setPen(QColor("#FFFFFF"))
-    painter.drawText(pix.rect(), int(Qt.AlignmentFlag.AlignCenter), "J")
-    painter.end()
-    return QIcon(pix)
-
-
 class AppTray(QSystemTrayIcon):
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent)
         self.window = window
-        icon = QIcon.fromTheme("applications-office")
-        if icon.isNull():
-            icon = window.windowIcon()
-        if icon.isNull():
-            icon = app_icon()
-            if window.windowIcon().isNull():
-                window.setWindowIcon(icon)
+        icon = app_icon()
+        if window.windowIcon().isNull():
+            window.setWindowIcon(icon)
         self.setIcon(icon)
 
         menu = QMenu()
