@@ -774,3 +774,98 @@ def test_config_dir_flag_is_honored(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("app.main.run_pipeline", fake_run)
     assert main(["--config-dir", str(tmp_path)]) == 0
     assert called["root"] == str(tmp_path)
+
+
+def test_upsert_allows_applying_to_outcome_but_blocks_new_wipe(tmp_path: Path):
+    from core.database import Database
+    from core.models import Job, JobStatus
+
+    db = Database(tmp_path / "jobs.db", recover=False)
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.APPLYING.value)
+    )
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.APPLIED.value)
+    )
+    assert db.get_job("j1").status == JobStatus.APPLIED.value
+    db.upsert_job(
+        Job(id="j1", source="t", title="T", company="C", url="https://x/1", status=JobStatus.NEW.value)
+    )
+    assert db.get_job("j1").status == JobStatus.APPLIED.value
+
+
+def test_ba_remote_negation_and_hyphen_forms():
+    from search.bundesagentur import _detect_remote
+
+    assert _detect_remote({}, "kein Homeoffice, Präsenzpflicht") == "onsite"
+    assert _detect_remote({"homeofficemoeglich": "false"}, "Büro") == "onsite"
+    assert _detect_remote({}, "Home-Office möglich") == "remote"
+    assert _detect_remote({}, "Home Office möglich") == "remote"
+    assert _detect_remote({}, "Telearbeit möglich") == "remote"
+    assert _detect_remote({}, "Remote-Desktop Installation vor Ort") == "onsite"
+
+
+def test_hard_exclude_unknown_distance_onsite():
+    from core.config import empty_app_config
+    from core.hard_filter import hard_exclude
+    from core.models import Job
+
+    cfg = empty_app_config()
+    cfg.profile.location.max_distance_km = 30
+    cfg.profile.location.allow_remote_germany = True
+    reason = hard_exclude(
+        Job(id="m", source="t", title="T", company="C", city="München", remote_type="onsite", distance_km=None),
+        cfg,
+    )
+    assert reason and "distance" in reason.lower()
+    assert (
+        hard_exclude(
+            Job(id="r", source="t", title="T", company="C", remote_type="remote", distance_km=None),
+            cfg,
+        )
+        is None
+    )
+
+
+def test_safe_click_skips_disabled_and_maybe_submit_reports():
+    from apply.base import ApplyResult, BaseApplier
+
+    class El:
+        def __init__(self, enabled=True):
+            self._enabled = enabled
+            self.clicked = False
+
+        def is_visible(self):
+            return True
+
+        def is_enabled(self):
+            return self._enabled
+
+        def click(self):
+            self.clicked = True
+
+    class Page:
+        def __init__(self, el):
+            self.el = el
+
+        def query_selector(self, sel):
+            return self.el
+
+        def wait_for_selector(self, *a, **k):
+            return True
+
+    class A(BaseApplier):
+        def _do_apply(self, *a, **k):
+            return None
+
+        def _wait_and_query(self, selector, timeout=None):
+            return self.page.query_selector(selector)
+
+    disabled = El(False)
+    a = A(Page(disabled), dry_run=False, submit=True)
+    assert a._safe_click("#go") is False
+    assert disabled.clicked is False
+    result = a._maybe_submit("#submit")
+    assert isinstance(result, ApplyResult)
+    assert result.needs_review is True
+    assert "disabled" in (result.error_message or "").lower()

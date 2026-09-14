@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.cancel import (
@@ -40,19 +41,58 @@ _HEADERS = {
 }
 
 
+def _truthy_flag(value: object) -> bool:
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"", "0", "false", "nein", "no", "n"}:
+        return False
+    if text in {"1", "true", "ja", "yes", "y"}:
+        return True
+    # Non-empty opaque API strings (e.g. "teilweise") count as offered.
+    return bool(text)
+
+
 def _detect_remote(item: dict, text: str = "") -> str:
-    homeoffice = item.get("homeofficemoeglich") or item.get("homeoffice")
-    blob = f"{homeoffice} {text}".lower()
-    if any(x in blob for x in ("100%", "vollständig remote", "remote only", "rein remote")):
+    homeoffice_flag = _truthy_flag(
+        item.get("homeofficemoeglich") if "homeofficemoeglich" in item else item.get("homeoffice")
+    )
+    blob = (text or "").lower()
+    # Normalize common DE spellings before substring checks.
+    blob_norm = (
+        blob.replace("home-office", "homeoffice")
+        .replace("home office", "homeoffice")
+        .replace("homeoffice", "homeoffice")
+    )
+    # Explicit negations beat loose "homeoffice"/"remote" substrings.
+    if re.search(
+        r"\b(?:kein|keine|ohne|nicht|no)\s+(?:homeoffice|home[\s\-]?office|remote|telearbeit)\b",
+        blob_norm,
+    ):
+        return RemoteType.ONSITE.value
+    # Remote-Desktop / remote access tooling is not a remote job.
+    remote_tooling = bool(
+        re.search(r"\bremote[\s\-_]?(?:desktop|access|support|verwaltung)\b", blob_norm)
+    )
+    full_remote = any(
+        x in blob_norm
+        for x in ("100%", "vollständig remote", "remote only", "rein remote", "100% remote")
+    )
+    if full_remote and not remote_tooling:
         return RemoteType.REMOTE.value
-    mentions_remote = bool(homeoffice) or "homeoffice" in blob or "remote" in blob
-    mentions_hybrid = "hybrid" in blob or (
-        mentions_remote and any(tok in blob for tok in ("tage", "teilweise", "anteil"))
+    mentions_remote = homeoffice_flag or any(
+        tok in blob_norm for tok in ("homeoffice", "telearbeit")
+    ) or (bool(re.search(r"\bremote\b", blob_norm)) and not remote_tooling)
+    mentions_hybrid = "hybrid" in blob_norm or (
+        mentions_remote and any(tok in blob_norm for tok in ("tage", "teilweise", "anteil"))
     )
     if mentions_hybrid:
         return RemoteType.HYBRID.value
     if mentions_remote:
-        # Text-only "Remote"/"Homeoffice" counts as remote even without BA boolean.
         return RemoteType.REMOTE.value
     return RemoteType.ONSITE.value
 
