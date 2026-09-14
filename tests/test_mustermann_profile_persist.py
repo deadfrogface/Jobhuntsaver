@@ -45,6 +45,73 @@ def test_strip_example_clears_demo_email_fingerprint():
     assert cleared.cv_path == ""
 
 
+def test_strip_example_keeps_owned_mustermann_demo_email():
+    """CV/manual ownership must survive reload even with the legacy demo email."""
+    app = ApplicationProfile(
+        first_name="Max",
+        last_name="Mustermann",
+        email=EXAMPLE_APPLICATION_MARKERS["email"],
+        phone="+491701234567",
+        street="Musterstraße 1",
+        postal_code="12345",
+        city="Berlin",
+        field_origins={
+            "first_name": "cv",
+            "last_name": "cv",
+            "email": "cv",
+            "phone": "cv",
+            "street": "cv",
+            "postal_code": "cv",
+            "city": "cv",
+        },
+    )
+    kept = strip_example_application(app)
+    assert kept.first_name == "Max"
+    assert kept.email == EXAMPLE_APPLICATION_MARKERS["email"]
+    assert kept.phone == "+491701234567"
+    assert kept.street == "Musterstraße 1"
+
+
+def test_mustermann_cv_import_survives_save_load(tmp_path: Path):
+    from core.config import load_config, save_config, empty_app_config
+    from core.cv_parser import parse_cv_text
+    from desktop.services.profile_merge import (
+        apply_personal_updates,
+        personal_from_parsed,
+        plan_personal_import,
+    )
+
+    root = tmp_path
+    (root / "config").mkdir()
+    cfg = empty_app_config(root=root)
+    parsed = parse_cv_text(
+        """Max Mustermann
+Musterstraße 1
+12345 Berlin
+max.mustermann@example.com
++49 170 1234567
+"""
+    )
+    incoming = personal_from_parsed(parsed)
+    plan = plan_personal_import(cfg.application, incoming, mode="replace")
+    apply_personal_updates(cfg.application, plan.updates, source="cv")
+    assert cfg.application.email == "max.mustermann@example.com"
+    assert (cfg.application.field_origins or {}).get("email") == "cv"
+
+    profile = root / "config" / "profile.yaml"
+    application = root / "config" / "application_profile.yaml"
+    settings = root / "config" / "settings.yaml"
+    save_config(cfg, profile_path=profile, application_path=application, settings_path=settings)
+    loaded = load_config(
+        profile_path=profile, application_path=application, settings_path=settings, root=root
+    )
+    assert loaded.application.first_name == "Max"
+    assert loaded.application.last_name == "Mustermann"
+    assert loaded.application.email == "max.mustermann@example.com"
+    assert loaded.application.phone == "+49 170 1234567"
+    assert loaded.application.city == "Berlin"
+
+
 def test_config_service_save_reload_keeps_mustermann(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     svc = ConfigService()

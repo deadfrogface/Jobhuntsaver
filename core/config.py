@@ -572,14 +572,31 @@ EXAMPLE_APPLICATION_MARKERS = {
 
 
 def strip_example_application(application: ApplicationProfile) -> ApplicationProfile:
-    """Clear Mustermann-style *demo* personal data from production configs.
+    """Clear Mustermann-style *legacy demo* personal data from production configs.
 
-    Only the exact historical demo email fingerprints a demo profile.
-    Real applicants named Max Mustermann must never be wiped.
+    Older builds shipped ``max.mustermann@example.com`` as a demo identity. That
+    email alone must not wipe a profile the user owns via CV import or manual
+    edits (``field_origins``). Real Max Mustermann applicants — including
+    fictional QA personas on example.com — must survive save/load once owned.
     """
     em = (application.email or "").strip().lower()
-    is_demo = em == EXAMPLE_APPLICATION_MARKERS["email"]
-    if not is_demo:
+    if em != EXAMPLE_APPLICATION_MARKERS["email"]:
+        return application
+    origins = application.field_origins or {}
+    owned = {
+        str(origins.get(key) or "").lower()
+        for key in (
+            "email",
+            "first_name",
+            "last_name",
+            "phone",
+            "street",
+            "city",
+            "postal_code",
+            "address",
+        )
+    }
+    if owned & {"cv", "manual"}:
         return application
     for name in (
         "first_name",
