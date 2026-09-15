@@ -28,6 +28,7 @@ from desktop.i18n import i18n, tr
 from desktop.pages.applications import ApplicationsPage
 from desktop.pages.dashboard import DashboardPage
 from desktop.pages.jobs import JobsPage
+from desktop.pages.lifecycle import LifecyclePage
 from desktop.pages.logs import LogsPage
 from desktop.pages.profile import ProfilePage
 from desktop.pages.settings import SettingsPage
@@ -101,6 +102,7 @@ class MainWindow(QMainWindow):
         self.dashboard = DashboardPage(config_service)
         self.jobs = JobsPage(config_service)
         self.applications = ApplicationsPage(config_service)
+        self.lifecycle = LifecyclePage(config_service)
         self.profile = ProfilePage(config_service)
         self.settings = SettingsPage(config_service)
         self.logs = LogsPage(config_service)
@@ -109,6 +111,7 @@ class MainWindow(QMainWindow):
             ("nav.dashboard", self.dashboard),
             ("nav.jobs", self.jobs),
             ("nav.applications", self.applications),
+            ("nav.lifecycle", self.lifecycle),
             ("nav.profile", self.profile),
             ("nav.settings", self.settings),
             ("nav.logs", self.logs),
@@ -199,10 +202,13 @@ class MainWindow(QMainWindow):
             self.dashboard,
             self.jobs,
             self.applications,
+            self.lifecycle,
             self.profile,
             self.settings,
             self.logs,
         ):
+            if hasattr(page, "retranslate"):
+                page.retranslate()
             if hasattr(page, "retranslate_ui"):
                 page.retranslate_ui()
         if hasattr(self.tray, "retranslate_ui"):

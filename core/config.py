@@ -356,6 +356,22 @@ class SettingsConfig:
     search_mode: str = "profile_discovery"
     # Per-source cap: 10..100 or 0 meaning Max (source natural end)
     jobs_per_search: int = 40
+    # --- Post-application lifecycle ---
+    # preferred_contact: email | phone | either
+    preferred_contact: str = "email"
+    phone_available: bool = True
+    # Comma-separated HH:MM-HH:MM windows (local preference; default one window)
+    telephone_availability: str = "09:00-12:00,14:00-17:00"
+    working_hours: str = "09:00-17:00"
+    follow_up_days: int = 14
+    ghosted_days: int = 21
+    # Employer email: draft-only unless user enables send + approves each draft
+    email_draft_only: bool = True
+    allow_employer_email_send: bool = False
+    gmail_sync_enabled: bool = False
+    gmail_exclude_senders: list[str] = field(default_factory=list)
+    calendar_freebusy_enabled: bool = False
+    gmail_credentials_path: str = "private/gmail_credentials.json"
 
 
 # Allowed jobs-per-search choices for the settings UI (0 = Max).

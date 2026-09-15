@@ -42,3 +42,36 @@ portions. Electron/Flask frontend code from AutoApply is not included.
 Auto-Fill-Forms (https://github.com/w4seemdev/Auto-Fill-Forms) was inspected
 for ATS coverage ideas only; no code or playbook text was copied (no license).
 OpenResume and pyresparser were evaluated and not vendored.
+
+### Post-application lifecycle reuse (2026-09)
+
+See `docs/post-application-lifecycle-reuse-audit.md` and snapshots under
+`third_party/post-application-audit/`.
+
+**PBP — Persönliches Bewerbungs-Portal (MIT)**  
+https://github.com/MadGapun/PBP — Copyright (c) 2026 Markus Birzite  
+Adapted: German email status phrases / association rules (`email_service`),
+ICS escape/fold (`ics_service`), follow-up text (`nachfass_text`, Claude
+prompt omitted), meeting collision ideas (`termin_dubletten`), job-state
+suppression ideas (`stellen_zustand`).
+
+**GmailJobTracker (MIT)**  
+https://github.com/cyberthreatgurl/GmailJobTracker — Copyright (c) 2025
+GmailJobTracker Contributors  
+Adapted: Gmail readonly OAuth flow shape (`gmail_auth`), rule-based
+classification / false-rejection overrides, ATS URL heuristics, company
+normalize ideas. Django dashboard and ML classifier were not vendored.
+
+**ejobtrack (Apache-2.0)**  
+https://github.com/Ralph-Abejuela/ejobtrack  
+Adapted: Gmail list/get/parse and 401/429 client patterns (`gmail.ts`).
+Xenova browser ML classifier was not required.
+
+**thehar/job-tracker (MIT)** · **trackjobapplications (MIT)** · **CareerSync (MIT)**  
+Reminder / follow-up / exclude-email / status-enum patterns adapted lightly.
+React/Django/Next stacks were not adopted as core dependencies.
+
+**ai-job-tracker / JobTrackr (MIT)** — Claude classification path **rejected**;
+STATUS_RANK / ambiguous-inbox ideas referenced only.
+
+**job-track-os** — MIT + Commons Clause: **no code copied**.

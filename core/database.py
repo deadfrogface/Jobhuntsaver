@@ -12,6 +12,7 @@ from typing import Any, Iterator
 
 from core.models import ApplicationRecord, Job, JobStatus, utc_now_iso
 from core.deduplicator import company_key as _company_key, title_key as _title_key
+from core.lifecycle import ApplicationCase, CaseEvent, CaseEventType, CaseStatus, can_transition
 
 from urllib.parse import parse_qs, urlparse
 
@@ -124,6 +125,74 @@ CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
 CREATE INDEX IF NOT EXISTS idx_apps_date ON applications(application_date);
 CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
+
+CREATE TABLE IF NOT EXISTS application_cases (
+    id TEXT PRIMARY KEY,
+    job_id TEXT DEFAULT '',
+    company TEXT,
+    position TEXT,
+    status TEXT DEFAULT 'to_apply',
+    source TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    application_url TEXT DEFAULT '',
+    contact_email TEXT DEFAULT '',
+    contact_name TEXT DEFAULT '',
+    contact_phone TEXT DEFAULT '',
+    applied_at TEXT DEFAULT '',
+    updated_at TEXT,
+    created_at TEXT,
+    notes TEXT DEFAULT '',
+    company_key TEXT DEFAULT '',
+    title_key TEXT DEFAULT '',
+    url_key TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS case_events (
+    id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload_json TEXT DEFAULT '{}',
+    created_at TEXT,
+    confidence REAL DEFAULT 1.0,
+    FOREIGN KEY(case_id) REFERENCES application_cases(id)
+);
+
+CREATE TABLE IF NOT EXISTS email_messages (
+    id TEXT PRIMARY KEY,
+    gmail_id TEXT DEFAULT '',
+    thread_id TEXT DEFAULT '',
+    subject TEXT DEFAULT '',
+    sender TEXT DEFAULT '',
+    body_text TEXT DEFAULT '',
+    category TEXT DEFAULT '',
+    confidence REAL DEFAULT 0,
+    case_id TEXT DEFAULT '',
+    association_status TEXT DEFAULT 'unlinked',
+    received_at TEXT DEFAULT '',
+    created_at TEXT,
+    UNIQUE(gmail_id)
+);
+
+CREATE TABLE IF NOT EXISTS lifecycle_tasks (
+    id TEXT PRIMARY KEY,
+    case_id TEXT DEFAULT '',
+    kind TEXT DEFAULT '',
+    title TEXT DEFAULT '',
+    body TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',
+    due_at TEXT DEFAULT '',
+    created_at TEXT,
+    auto_send INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_cases_status ON application_cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_company_title ON application_cases(company_key, title_key);
+CREATE INDEX IF NOT EXISTS idx_cases_url_key ON application_cases(url_key);
+CREATE INDEX IF NOT EXISTS idx_cases_job ON application_cases(job_id);
+CREATE INDEX IF NOT EXISTS idx_case_events_case ON case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_email_case ON email_messages(case_id);
+CREATE INDEX IF NOT EXISTS idx_email_assoc ON email_messages(association_status);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON lifecycle_tasks(status);
 """
 
 
@@ -690,6 +759,350 @@ class Database:
                 (source, source_job_id),
             ).fetchone()
         return self._row_to_job(row) if row else None
+
+    # --- ApplicationCase / lifecycle ---
+
+    def upsert_case(self, case: ApplicationCase) -> ApplicationCase:
+        if not case.id:
+            case.id = str(uuid.uuid4())
+        if not case.company_key:
+            case.company_key = _company_key(case.company)
+        if not case.title_key:
+            case.title_key = _title_key(case.position)
+        if not case.url_key:
+            case.url_key = _url_identity(case.application_url or case.url)
+        case.updated_at = utc_now_iso()
+        if not case.created_at:
+            case.created_at = case.updated_at
+        data = case.to_dict()
+        cols = list(data.keys())
+        placeholders = ", ".join("?" for _ in cols)
+        col_names = ", ".join(cols)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "id")
+        sql = (
+            f"INSERT INTO application_cases ({col_names}) VALUES ({placeholders}) "
+            f"ON CONFLICT(id) DO UPDATE SET {updates}"
+        )
+        with self.connection() as conn:
+            conn.execute(sql, [data[c] for c in cols])
+        return case
+
+    def get_case(self, case_id: str) -> ApplicationCase | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM application_cases WHERE id = ?", (case_id,)
+            ).fetchone()
+        return ApplicationCase.from_dict(dict(row)) if row else None
+
+    def list_cases(
+        self,
+        *,
+        statuses: list[str] | None = None,
+        limit: int = 500,
+    ) -> list[ApplicationCase]:
+        sql = "SELECT * FROM application_cases"
+        params: list[Any] = []
+        if statuses:
+            sql += f" WHERE status IN ({','.join('?' for _ in statuses)})"
+            params.extend(statuses)
+        sql += " ORDER BY updated_at DESC LIMIT ?"
+        params.append(limit)
+        with self.connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [ApplicationCase.from_dict(dict(r)) for r in rows]
+
+    def find_case_for_job(
+        self,
+        *,
+        job_id: str = "",
+        url_keys: set[str] | None = None,
+        company_key: str = "",
+        title_key: str = "",
+        statuses: set[str] | frozenset[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Match a suppressing case. Never company-only (no company blacklist)."""
+        url_keys = {k for k in (url_keys or set()) if k}
+        status_filter = list(statuses) if statuses else None
+        with self.connection() as conn:
+            if job_id:
+                row = conn.execute(
+                    "SELECT * FROM application_cases WHERE job_id = ? LIMIT 1",
+                    (job_id,),
+                ).fetchone()
+                if row and (
+                    status_filter is None or (row["status"] or "") in status_filter
+                ):
+                    data = dict(row)
+                    data["match_reason"] = "job_id"
+                    return data
+            if url_keys:
+                rows = conn.execute(
+                    "SELECT * FROM application_cases WHERE url_key != ''"
+                ).fetchall()
+                for r in rows:
+                    if status_filter is not None and (r["status"] or "") not in status_filter:
+                        continue
+                    if (r["url_key"] or "") in url_keys:
+                        data = dict(r)
+                        data["match_reason"] = "url"
+                        return data
+            if company_key and title_key:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM application_cases
+                    WHERE company_key = ? AND title_key = ?
+                    """,
+                    (company_key, title_key),
+                ).fetchall()
+                for r in rows:
+                    if status_filter is not None and (r["status"] or "") not in status_filter:
+                        continue
+                    data = dict(r)
+                    data["match_reason"] = "company_title"
+                    return data
+        return None
+
+    def set_case_status(
+        self,
+        case_id: str,
+        new_status: str,
+        *,
+        force: bool = False,
+        confidence: float = 1.0,
+        payload: dict[str, Any] | None = None,
+    ) -> ApplicationCase | None:
+        case = self.get_case(case_id)
+        if case is None:
+            return None
+        if not can_transition(case.status, new_status, force=force):
+            return case
+        old = case.status
+        case.status = new_status
+        case.updated_at = utc_now_iso()
+        self.upsert_case(case)
+        self.add_case_event(
+            CaseEvent(
+                case_id=case_id,
+                event_type=CaseEventType.STATUS_CHANGED.value,
+                payload_json=json.dumps(
+                    {"from": old, "to": new_status, **(payload or {})},
+                    ensure_ascii=False,
+                ),
+                confidence=confidence,
+            )
+        )
+        return case
+
+    def add_case_event(self, event: CaseEvent) -> CaseEvent:
+        if not event.id:
+            event.id = str(uuid.uuid4())
+        if not event.created_at:
+            event.created_at = utc_now_iso()
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO case_events (id, case_id, event_type, payload_json, created_at, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.case_id,
+                    event.event_type,
+                    event.payload_json or "{}",
+                    event.created_at,
+                    float(event.confidence),
+                ),
+            )
+        return event
+
+    def list_case_events(self, case_id: str, *, limit: int = 100) -> list[CaseEvent]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM case_events WHERE case_id = ?
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (case_id, limit),
+            ).fetchall()
+        out: list[CaseEvent] = []
+        for r in rows:
+            out.append(
+                CaseEvent(
+                    id=r["id"],
+                    case_id=r["case_id"],
+                    event_type=r["event_type"],
+                    payload_json=r["payload_json"] or "{}",
+                    created_at=r["created_at"] or "",
+                    confidence=float(r["confidence"] or 0),
+                )
+            )
+        return out
+
+    def ensure_case_from_job(
+        self, job: Job, *, status: str = CaseStatus.APPLIED.value
+    ) -> ApplicationCase:
+        """Create or refresh a case when an application succeeds / is tracked."""
+        existing = self.find_case_for_job(
+            job_id=job.id or "",
+            url_keys={_url_identity(u) for u in (job.url, job.application_url) if u} - {""},
+            company_key=_company_key(job.company),
+            title_key=_title_key(job.title),
+            statuses=None,
+        )
+        if existing:
+            case = ApplicationCase.from_dict(existing)
+            if can_transition(case.status, status):
+                case.status = status
+            case.job_id = case.job_id or job.id
+            case.updated_at = utc_now_iso()
+            return self.upsert_case(case)
+        case = ApplicationCase(
+            job_id=job.id,
+            company=job.company,
+            position=job.title,
+            status=status,
+            source=job.source,
+            url=job.url,
+            application_url=job.application_url,
+            applied_at=utc_now_iso() if status != CaseStatus.TO_APPLY.value else "",
+            company_key=_company_key(job.company),
+            title_key=_title_key(job.title),
+            url_key=_url_identity(job.application_url or job.url),
+        )
+        case = self.upsert_case(case)
+        self.add_case_event(
+            CaseEvent(
+                case_id=case.id,
+                event_type=CaseEventType.CREATED.value,
+                payload_json=json.dumps({"status": status}, ensure_ascii=False),
+            )
+        )
+        return case
+
+    def save_email_message(self, row: dict[str, Any]) -> str:
+        mid = row.get("id") or str(uuid.uuid4())
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO email_messages (
+                    id, gmail_id, thread_id, subject, sender, body_text,
+                    category, confidence, case_id, association_status,
+                    received_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(gmail_id) DO UPDATE SET
+                    subject=excluded.subject,
+                    body_text=excluded.body_text,
+                    category=excluded.category,
+                    confidence=excluded.confidence,
+                    case_id=excluded.case_id,
+                    association_status=excluded.association_status
+                """,
+                (
+                    mid,
+                    row.get("gmail_id") or mid,
+                    row.get("thread_id") or "",
+                    row.get("subject") or "",
+                    row.get("sender") or "",
+                    row.get("body_text") or "",
+                    row.get("category") or "",
+                    float(row.get("confidence") or 0),
+                    row.get("case_id") or "",
+                    row.get("association_status") or "unlinked",
+                    row.get("received_at") or "",
+                    row.get("created_at") or utc_now_iso(),
+                ),
+            )
+        return mid
+
+    def list_ambiguous_emails(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM email_messages
+                WHERE association_status = 'ambiguous'
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def resolve_email_association(self, email_id: str, case_id: str) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                UPDATE email_messages
+                SET case_id = ?, association_status = 'linked'
+                WHERE id = ? OR gmail_id = ?
+                """,
+                (case_id, email_id, email_id),
+            )
+        self.add_case_event(
+            CaseEvent(
+                case_id=case_id,
+                event_type=CaseEventType.EMAIL_LINKED.value,
+                payload_json=json.dumps({"email_id": email_id, "manual": True}),
+            )
+        )
+
+    def save_lifecycle_task(self, task: dict[str, Any]) -> str:
+        tid = task.get("id") or str(uuid.uuid4())
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO lifecycle_tasks (
+                    id, case_id, kind, title, body, status, due_at, created_at, auto_send
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    status=excluded.status,
+                    body=excluded.body,
+                    title=excluded.title
+                """,
+                (
+                    tid,
+                    task.get("case_id") or "",
+                    task.get("kind") or "",
+                    task.get("title") or "",
+                    task.get("body") or "",
+                    task.get("status") or "open",
+                    task.get("due_at") or "",
+                    task.get("created_at") or utc_now_iso(),
+                    1 if task.get("auto_send") else 0,
+                ),
+            )
+        return tid
+
+    def list_lifecycle_tasks(
+        self, *, status: str = "open", limit: int = 100
+    ) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM lifecycle_tasks WHERE status = ?
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (status, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def lifecycle_dashboard_counts(self) -> dict[str, int]:
+        with self.connection() as conn:
+            by_status: dict[str, int] = {}
+            for r in conn.execute(
+                "SELECT status, COUNT(*) AS c FROM application_cases GROUP BY status"
+            ).fetchall():
+                by_status[str(r["status"])] = int(r["c"])
+            ambiguous = conn.execute(
+                "SELECT COUNT(*) AS c FROM email_messages WHERE association_status = 'ambiguous'"
+            ).fetchone()["c"]
+            open_tasks = conn.execute(
+                "SELECT COUNT(*) AS c FROM lifecycle_tasks WHERE status = 'open'"
+            ).fetchone()["c"]
+        return {
+            "cases_total": sum(by_status.values()),
+            "ambiguous_emails": int(ambiguous),
+            "open_tasks": int(open_tasks),
+            **{f"case_{k}": v for k, v in by_status.items()},
+        }
 
     @staticmethod
     def _row_to_job(row: sqlite3.Row) -> Job:

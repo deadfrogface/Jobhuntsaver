@@ -22,6 +22,8 @@ from apply.workday import WorkdayApplier
 from core.config import AppConfig
 from core.cover_letter import render_cover_letter, save_cover_letter
 from core.database import Database
+from core.known_jobs import refuse_reapply
+from core.lifecycle import CaseStatus
 from core.models import ApplicationRecord, Job, JobStatus, OperatingMode, utc_now_iso
 
 logger = logging.getLogger("karrierekrake")
@@ -103,6 +105,10 @@ class ApplicationManager:
         settings = self.config.settings
         if job.match_score < settings.minimum_match_for_auto_apply:
             return False, f"score {job.match_score} < {settings.minimum_match_for_auto_apply}"
+        # Defense in depth: ApplicationCase known statuses even if search dedup failed.
+        blocked, block_reason = refuse_reapply(self.db, job)
+        if blocked:
+            return False, block_reason
         if self.db.has_applied(job):
             return False, "already applied (safety)"
         if self.applied_this_run >= settings.max_applications_per_run:
@@ -320,5 +326,21 @@ class ApplicationManager:
                 error_message=result.error_message or "",
             )
         )
+        # Lifecycle: track ApplicationCase so search never rediscovers as new.
+        case_status = CaseStatus.TO_APPLY.value
+        if status == JobStatus.APPLIED.value:
+            case_status = CaseStatus.APPLIED.value
+        elif status in {
+            JobStatus.NEEDS_REVIEW.value,
+            JobStatus.CAPTCHA.value,
+            JobStatus.FAILED.value,
+            JobStatus.APPLYING.value,
+        }:
+            # Still suppress rediscovery of attempted vacancies.
+            case_status = CaseStatus.APPLIED.value
+        try:
+            self.db.ensure_case_from_job(job, status=case_status)
+        except Exception:
+            logger.exception("Failed to upsert ApplicationCase for job %s", job.id)
         time.sleep(max(1, settings.delay_between_applications_seconds))
         return result
