@@ -1,0 +1,1 @@
+REJECT COPY: Commons Clause. Patterns inspected in-place under /tmp/reuse-audit/job-track-os only; no source vendored.
