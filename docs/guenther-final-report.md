@@ -3,8 +3,23 @@
 **Feature branch:** `cursor/guenther-local-ai-megapass-d85b`  
 **PR:** https://github.com/deadfrogface/Karrierekrake/pull/19  
 **Base `origin/main`:** `8c1e81c9653789251e2500b249a9abbf3d7d3175`  
+**Verified green head:** `12f6aa2f21ef216061e7e43c351d110c75d518c4`  
 **Lifecycle gate:** PR #17 + #18 on main — proceeded.  
 **Agent must not merge** — human merge only.
+
+## CI / Windows Smoke / EXE @ `12f6aa2`
+
+| Check | Workflow | Result | Run |
+|-------|----------|--------|-----|
+| unit-tests | CI | **PASS** | `34984746297` |
+| privacy | CI | **PASS** | `34984746297` |
+| cv-regression | CI | **PASS** | `34984746297` |
+| database-migration-tests | CI | **PASS** | `34984746297` |
+| static-smoke | CI | **PASS** | `34984746297` |
+| qt-smoke | Windows Smoke | **PASS** | `34984746339` |
+| build-and-exe-smoke | Windows Smoke | **PASS** | `34984746339` |
+
+**7/7 PASS** on tip `12f6aa2` (includes Windows Smoke qt-smoke + build-and-exe-smoke).
 
 ## Acceptance gates (held-out REAL GGUF, qwen3-1.7b)
 
@@ -21,7 +36,7 @@
 | Held-out cases / pass / fail | **109 / 108 / 1** |
 | Non-safety error rate | **~0.9%** (`ho_em_ats_generic` wrong_category) |
 | Model / runtime | qwen3-1.7b / ~829 s / ~5.3 GB RSS |
-| CI / Windows Smoke / EXE Smoke | See tip after results commit (prior tip `c0be57f`: **7/7 PASS**) |
+| CI / Windows Smoke / EXE Smoke | **7/7 PASS** @ `12f6aa2` |
 
 ## Real GGUF inference (RAN — not simulated)
 
@@ -43,7 +58,7 @@ Deterministic Karrierekrake gates remain authoritative for consequential actions
 | Suite | Result |
 |-------|--------|
 | `tests/test_guenther_local_ai.py` + lifecycle | **PASS** (41) |
-| Privacy scan | **OK** (prior CI) |
+| Privacy scan | **OK** (CI @ `12f6aa2`) |
 | Email/assoc harden | Deterministic + validation asymmetric fail-closed |
 
 ## Mission checklist (abbrev.)
@@ -55,17 +70,19 @@ Deterministic Karrierekrake gates remain authoritative for consequential actions
 | Winner | Live **`qwen3-1.7b`** |
 | Safety | No submit/send/finalize; high-impact needs det agreement; claim guards |
 | Held-out score | Final from held_out only |
+| Windows Smoke / EXE | **PASS** (qt-smoke + build-and-exe-smoke) |
 | Docs | This report + `docs/guenther-*.md` |
 
-## MERGE READY: **YES** (AI safety) — confirm CI green on tip after results push
+## MERGE READY: **YES**
 
-For human merge only when tip CI + Windows Smoke (qt-smoke + build-and-exe-smoke) remain green.  
-**Do not auto-merge.** Remaining honesty: ~0.9% non-safety category miss; not 100% AI accuracy.
+For human merge of green tip `12f6aa2` (or successor tip that remains green).  
+**Do not auto-merge.** Honest: ~0.9% non-safety category miss — not 100% AI accuracy. All safety counters = 0.
 
 ## GÜNTHER STATUS
 
 ```
 Günther may think; Karrierekrake decides; user authorizes.
 Held-out REAL GGUF: injection/false-assoc/false-reject/false-offer = 0.
-MERGE READY when tip CI/Smoke PASS — agent will not merge.
+CI + Windows Smoke + EXE @ 12f6aa2: 7/7 PASS.
+MERGE READY YES — agent will not merge.
 ```
