@@ -56,6 +56,13 @@ def _fingerprint_regexes() -> list[re.Pattern[str]]:
 CV_FINGERPRINTS = _fingerprint_regexes()
 
 ALLOW_EMAIL_DOMAINS = {"example.com", "example.org", "example.net", "localhost"}
+
+
+def _email_domain_allowed(domain: str) -> bool:
+    d = domain.lower()
+    if d in ALLOW_EMAIL_DOMAINS:
+        return True
+    return any(d.endswith("." + root) for root in ALLOW_EMAIL_DOMAINS)
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 
 SKIP_SUFFIXES = {
@@ -77,6 +84,11 @@ ALLOWLIST_PATHS = {
     "docs/privacy-cleanup-audit.md",
 }
 
+# Upstream audit snapshots retain original example addresses from MIT/Apache sources.
+ALLOWLIST_PREFIXES = (
+    "third_party/post-application-audit/",
+)
+
 
 def tracked_files() -> list[Path]:
     proc = subprocess.run(
@@ -96,7 +108,7 @@ def tracked_files() -> list[Path]:
 def scan_text(path: Path, text: str) -> list[str]:
     hits: list[str] = []
     rel = path.relative_to(ROOT).as_posix()
-    if rel in ALLOWLIST_PATHS:
+    if rel in ALLOWLIST_PATHS or any(rel.startswith(p) for p in ALLOWLIST_PREFIXES):
         # Still forbid absolute Windows user paths even in docs/scripts.
         for name, rx in FORBIDDEN:
             if rx.search(text) and "damia" in text.lower():
@@ -111,7 +123,7 @@ def scan_text(path: Path, text: str) -> list[str]:
             break
     for m in EMAIL_RE.finditer(text):
         domain = m.group(1).lower()
-        if domain not in ALLOW_EMAIL_DOMAINS:
+        if not _email_domain_allowed(domain):
             hits.append(f"{rel}: non-example email domain @{domain}")
     return hits
 

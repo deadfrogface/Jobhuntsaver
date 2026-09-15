@@ -30,3 +30,16 @@ theme: system          # system | light | dark
 language: de           # de | en
 start_with_windows: false
 minimize_to_tray: false
+# Post-application lifecycle
+preferred_contact: email          # email | phone | either
+phone_available: true
+telephone_availability: "09:00-12:00,14:00-17:00"
+working_hours: "09:00-17:00"
+follow_up_days: 14
+ghosted_days: 21
+email_draft_only: true
+allow_employer_email_send: false
+gmail_sync_enabled: false
+gmail_exclude_senders: []
+calendar_freebusy_enabled: false
+gmail_credentials_path: private/gmail_credentials.json

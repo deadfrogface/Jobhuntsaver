@@ -1,0 +1,52 @@
+[
+  {
+    "id": "fic-confirm-1",
+    "sender": "recruiting@nordlicht.example.com",
+    "subject": "Eingangsbestätigung Ihrer Bewerbung",
+    "body": "Sehr geehrte Damen und Herren, vielen Dank für Ihre Bewerbung als Sachbearbeiter Verwaltung. Wir haben Ihre Bewerbung erhalten und prüfen diese.",
+    "expect_category": "confirmation"
+  },
+  {
+    "id": "fic-reject-1",
+    "sender": "hr@nordlicht.example.com",
+    "subject": "Ihre Bewerbung bei Nordlicht Beispiel GmbH",
+    "body": "leider müssen wir Ihnen mitteilen, dass wir Ihre Bewerbung nicht berücksichtigen können. Wir haben uns für andere Bewerber entschieden.",
+    "expect_category": "rejection"
+  },
+  {
+    "id": "fic-interview-1",
+    "sender": "hr@nordlicht.example.com",
+    "subject": "Einladung zum Vorstellungsgespräch",
+    "body": "wir laden Sie gerne zu einem Vorstellungsgespräch ein. Terminvorschlag: nächste Woche Dienstag 10:00 Uhr per Teams Meeting.",
+    "expect_category": "interview"
+  },
+  {
+    "id": "fic-false-reject",
+    "sender": "noreply@ats.example.com",
+    "subject": "Next steps for your application",
+    "body": "Thank you for applying. Please select a time for your interview availability. Calendar invite will follow. Zoom meeting details attached.",
+    "expect_category": "interview",
+    "expect_false_rejection_blocked": true
+  },
+  {
+    "id": "fic-offer-1",
+    "sender": "talent@acme.example.com",
+    "subject": "Stellenangebot – Fachkraft",
+    "body": "wir möchten Ihnen gerne eine Stelle anbieten. Anbei unser Anstellungsangebot.",
+    "expect_category": "offer"
+  },
+  {
+    "id": "fic-noise-1",
+    "sender": "alerts@alerts.example.com",
+    "subject": "Weekly job alert – recommended jobs",
+    "body": "Unsubscribe anytime. Here are recommended jobs near you.",
+    "expect_category": "noise"
+  },
+  {
+    "id": "fic-confirm-en",
+    "sender": "careers@acme.example.com",
+    "subject": "Application received",
+    "body": "Thank you for your application. We have received your application for Analyst.",
+    "expect_category": "confirmation"
+  }
+]

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from apply.detector import ATSDetector, ats_coverage_bucket
 from apply.manager import ApplicationManager
+from core.known_jobs import should_suppress_as_new
 from browser.browser_manager import BrowserManager
 from core.cancel import cancel_active_searches, register_executor, unregister_executor
 from core.config import AppConfig, load_config
@@ -414,6 +415,12 @@ def run_pipeline(
             JobStatus.CAPTCHA.value,
             JobStatus.APPLYING.value,
         }:
+            known += 1
+            continue
+        # Global known-job suppression (ApplicationCase) — never count toward
+        # Jobs-pro-Suche as new; does not blacklist whole companies.
+        suppress, suppress_reason = should_suppress_as_new(db, job)
+        if suppress and "known_case" in suppress_reason:
             known += 1
             continue
         already = db.has_applied(job)
