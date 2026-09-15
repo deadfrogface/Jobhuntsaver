@@ -2,7 +2,7 @@
 
 **Feature branch:** `cursor/guenther-local-ai-megapass-d85b`  
 **Base `origin/main`:** `8c1e81c9653789251e2500b249a9abbf3d7d3175`  
-**Head SHA:** `e49f31877331b794e4b41bae957306459f03bb17`  
+**Head SHA:** `25db643e26881aae8fa895c934524b46aa2f7317`  
 **Compare:** https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/guenther-local-ai-megapass-d85b  
 **Lifecycle gate:** PR #17 + #18 present on main — **proceeded** (not blocked).  
 **PR title:** `feat(ai): Günther local intelligence — offline CV, job, mail & interview AI`  
@@ -13,7 +13,7 @@
 | # | Item | Status |
 |---|------|--------|
 | 1 | Base SHA | `8c1e81c9653789251e2500b249a9abbf3d7d3175` |
-| 2 | Head SHA | *(see git tip at PR open)* |
+| 2 | Head SHA | `e49f31877331b794e4b41bae957306459f03bb17` |
 | 3 | Runtime | Abstract `LocalAIProvider`; primary WRAP `llama-cpp-python` (optional); Ollama optional dev; heuristic/null fail-closed |
 | 4 | Models catalog | Qwen3 1.7B, Qwen3 4B, Phi-4-mini — **no weights in git** |
 | 5 | Winner | Product Autopick STANDARD=`qwen3-4b`, LIGHT=`qwen3-1.7b`; CI baseline=`heuristic-local` |
@@ -52,7 +52,9 @@
 ```
 Base main:  8c1e81c9653789251e2500b249a9abbf3d7d3175
 Branch:     cursor/guenther-local-ai-megapass-d85b
-PR:         (opened by parent if ManagePullRequest unavailable)
+Head SHA:   e49f31877331b794e4b41bae957306459f03bb17
+PR:         open via compare URL (ManagePullRequest unavailable; gh read-only)
+Compare:    https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/guenther-local-ai-megapass-d85b
 Runtime:    LocalAIProvider (llama_cpp | ollama-dev | heuristic | null)
 Winning:    qwen3-4b (STANDARD Autopick) / Light: qwen3-1.7b
 CV/Job/Evidence/Email/Association/Writing/Interview: IMPLEMENTED (advisory)
