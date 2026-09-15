@@ -1,7 +1,7 @@
 # Post-application lifecycle megapass — final report
 
 **Branch:** `cursor/post-application-lifecycle-d85b`  
-**Final SHA:** `775f19a` (see tip of branch after settings UI commit)  
+**Final SHA:** `a976f0f7b1593ed1b84c000fcc7d2fb0b1055ed1`  
 **Compare:** https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/post-application-lifecycle-d85b  
 
 ## Reuse counts
@@ -46,7 +46,7 @@ Snapshots: `third_party/post-application-audit/`
 | 0 Audit before code | **PASS** (committed first) |
 | A ApplicationCase foundation | **PASS** |
 | B Known-job suppression | **PASS** |
-| C Contact preference + phone windows (config) | **PASS** (settings fields; UI page uses drafts) |
+| C Contact preference + phone windows (config) | **PASS** (settings YAML + Settings UI) |
 | D Gmail OAuth readonly + secure tokens | **PASS** (optional google libs) |
 | E Email filter/classify + confidence | **PASS** |
 | F Association + ambiguous review UI | **PASS** |
@@ -62,7 +62,6 @@ Snapshots: `third_party/post-application-audit/`
 
 - Live Gmail/Calendar OAuth requires user-provided `private/gmail_credentials.json` and optional google/keyring packages; not exercised against real Google in CI.
 - Google Calendar FreeBusy is implemented as local collision helpers; live FreeBusy API client is gated behind `calendar_freebusy_enabled` and needs OAuth calendar scope when wired for production use.
-- Settings UI does not yet expose every new YAML field (values load from `settings.yaml` / defaults).
 - Windows EXE smoke / `Karrierekrake.exe` must be validated by GitHub Actions `windows-smoke.yml` / `build-windows.yml` on this SHA (Linux agent cannot run the EXE).
 - ManagePullRequest tool unavailable in this environment — open PR via compare URL.
 
