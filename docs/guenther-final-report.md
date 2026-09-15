@@ -2,6 +2,8 @@
 
 **Feature branch:** `cursor/guenther-local-ai-megapass-d85b`  
 **Base `origin/main`:** `8c1e81c9653789251e2500b249a9abbf3d7d3175`  
+**Head SHA:** `e49f31877331b794e4b41bae957306459f03bb17`  
+**Compare:** https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/guenther-local-ai-megapass-d85b  
 **Lifecycle gate:** PR #17 + #18 present on main — **proceeded** (not blocked).  
 **PR title:** `feat(ai): Günther local intelligence — offline CV, job, mail & interview AI`  
 **Do not merge** until parent review.
