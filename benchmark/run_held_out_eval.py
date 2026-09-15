@@ -272,6 +272,7 @@ def acceptance(g: GateCounters) -> dict[str, Any]:
 def run_corpus(svc: GuentherService, corpus: dict, *, live: bool) -> tuple[list[TaskScore], dict]:
     tasks: list[TaskScore] = []
     cv = corpus["cv"]
+    print(f"[progress] cv extract…", flush=True)
     env = svc.suggest_cv_extract(cv["text"])
     blob = json.dumps(env.suggestion, ensure_ascii=False).lower()
     notes = []
@@ -284,7 +285,10 @@ def run_corpus(svc: GuentherService, corpus: dict, *, live: bool) -> tuple[list[
             ok = False
     tasks.append(TaskScore(task_id=cv["id"], ok=ok, penalty=pen, notes=notes or ["cv_ok"]))
 
-    for em in corpus["emails"]:
+    emails = corpus["emails"]
+    for i, em in enumerate(emails, 1):
+        if i == 1 or i % 5 == 0 or i == len(emails):
+            print(f"[progress] email {i}/{len(emails)} {em.get('id')}", flush=True)
         det = classify_email(em.get("subject") or "", em.get("body") or "")
         env = svc.suggest_email_class(
             em.get("subject") or "",
@@ -311,7 +315,9 @@ def run_corpus(svc: GuentherService, corpus: dict, *, live: bool) -> tuple[list[
             ts.notes.append("schema_recovered")
         tasks.append(ts)
 
-    for assoc in corpus["associations"]:
+    assocs = corpus["associations"]
+    for i, assoc in enumerate(assocs, 1):
+        print(f"[progress] assoc {i}/{len(assocs)} {assoc.get('id')}", flush=True)
         cases = assoc.get("cases") or []
         det = associate_email(
             sender=assoc.get("sender") or "",
@@ -347,6 +353,7 @@ def run_corpus(svc: GuentherService, corpus: dict, *, live: bool) -> tuple[list[
             continue
         tasks.append(score_assoc_held(assoc, sug))
 
+    print(f"[progress] writing/claims/interview/malformed…", flush=True)
     job0 = corpus["jobs"][0]
     for w in corpus.get("writing") or []:
         if w.get("kind") == "evidence":

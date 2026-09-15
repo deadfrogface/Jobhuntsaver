@@ -65,7 +65,8 @@ class LlamaCppProvider(LocalAIProvider):
             self._llm = Llama(
                 model_path=str(path),
                 n_ctx=4096,
-                n_threads=max(1, (__import__("os").cpu_count() or 2) // 2),
+                n_threads=max(2, (__import__("os").cpu_count() or 2)),
+                n_batch=512,
                 verbose=False,
             )
             self._model_id = model_id

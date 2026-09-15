@@ -110,12 +110,23 @@ class GuentherService:
             trusted=trusted,
             untrusted=untrusted,
         )
+        token_budget = {
+            "email_class": 256,
+            "association": 256,
+            "cv_extract": 512,
+            "job_analysis": 512,
+            "evidence_assist": 512,
+            "writing": 768,
+            "interview_prep": 512,
+        }.get(schema_name, 512)
         req = GenerationRequest(
             system=system,
             trusted=trusted_b,
             untrusted=untrusted_b,
             schema_name=schema_name,
             timeout_s=timeout_s,
+            max_tokens=token_budget,
+            temperature=0.1,
         )
 
         status = self.ensure_model_loaded()
