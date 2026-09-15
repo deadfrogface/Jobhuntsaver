@@ -29,7 +29,7 @@
 
 | Item | Location / note |
 |------|-----------------|
-| Brand | Karrierekrake (GPL-3.0); remote may still show `Jobhuntsaver` — product name is Karrierekrake |
+| Brand | Karrierekrake (GPL-3.0); product name is Karrierekrake |
 | Desktop entry | `python -m desktop.app` → PySide6; EXE `Karrierekrake.exe` |
 | Data root | `%LOCALAPPDATA%\Karrierekrake` via `desktop/paths.py` (`ensure_app_dirs`) |
 | Spec | `packaging/Karrierekrake.spec` — onefile, no bundled Chromium; Chromium on-demand in AppData |
