@@ -192,6 +192,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.ghosted_days": "Ghosting-Hinweis nach (Tagen)",
         "settings.email_draft_only": "Arbeitgeber-Mails nur als Entwurf (Standard)",
         "settings.allow_employer_email_send": "Echten Versand freigeben (nur mit Freigabe pro Mail)",
+        "settings.guenther": "Günther die Krake",
+        "settings.guenther_enabled": "Günther einschalten (nur lokal auf diesem PC)",
+        "settings.guenther_model": "Modell",
+        "settings.guenther_model.auto": "Automatisch",
+        "settings.guenther_model.light": "Leicht",
+        "settings.guenther_model.standard": "Standard",
+        "settings.guenther_model.alt": "Alternative",
+        "settings.guenther_hint": (
+            "Günther denkt mit — Karrierekrake entscheidet. "
+            "Keine Cloud-KI nötig. Modelle werden nur nach Ihrer Freigabe geladen. "
+            "Absenden, E-Mail-Versand und Termine bleiben bei Ihnen."
+        ),
         "settings.automation": "Automation",
         "settings.browser": "Browser",
         "settings.language": "Sprache",
@@ -601,6 +613,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.ghosted_days": "Ghosted hint after (days)",
         "settings.email_draft_only": "Employer email draft-only (default)",
         "settings.allow_employer_email_send": "Allow real send (still requires per-mail approval)",
+        "settings.guenther": "Günther die Krake",
+        "settings.guenther_enabled": "Enable Günther (local on this PC only)",
+        "settings.guenther_model": "Model",
+        "settings.guenther_model.auto": "Automatic",
+        "settings.guenther_model.light": "Light",
+        "settings.guenther_model.standard": "Standard",
+        "settings.guenther_model.alt": "Alternative",
+        "settings.guenther_hint": (
+            "Günther may suggest — Karrierekrake decides. "
+            "No cloud AI required. Models load only with your approval. "
+            "Submit, email send, and calendar finalize stay with you."
+        ),
         "settings.automation": "Automation",
         "settings.browser": "Browser",
         "settings.language": "Language",

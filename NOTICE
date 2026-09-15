@@ -75,3 +75,23 @@ React/Django/Next stacks were not adopted as core dependencies.
 STATUS_RANK / ambiguous-inbox ideas referenced only.
 
 **job-track-os** — MIT + Commons Clause: **no code copied**.
+
+### Günther die Krake — local AI (2026-09)
+
+Optional on-device intelligence. No cloud AI required. Model weights are
+downloaded by the user into %%LOCALAPPDATA%%\\Karrierekrake\\models and are
+**not** redistributed inside Karrierekrake.exe.
+
+**llama.cpp** (MIT) — https://github.com/ggerganov/llama.cpp  
+**llama-cpp-python** (MIT) — https://github.com/abetlen/llama-cpp-python  
+Copyright (c) 2023 Andrei Betlen — optional embedded runtime WRAP.
+
+**Ollama** — optional developer/benchmark HTTP backend only; not required for
+end users.
+
+Model weight licenses (downloaded separately): Qwen3 (Apache-2.0),
+Phi-4-mini-instruct (MIT). Gemma 3 is not a default Autopick model due to
+Gemma Terms of Use flow-down obligations (see docs/guenther-reuse-license-audit.md).
+
+Pydantic (MIT) is already a Karrierekrake runtime dependency and is used for
+structured contract validation of untrusted model output.
