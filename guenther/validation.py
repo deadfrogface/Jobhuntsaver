@@ -76,6 +76,56 @@ def parse_contract(schema_name: str, payload: dict[str, Any] | str | None) -> Ba
         data["confidence"] = conf.strip().lower()
     if isinstance(data.get("support"), str):
         data["support"] = data["support"].strip().upper()
+    # Association coercions
+    if schema_name == "association":
+        if data.get("case_id") == "":
+            data["case_id"] = None
+        if isinstance(data.get("reason"), str) and len(data["reason"]) > 400:
+            data["reason"] = data["reason"][:400]
+        cands = data.get("candidate_case_ids")
+        if isinstance(cands, list):
+            data["candidate_case_ids"] = [str(c) for c in cands if c][:8]
+        if data.get("ambiguous") is True or not data.get("case_id"):
+            data.setdefault("match_status", "ambiguous" if data.get("ambiguous") else "no_safe_match")
+        # Drop unknown keys for association to avoid extra=forbid failures
+        allowed = {
+            "case_id",
+            "confidence",
+            "ambiguous",
+            "candidate_case_ids",
+            "reason",
+            "match_status",
+        }
+        data = {k: v for k, v in data.items() if k in allowed}
+    if schema_name == "email_class":
+        allowed_email = {
+            "category",
+            "confidence",
+            "reasons",
+            "false_rejection_risk",
+            "evidence",
+        }
+        if isinstance(data.get("category"), str):
+            data["category"] = data["category"].strip().lower().replace(" ", "_")
+            # Map unknown labels into review
+            known = {
+                "confirmation",
+                "interview",
+                "interview_cancelled",
+                "offer",
+                "rejection",
+                "assessment",
+                "document_request",
+                "employer_question",
+                "recruiter_outreach",
+                "noise",
+                "other",
+                "ghosted",
+                "review",
+            }
+            if data["category"] not in known:
+                data["category"] = "review"
+        data = {k: v for k, v in data.items() if k in allowed_email}
     # Coerce bare string anchors → ClaimAnchor dicts
     if isinstance(data.get("anchors_used"), list):
         data["anchors_used"] = [
@@ -250,17 +300,76 @@ def validate_email_class(
     *,
     deterministic_category: str | None = None,
     deterministic_false_rejection_blocked: bool = False,
+    deterministic_confidence: float = 0.0,
+    deterministic_evidence: tuple[str, ...] | list[str] | None = None,
+    email_text: str = "",
 ) -> tuple[EmailClassSuggestion, list[str]]:
+    """Merge LLM suggestion with deterministic classify — fail closed on high impact.
+
+    Asymmetric rules:
+    - LLM must not demote a solid deterministic confirmation/interview to noise/other.
+    - LLM must not invent rejection/offer/interview_cancelled without evidence.
+    - Uncertain → review (or other) with low confidence.
+    """
     notes: list[str] = []
+    det = (deterministic_category or "").strip() or None
+    det_ev = tuple(deterministic_evidence or ())
+    high_impact = {"rejection", "offer", "interview_cancelled"}
+    solid_det = {"confirmation", "interview", "offer", "rejection", "assessment", "interview_cancelled"}
+
     if deterministic_false_rejection_blocked and model.category == "rejection":
-        model.category = deterministic_category or "other"
+        model.category = det if det and det != "rejection" else "review"
         model.false_rejection_risk = True
         model.confidence = ConfidenceLevel.LOW
         notes.append("false_rejection_guard")
-    # Never force HIGH over weak signal
-    if model.confidence == ConfidenceLevel.HIGH and model.category in {"other", "noise"}:
+
+    # Prefer solid deterministic hiring signals over LLM noise/other demotion.
+    if (
+        det in solid_det
+        and deterministic_confidence >= 0.55
+        and model.category in {"noise", "other", "ghosted"}
+        and det not in high_impact
+    ):
+        model.category = det  # type: ignore[assignment]
+        model.confidence = ConfidenceLevel.MEDIUM if deterministic_confidence >= 0.7 else ConfidenceLevel.LOW
+        if det_ev:
+            model.evidence = list(det_ev)[:8]
+            model.reasons = list(det_ev)[:8]
+        notes.append("deterministic_signal_preferred_over_llm_noise")
+
+    # High-impact from LLM without evidence → review
+    if model.category in high_impact:
+        blob = _norm(email_text)
+        ev = [e for e in (model.evidence or model.reasons or []) if e]
+        grounded = any(_norm(e) and _norm(e) in blob for e in ev) if blob else bool(ev)
+        if not grounded and det != model.category:
+            # Allow if deterministic agrees with evidence
+            if det == model.category and det_ev:
+                model.evidence = list(det_ev)[:8]
+                notes.append("high_impact_from_deterministic_evidence")
+            else:
+                notes.append("high_impact_without_grounded_evidence")
+                was_rejection = model.category == "rejection"
+                model.category = "review"  # type: ignore[assignment]
+                model.confidence = ConfidenceLevel.LOW
+                if was_rejection:
+                    model.false_rejection_risk = True
+
+    # Deterministic rejection blocked / review wins over LLM rejection
+    if det == "review" and model.category == "rejection":
+        model.category = "review"  # type: ignore[assignment]
+        model.confidence = ConfidenceLevel.LOW
+        model.false_rejection_risk = True
+        notes.append("deterministic_review_blocks_rejection")
+
+    if model.confidence == ConfidenceLevel.HIGH and model.category in {
+        "other",
+        "noise",
+        "review",
+    }:
         model.confidence = ConfidenceLevel.LOW
         notes.append("high_confidence_demoted_for_weak_category")
+
     return model, notes
 
 
@@ -269,26 +378,58 @@ def validate_association(
     *,
     known_case_ids: set[str] | None = None,
     deterministic_ambiguous: bool = False,
+    deterministic_case_id: str | None = None,
+    deterministic_candidates: tuple[str, ...] | list[str] | None = None,
+    deterministic_reason: str = "",
 ) -> tuple[AssociationSuggestion, list[str]]:
     """Fail closed: ambiguous or unknown case_id → no HIGH confidence silent link."""
     notes: list[str] = []
     known = known_case_ids or set()
+
+    if model.case_id == "":
+        model.case_id = None
     if model.case_id and model.case_id not in known:
         notes.append("unknown_case_id")
         model.case_id = None
         model.ambiguous = True
         model.confidence = ConfidenceLevel.LOW
+        model.match_status = "no_safe_match"
+
     if deterministic_ambiguous:
         model.ambiguous = True
         model.confidence = ConfidenceLevel.LOW
+        model.case_id = None
+        model.match_status = "ambiguous"
+        if deterministic_candidates:
+            model.candidate_case_ids = [c for c in deterministic_candidates if c][:8]
+        if deterministic_reason and not model.reason:
+            model.reason = deterministic_reason[:400]
         notes.append("deterministic_ambiguous_wins")
+
     if model.ambiguous or not model.case_id:
         if model.confidence == ConfidenceLevel.HIGH:
             notes.append("blocked_high_confidence_ambiguous")
         model.confidence = ConfidenceLevel.LOW
-        # Keep candidates for review UI; do not silently associate
         if model.ambiguous:
             model.case_id = None
+            if model.match_status == "linked":
+                model.match_status = "ambiguous"
+        elif not model.case_id:
+            model.match_status = model.match_status if model.match_status != "linked" else "no_safe_match"
+    else:
+        # Linked only when not ambiguous and case known
+        model.match_status = "linked"
+        model.ambiguous = False
+
+    # Deterministic unambiguous link preferred when LLM disagrees weakly
+    if deterministic_case_id and not deterministic_ambiguous:
+        if not model.case_id or model.ambiguous:
+            model.case_id = deterministic_case_id
+            model.ambiguous = False
+            model.match_status = "linked"
+            model.confidence = ConfidenceLevel.MEDIUM
+            notes.append("deterministic_link_applied")
+
     return model, notes
 
 

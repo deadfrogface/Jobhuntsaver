@@ -76,24 +76,36 @@ class EmailClassSuggestion(StrictModel):
     category: Literal[
         "confirmation",
         "interview",
+        "interview_cancelled",
         "offer",
         "rejection",
         "assessment",
+        "document_request",
+        "employer_question",
+        "recruiter_outreach",
         "noise",
         "other",
         "ghosted",
+        "review",
     ] = "other"
     confidence: ConfidenceLevel = ConfidenceLevel.LOW
     reasons: list[str] = Field(default_factory=list, max_length=8)
     false_rejection_risk: bool = False
+    evidence: list[str] = Field(default_factory=list, max_length=8)
 
 
 class AssociationSuggestion(StrictModel):
     case_id: str | None = None
     confidence: ConfidenceLevel = ConfidenceLevel.LOW
     ambiguous: bool = True
-    candidate_case_ids: list[str] = Field(default_factory=list, max_length=5)
-    reason: str = Field(default="", max_length=240)
+    candidate_case_ids: list[str] = Field(default_factory=list, max_length=8)
+    reason: str = Field(default="", max_length=400)
+    match_status: Literal[
+        "linked",
+        "ambiguous",
+        "no_safe_match",
+        "review",
+    ] = "no_safe_match"
 
 
 class WritingSuggestion(StrictModel):

@@ -255,29 +255,86 @@ class GuentherService:
         *,
         deterministic_category: str | None = None,
         deterministic_false_rejection_blocked: bool = False,
+        deterministic_confidence: float = 0.0,
+        deterministic_evidence: tuple[str, ...] | list[str] | None = None,
     ) -> GuentherEnvelope:
+        # Always compute deterministic baseline if not provided
+        if deterministic_category is None:
+            from integrations.email_classify import classify_email
+
+            det = classify_email(subject, body)
+            deterministic_category = det.category
+            deterministic_false_rejection_blocked = det.false_rejection_blocked
+            deterministic_confidence = det.confidence
+            deterministic_evidence = det.evidence or det.reasons
+
         model, env = self._generate_validated(
             capability="email_class",
             schema_name="email_class",
-            task="Klassifiziere Bewerbungs-E-Mail; bei Zweifel niedrige Konfidenz.",
+            task=(
+                "Klassifiziere Bewerbungs-E-Mail. "
+                "High-impact (rejection/offer/interview_cancelled) nur mit Beleg aus dem Text. "
+                "Bei Zweifel category=review und confidence=low. "
+                "Bestätigung nicht als noise abwerten."
+            ),
             trusted=json.dumps(
                 {
                     "deterministic_category": deterministic_category,
+                    "deterministic_confidence": deterministic_confidence,
                     "false_rejection_blocked": deterministic_false_rejection_blocked,
+                    "deterministic_evidence": list(deterministic_evidence or []),
                 },
                 ensure_ascii=False,
             ),
             untrusted=f"subject: {subject}\nbody: {body[:12000]}",
+            use_heuristic_fallback=True,
         )
+        from guenther.contracts import EmailClassSuggestion, ConfidenceLevel
+
         if model is None:
-            return env
-        from guenther.contracts import EmailClassSuggestion
+            # Fail closed to deterministic / review — never invent high-impact
+            allowed = {
+                "confirmation",
+                "interview",
+                "interview_cancelled",
+                "offer",
+                "rejection",
+                "assessment",
+                "document_request",
+                "employer_question",
+                "recruiter_outreach",
+                "noise",
+                "other",
+                "ghosted",
+                "review",
+            }
+            det_cat = deterministic_category if deterministic_category in allowed else "review"
+            fb = EmailClassSuggestion(
+                category=det_cat,  # type: ignore[arg-type]
+                confidence=ConfidenceLevel.LOW,
+                reasons=list(deterministic_evidence or [])[:8],
+                false_rejection_risk=bool(deterministic_false_rejection_blocked),
+                evidence=list(deterministic_evidence or [])[:8],
+            )
+            return envelope_from_model(
+                capability="email_class",
+                model=fb,
+                ok=True,
+                fallback_reason=env.fallback_reason or "deterministic_fallback",
+                provider_status=env.provider_status,
+                model_id=env.model_id,
+                safety_notes=["llm_invalid_used_deterministic"],
+                validated=True,
+            )
 
         assert isinstance(model, EmailClassSuggestion)
         model, notes = validate_email_class(
             model,
             deterministic_category=deterministic_category,
             deterministic_false_rejection_blocked=deterministic_false_rejection_blocked,
+            deterministic_confidence=deterministic_confidence,
+            deterministic_evidence=deterministic_evidence,
+            email_text=f"{subject}\n{body}",
         )
         return envelope_from_model(
             capability="email_class",
@@ -297,29 +354,74 @@ class GuentherService:
         cases: list[dict[str, Any]],
         deterministic_case_id: str | None = None,
         deterministic_ambiguous: bool = False,
+        body: str = "",
     ) -> GuentherEnvelope:
+        from integrations.email_associate import associate_email
+        from guenther.contracts import AssociationSuggestion, ConfidenceLevel
+
+        det = associate_email(sender=sender, subject=subject, cases=cases, body=body)
+        deterministic_case_id = det.case_id if deterministic_case_id is None else deterministic_case_id
+        deterministic_ambiguous = bool(det.ambiguous or deterministic_ambiguous)
+
         model, env = self._generate_validated(
             capability="association",
             schema_name="association",
-            task="Ordne E-Mail einem Fall zu; im Zweifel ambiguous=true und case_id=null.",
-            trusted=json.dumps({"cases": cases[:50]}, ensure_ascii=False),
-            untrusted=f"sender: {sender}\nsubject: {subject}",
+            task=(
+                "Ordne E-Mail einem ApplicationCase zu. "
+                "Im Zweifel: ambiguous=true, case_id=null, match_status=ambiguous|no_safe_match. "
+                "Nie high confidence bei Mehrdeutigkeit."
+            ),
+            trusted=json.dumps(
+                {
+                    "cases": cases[:50],
+                    "deterministic": {
+                        "case_id": det.case_id,
+                        "ambiguous": det.ambiguous,
+                        "candidates": list(det.candidates),
+                        "reason": det.reason,
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            untrusted=f"sender: {sender}\nsubject: {subject}\nbody: {(body or '')[:4000]}",
+            use_heuristic_fallback=True,
         )
+
         if model is None:
-            return env
-        from guenther.contracts import AssociationSuggestion
+            # Fail closed from deterministic — never invent a link
+            fb = AssociationSuggestion(
+                case_id=None if (det.ambiguous or not det.case_id) else det.case_id,
+                confidence=ConfidenceLevel.LOW,
+                ambiguous=bool(det.ambiguous or not det.case_id),
+                candidate_case_ids=list(det.candidates)[:8],
+                reason=(det.reason or "deterministic_fail_closed")[:400],
+                match_status=(
+                    "linked"
+                    if det.case_id and not det.ambiguous
+                    else ("ambiguous" if det.ambiguous else "no_safe_match")
+                ),
+            )
+            return envelope_from_model(
+                capability="association",
+                model=fb,
+                ok=True,
+                fallback_reason=env.fallback_reason or "deterministic_fallback",
+                provider_status=env.provider_status,
+                model_id=env.model_id,
+                safety_notes=["llm_invalid_used_deterministic_assoc"],
+                validated=True,
+            )
 
         assert isinstance(model, AssociationSuggestion)
         known = {str(c.get("id") or "") for c in cases}
         model, notes = validate_association(
-            model, known_case_ids=known, deterministic_ambiguous=deterministic_ambiguous
+            model,
+            known_case_ids=known,
+            deterministic_ambiguous=deterministic_ambiguous,
+            deterministic_case_id=deterministic_case_id if not deterministic_ambiguous else None,
+            deterministic_candidates=det.candidates,
+            deterministic_reason=det.reason,
         )
-        # Deterministic unambiguous high-confidence link wins over weak LLM
-        if deterministic_case_id and not deterministic_ambiguous:
-            if model.case_id and model.case_id != deterministic_case_id:
-                notes.append("deterministic_case_preferred")
-                model.case_id = deterministic_case_id
-                model.ambiguous = False
         return envelope_from_model(
             capability="association",
             model=model,

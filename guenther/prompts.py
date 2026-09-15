@@ -58,12 +58,13 @@ SCHEMA_HINTS: dict[str, str] = {
         '"confidence":"low|medium|high"}'
     ),
     "email_class": (
-        '{"category":"confirmation|interview|offer|rejection|assessment|noise|other|ghosted",'
-        '"confidence":"low|medium|high","reasons":[],"false_rejection_risk":false}'
+        '{"category":"confirmation|interview|interview_cancelled|offer|rejection|assessment|'
+        'document_request|employer_question|recruiter_outreach|noise|other|ghosted|review",'
+        '"confidence":"low|medium|high","reasons":[],"false_rejection_risk":false,"evidence":[]}'
     ),
     "association": (
         '{"case_id":null,"confidence":"low|medium|high","ambiguous":true,'
-        '"candidate_case_ids":[],"reason":""}'
+        '"candidate_case_ids":[],"reason":"","match_status":"linked|ambiguous|no_safe_match|review"}'
     ),
     "writing": (
         '{"subject":"","body":"","anchors_used":[],"invented_flag":false,'
