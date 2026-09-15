@@ -22,6 +22,9 @@ enabled_sources:
 geocoder: nominatim
 cover_letter_template: templates/cover_letter.txt
 exclude_on_missing_mandatory: false
+# Search UX
+search_mode: profile_discovery   # profile_discovery | explicit_titles
+jobs_per_search: 40              # 10..100 or 0 = Max
 # Desktop UI
 theme: system          # system | light | dark
 language: de           # de | en

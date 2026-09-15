@@ -40,36 +40,35 @@ from desktop.widgets.structured_editors import (
 class CareerSection(QGroupBox):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.desired_titles = ListEditor("placeholder.job_title", visible_rows=3)
-        self.alt_titles = ListEditor("placeholder.alt_title", visible_rows=3)
+        self.desired_titles = ListEditor("placeholder.job_title", visible_rows=4)
         self.unwanted_titles = ListEditor("placeholder.exclude", visible_rows=3)
         self.desired_industries = ListEditor("placeholder.industry", visible_rows=3)
         self.excluded_industries = ListEditor("placeholder.exclude", visible_rows=3)
         form = QFormLayout(self)
         self.lbl_desired = QLabel()
-        self.lbl_alt = QLabel()
         self.lbl_unwanted = QLabel()
         self.lbl_industries = QLabel()
         self.lbl_industries_ex = QLabel()
         form.addRow(self.lbl_desired, self.desired_titles)
-        form.addRow(self.lbl_alt, self.alt_titles)
         self.suggest_titles_btn = QPushButton()
         self.suggest_titles_btn.setObjectName("SecondaryButton")
         form.addRow("", self.suggest_titles_btn)
         form.addRow(self.lbl_unwanted, self.unwanted_titles)
         form.addRow(self.lbl_industries, self.desired_industries)
         form.addRow(self.lbl_industries_ex, self.excluded_industries)
+        # Soft-compat: keep attribute so older tests/callers do not crash.
+        self.alt_titles = self.desired_titles
+        self.lbl_alt = QLabel()
+        self.lbl_alt.setVisible(False)
 
     def retranslate(self) -> None:
         self.setTitle(tr("profile.career"))
         self.lbl_desired.setText(tr("profile.desired"))
-        self.lbl_alt.setText(tr("profile.alternative"))
         self.lbl_unwanted.setText(tr("profile.excluded"))
         self.lbl_industries.setText(tr("profile.industries"))
         self.lbl_industries_ex.setText(tr("profile.industries_ex"))
         for editor in (
             self.desired_titles,
-            self.alt_titles,
             self.unwanted_titles,
             self.desired_industries,
             self.excluded_industries,
@@ -77,15 +76,19 @@ class CareerSection(QGroupBox):
             editor.retranslate()
 
     def load(self, jobs: JobsConfig) -> None:
-        self.desired_titles.set_items(jobs.desired_titles)
-        self.alt_titles.set_items(jobs.alternative_titles)
+        # Soft-migrate legacy alternatives into desired for display.
+        merged = list(jobs.desired_titles or [])
+        for t in jobs.alternative_titles or []:
+            if t and t not in merged:
+                merged.append(t)
+        self.desired_titles.set_items(merged)
         self.unwanted_titles.set_items(jobs.unwanted_titles)
         self.desired_industries.set_items(jobs.desired_industries)
         self.excluded_industries.set_items(jobs.excluded_industries)
 
     def save_into(self, jobs: JobsConfig) -> None:
         jobs.desired_titles = self.desired_titles.get_items()
-        jobs.alternative_titles = self.alt_titles.get_items()
+        jobs.alternative_titles = []  # retired user-facing field
         jobs.unwanted_titles = self.unwanted_titles.get_items()
         jobs.desired_industries = self.desired_industries.get_items()
         jobs.excluded_industries = self.excluded_industries.get_items()

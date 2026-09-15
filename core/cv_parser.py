@@ -110,14 +110,18 @@ def normalize_driving_license(raw: str | list[str]) -> list[str]:
     return found
 
 
+# User-facing label when a field is simply absent from the CV — not a parser crash.
+MISSING_IN_DOCUMENT = "Im Dokument nicht gefunden"
+
+
 def field_confidence(value: Any) -> str:
-    """Return ``high`` / ``low`` / ``Nicht erkannt`` for empty values."""
+    """Return ``high`` / ``low`` / ``Im Dokument nicht gefunden`` for empty values."""
     if value is None:
-        return "Nicht erkannt"
+        return MISSING_IN_DOCUMENT
     if isinstance(value, (list, dict, str)) and not value:
-        return "Nicht erkannt"
+        return MISSING_IN_DOCUMENT
     if isinstance(value, list) and all(not str(v).strip() for v in value):
-        return "Nicht erkannt"
+        return MISSING_IN_DOCUMENT
     return "high"
 
 
@@ -861,7 +865,7 @@ def parse_cv_text(text: str) -> dict[str, Any]:
     }
     if not text.strip():
         empty["confidence"] = {
-            k: "Nicht erkannt"
+            k: MISSING_IN_DOCUMENT
             for k in (
                 "skills",
                 "software",
@@ -875,12 +879,14 @@ def parse_cv_text(text: str) -> dict[str, Any]:
         }
         return empty
 
+    from core.text_normalize import extract_german_phones
+
     emails = re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
-    phones = re.findall(r"(?:\+\d[\d\s\-()]{6,}\d)", text)
-    # Also allow national numbers with leading 0 when clearly phone-sized
-    phones += re.findall(r"(?<!\w)(?:0\d[\d\s\-()]{6,}\d)", text)
+    phones = extract_german_phones(text)
     sections = _split_named_sections(text)
     personal = _parse_personal_header(text, sections)
+    if phones and not personal.get("phone"):
+        personal["phone"] = phones[0]
 
     languages = _parse_languages(sections.get("languages", ""))
     software = [
@@ -1094,6 +1100,42 @@ def _contains_name(text: str, personal: dict[str, str]) -> bool:
     return bool(full) and full in (text or "").strip().lower()
 
 
+def _clean_street_fragment(
+    street: str,
+    personal: dict[str, str],
+    *,
+    labels: tuple[str, ...] = ("Adresse", "Anschrift"),
+) -> str:
+    """Strip name prefixes, bullets, and address labels from street captures."""
+    raw = (street or "").strip(" ,;·|•-*–—")
+    if not raw:
+        return ""
+    label_re = "|".join(re.escape(l) for l in labels)
+    raw = re.sub(rf"^(?:{label_re})\s*[:\-]?\s*", "", raw, flags=re.I)
+    raw = re.sub(r",?\s*(Germany|Deutschland|United Kingdom|Ireland)\s*$", "", raw, flags=re.I)
+    raw = re.sub(r"^[\s•\-–—*·]+", "", raw)
+    # Drop leading person name duplicated onto the address line.
+    fn = (personal.get("first_name") or "").strip()
+    ln = (personal.get("last_name") or "").strip()
+    if fn and ln:
+        raw = re.sub(
+            rf"^{re.escape(fn)}\s+{re.escape(ln)}\s*[,|]?\s*",
+            "",
+            raw,
+            flags=re.I,
+        )
+    elif fn:
+        raw = re.sub(rf"^{re.escape(fn)}\s*[,|]?\s*", "", raw, flags=re.I)
+    raw = raw.strip(" ,;·|")
+    if not raw or "@" in raw:
+        return ""
+    # Prefer streets that look like an address (digit or known street suffix).
+    if re.search(r"\d", raw) or re.search(
+        r"(?i)\b(str(?:asse|\.|aße)?|weg|platz|allee|ring|gasse)\b", raw
+    ):
+        return raw
+    return ""
+
 
 def _extract_personal_from_lines(lines: list[str], personal: dict[str, str]) -> dict[str, str]:
     """Fill missing name/address fields from an arbitrary list of CV lines."""
@@ -1122,10 +1164,8 @@ def _extract_personal_from_lines(lines: list[str], personal: dict[str, str]) -> 
             continue
         m = _POSTAL_DE.search(line)
         if m:
-            street = m.group("street").strip(" ,;·|")
-            street = re.sub(r"^(Adresse|Anschrift)\s*[:\-]?\s*", "", street, flags=re.I)
-            street = re.sub(r",?\s*(Germany|Deutschland|United Kingdom|Ireland)\s*$", "", street, flags=re.I)
-            if "@" not in street and re.search(r"\d", street):
+            street = _clean_street_fragment(m.group("street"), personal)
+            if street:
                 personal["street"] = street
             personal["postal_code"] = m.group("plz")
             city = m.group("city").strip(" ,;·|")
@@ -1137,9 +1177,9 @@ def _extract_personal_from_lines(lines: list[str], personal: dict[str, str]) -> 
             break
         m2 = _POSTAL_UK_IE.search(line)
         if m2:
-            street = m2.group("street").strip(" ,;·|")
-            street = re.sub(r"^(Adresse|Address)\s*[:\-]?\s*", "", street, flags=re.I)
-            personal["street"] = street
+            street = _clean_street_fragment(m2.group("street"), personal, labels=("Adresse", "Address"))
+            if street:
+                personal["street"] = street
             personal["city"] = m2.group("city").strip()
             personal["postal_code"] = re.sub(r"\s+", " ", m2.group("pc").strip().upper())
             if m2.group("country"):
@@ -1158,12 +1198,14 @@ def _extract_personal_from_lines(lines: list[str], personal: dict[str, str]) -> 
             # Previous non-empty line may be the street
             if not personal.get("street") and idx > 0:
                 prev = (lines[idx - 1] or "").strip()
-                if prev and "@" not in prev and re.search(r"\d", prev) and not re.match(r"^\d{5}\b", prev):
+                if prev and "@" not in prev and not re.match(r"^\d{5}\b", prev):
                     if not (_NAME_RE.fullmatch(prev) and len(prev.split()) >= 2):
-                        personal["street"] = prev
-                        hn = re.search(r"^(?P<s>.+?)\s+(?P<n>\d+[a-zA-Z]?)$", prev)
-                        if hn:
-                            personal["house_number"] = hn.group("n")
+                        cleaned = _clean_street_fragment(prev, personal)
+                        if cleaned:
+                            personal["street"] = cleaned
+                            hn = re.search(r"^(?P<s>.+?)\s+(?P<n>\d+[a-zA-Z]?)$", cleaned)
+                            if hn:
+                                personal["house_number"] = hn.group("n")
             break
 
     if not personal.get("city"):
@@ -1236,10 +1278,8 @@ def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str
         # German PLZ
         m = _POSTAL_DE.search(line)
         if m:
-            street = m.group("street").strip(" ,;·|")
-            street = re.sub(r"^(Adresse|Anschrift)\s*[:\-]?\s*", "", street, flags=re.I)
-            street = re.sub(r",?\s*(Germany|Deutschland|United Kingdom|Ireland)\s*$", "", street, flags=re.I)
-            if "@" not in street and re.search(r"\d", street):
+            street = _clean_street_fragment(m.group("street"), personal)
+            if street:
                 personal["street"] = street
             personal["postal_code"] = m.group("plz")
             city = m.group("city").strip(" ,;·|")
@@ -1252,14 +1292,16 @@ def _parse_personal_header(text: str, sections: dict[str, str]) -> dict[str, str
 
         m2 = _POSTAL_UK_IE.search(line)
         if m2:
-            street = m2.group("street").strip(" ,;·|")
-            street = re.sub(r"^(Adresse|Address)\s*[:\-]?\s*", "", street, flags=re.I)
-            personal["street"] = street
+            street = _clean_street_fragment(
+                m2.group("street"), personal, labels=("Adresse", "Address")
+            )
+            if street:
+                personal["street"] = street
             personal["city"] = m2.group("city").strip()
             personal["postal_code"] = re.sub(r"\s+", " ", m2.group("pc").strip().upper())
             if m2.group("country"):
                 personal["country"] = m2.group("country").strip()
-            hn = re.match(r"^(?P<n>\d+[a-zA-Z]?)\s+(?P<s>.+)$", street)
+            hn = re.match(r"^(?P<n>\d+[a-zA-Z]?)\s+(?P<s>.+)$", street or "")
             if hn:
                 personal["house_number"] = hn.group("n")
             break

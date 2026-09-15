@@ -263,10 +263,14 @@ class MainWindow(QMainWindow):
         if bool(getattr(cfg.settings, "automation_paused", False)):
             QMessageBox.information(self, tr("app.name"), tr("msg.automation_paused"))
             return
-        titles = list(cfg.profile.jobs.desired_titles or []) + list(cfg.profile.jobs.alternative_titles or [])
-        if not titles:
+        titles = list(cfg.profile.jobs.desired_titles or [])
+        from app.main import resolve_search_titles
+
+        searchable = resolve_search_titles(cfg)
+        if not searchable:
             QMessageBox.warning(self, tr("app.name"), tr("msg.no_job_titles"))
             return
+        _ = titles  # desired titles optional in discovery mode
         loc = cfg.profile.location
         if not (loc.home_address or "").strip() and not loc.allow_remote_germany:
             QMessageBox.warning(self, tr("app.name"), tr("msg.no_search_location"))

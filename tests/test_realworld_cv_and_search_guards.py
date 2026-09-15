@@ -43,6 +43,7 @@ B
     assert personal.get("postal_code") == "80331"
     assert personal.get("city") == "München"
     assert "Beispielweg" in (personal.get("street") or personal.get("address") or "")
+    assert parsed["confidence"]["personal"] != "Im Dokument nicht gefunden"
     assert parsed["confidence"]["personal"] != "Nicht erkannt"
     assert "Kundenorientierung" in parsed["skills"]
     soft = " | ".join(parsed["software"]).lower()

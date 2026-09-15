@@ -259,22 +259,57 @@ class ConfigService:
         config.settings.automation_paused = False
         return config
 
-    def copy_cv_into_storage(self, source: Path, label: str = "Default CV") -> Path:
+    def copy_cv_into_storage(
+        self,
+        source: Path,
+        label: str = "Default CV",
+        *,
+        role: str = "cv",
+        set_active: bool | None = None,
+    ) -> Path:
+        """Copy a document into AppData ``cvs/`` with an explicit role.
+
+        Cover letters never overwrite ``application.cv_path`` / ``active_cv_id``.
+        """
+        from core.documents import (
+            ensure_variant_shape,
+            new_variant_id,
+            normalize_role,
+            normalize_variants,
+        )
+
         source = Path(source)
         dest_dir = self.dirs["cvs"]
         dest = dest_dir / source.name
         if source.resolve() != dest.resolve():
             shutil.copy2(source, dest)
+        role_n = normalize_role(role, default="cv")
+        if set_active is None:
+            set_active = role_n == "cv"
         meta = self.load_meta()
-        variants = list(meta.get("cv_variants") or [])
-        entry = {"label": label, "path": str(dest)}
+        variants = normalize_variants(meta.get("cv_variants"))
+        # Replace same path if present; otherwise append.
         variants = [v for v in variants if v.get("path") != str(dest)]
+        entry = ensure_variant_shape(
+            {
+                "id": new_variant_id(),
+                "label": label,
+                "path": str(dest),
+                "role": role_n,
+            }
+        )
+        assert entry is not None
         variants.append(entry)
         meta["cv_variants"] = variants
-        self.save_meta(meta)
         cfg = self.config
-        cfg.application.cv_path = str(dest)
-        self.save(cfg)
+        if role_n == "cv" and set_active:
+            meta["active_cv_id"] = entry["id"]
+            cfg.application.cv_path = str(dest)
+            self.save(cfg)
+        elif role_n != "cv":
+            # Never let cover_letter / other clobber the active CV path.
+            pass
+        self.save_meta(meta)
         return dest
 
     def clear_cv_storage(self) -> None:
@@ -291,7 +326,22 @@ class ConfigService:
                     continue
         meta = self.load_meta()
         meta["cv_variants"] = []
+        meta["active_cv_id"] = ""
         self.save_meta(meta)
+
+    def get_active_cv_info(self) -> dict[str, Any]:
+        from core.documents import active_cv_variant, variant_display_label
+
+        meta = self.load_meta()
+        cfg = self.load()
+        variant = active_cv_variant(meta, fallback_cv_path=cfg.application.cv_path)
+        return {
+            "variant": variant,
+            "label": variant_display_label(variant)
+            or (cfg.application.cv_path or ""),
+            "path": (variant or {}).get("path") or cfg.application.cv_path or "",
+            "role": (variant or {}).get("role") or ("cv" if cfg.application.cv_path else ""),
+        }
 
     def reset_to_empty_profile(self, *, clear_search_prefs: bool = False) -> AppConfig:
         """Persist an empty applicant + qualifications profile after clearing CV files."""

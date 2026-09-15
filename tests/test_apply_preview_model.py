@@ -56,14 +56,18 @@ def test_preview_model_submit_allowed_false_and_identity():
     assert "intended_answers" in data
 
 
-def test_preview_submit_allowed_only_when_auto_and_not_dry():
+def test_preview_submit_allowed_only_when_auto_and_not_dry(tmp_path):
+    cv = tmp_path / "cv.pdf"
+    cv.write_bytes(b"%PDF-1.4 fictional")
     cfg = AppConfig(
         application=ApplicationProfile(
             first_name="Ada",
             last_name="Lovelace",
             email="ada@example.com",
+            cv_path=str(cv),
         ),
         settings=SettingsConfig(dry_run=False, mode="fully_automatic", automatic_submission=True),
+        root=tmp_path,
     )
     job = Job(
         id="j2",
@@ -73,6 +77,7 @@ def test_preview_submit_allowed_only_when_auto_and_not_dry():
     )
     preview = build_application_preview(job, cfg)
     assert preview.will_submit is True
+    assert preview.quality_gate != "BLOCKED"
     assert preview.submit_allowed is True
 
 
@@ -97,4 +102,26 @@ def test_preview_submit_blocked_when_auto_submit_disabled():
     )
     preview = build_application_preview(job, cfg)
     assert preview.will_submit is False
+    assert preview.submit_allowed is False
+
+
+def test_preview_gate_blocks_submit_without_cv():
+    cfg = AppConfig(
+        application=ApplicationProfile(
+            first_name="Ada",
+            last_name="Lovelace",
+            email="ada@example.com",
+            cv_path="",
+        ),
+        settings=SettingsConfig(dry_run=False, mode="fully_automatic", automatic_submission=True),
+    )
+    job = Job(
+        id="j4",
+        title="Role",
+        company="Co",
+        application_url="https://boards.greenhouse.io/example/jobs/4",
+    )
+    preview = build_application_preview(job, cfg)
+    assert preview.will_submit is True  # settings intent
+    assert preview.quality_gate == "BLOCKED"
     assert preview.submit_allowed is False

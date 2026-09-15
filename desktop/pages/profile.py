@@ -105,7 +105,11 @@ class ProfilePage(QWidget):
             cfg.application,
             sync_address_to_search=self.config_service.get_sync_address_to_search(),
         )
-        self.cv.cv_label.setText(cfg.application.cv_path or tr("profile.no_cv"))
+        self.cv.cv_label.setText(
+            self.config_service.get_active_cv_info().get("label")
+            or cfg.application.cv_path
+            or tr("profile.no_cv")
+        )
 
 
     def suggest_titles_from_cv(self) -> None:
@@ -153,14 +157,11 @@ class ProfilePage(QWidget):
                 ],
             }
         desired = list(self.career.desired_titles.get_items())
-        alt = list(self.career.alt_titles.get_items())
         suggestions = suggest_job_titles(
-            parsed, existing_desired=desired, existing_alternative=alt
+            parsed, existing_desired=desired, existing_alternative=[]
         )
-        merged_d = list(dict.fromkeys(desired + suggestions.get("desired", [])))
-        merged_a = list(dict.fromkeys(alt + suggestions.get("alternative", [])))
+        merged_d = list(dict.fromkeys(desired + suggestions.get("desired", []) + suggestions.get("alternative", [])))
         self.career.desired_titles.set_items(merged_d)
-        self.career.alt_titles.set_items(merged_a)
         unwanted = list(self.career.unwanted_titles.get_items())
         if not unwanted:
             self.career.unwanted_titles.set_items(
@@ -177,8 +178,11 @@ class ProfilePage(QWidget):
         )
         if not path:
             return
-        dest = self.config_service.copy_cv_into_storage(Path(path), label="Default CV")
-        self.cv.cv_label.setText(str(dest))
+        dest = self.config_service.copy_cv_into_storage(
+            Path(path), label="Default CV", role="cv"
+        )
+        info = self.config_service.get_active_cv_info()
+        self.cv.cv_label.setText(info.get("label") or str(dest))
         QMessageBox.information(self, tr("profile.cv"), tr("profile.cv_saved"))
 
     def import_from_cv(self) -> None:
@@ -193,8 +197,9 @@ class ProfilePage(QWidget):
             )
             if not path:
                 return
-            cv_path = self.config_service.copy_cv_into_storage(Path(path))
-            self.cv.cv_label.setText(str(cv_path))
+            cv_path = self.config_service.copy_cv_into_storage(Path(path), role="cv")
+            info = self.config_service.get_active_cv_info()
+            self.cv.cv_label.setText(info.get("label") or str(cv_path))
             cfg = self.config_service.load()
 
         dlg = CvImportDialog(cv_path, cfg.profile.qualifications, cfg.application, self)

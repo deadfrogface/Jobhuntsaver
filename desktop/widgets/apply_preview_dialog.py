@@ -1,4 +1,4 @@
-"""Pre-submit application preview dialog."""
+"""Pre-submit application preview dialog with READY/WARNING/BLOCKED gate."""
 
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ class ApplyPreviewDialog(QDialog):
 
         self.summary = QLabel()
         self.summary.setWordWrap(True)
+        self.gate = QLabel()
+        self.gate.setWordWrap(True)
         self.body = QPlainTextEdit()
         self.body.setReadOnly(True)
         self.body.setPlainText(preview.text_report())
@@ -49,6 +51,7 @@ class ApplyPreviewDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
+        layout.addWidget(self.gate)
         layout.addWidget(self.body, 1)
         layout.addWidget(buttons)
 
@@ -57,7 +60,6 @@ class ApplyPreviewDialog(QDialog):
             if preview.will_submit
             else tr("apps.preview_no_submit")
         )
-        # Fallback if i18n keys missing
         if submit_note.startswith("apps."):
             submit_note = (
                 "Finales Absenden wäre erlaubt."
@@ -68,10 +70,31 @@ class ApplyPreviewDialog(QDialog):
         if title.startswith("apps."):
             title = "Bewerbungsvorschau (vor Absenden)"
         self.setWindowTitle(title)
+        company = preview.company or "—"
+        doc = ""
+        if preview.document_filename or preview.document_role:
+            doc = (
+                f"<br/>Dokument: <b>{preview.document_role or 'cv'}</b> — "
+                f"{preview.document_filename or '—'}"
+            )
         self.summary.setText(
-            f"<b>{preview.company}</b> — {preview.title}<br/>"
-            f"ATS: {preview.ats} ({preview.ats_support})<br/>{submit_note}"
+            f"<b>{company}</b> — {preview.title}<br/>"
+            f"ATS: {preview.ats} ({preview.ats_support})<br/>{submit_note}{doc}"
         )
+        gate = getattr(preview, "quality_gate", "WARNING") or "WARNING"
+        gate_key = {
+            "READY": tr("apps.gate_ready"),
+            "WARNING": tr("apps.gate_warning"),
+            "BLOCKED": tr("apps.gate_blocked"),
+        }.get(gate, gate)
+        if str(gate_key).startswith("apps."):
+            gate_key = {
+                "READY": "Qualität: READY — bereit zur Vorbereitung",
+                "WARNING": "Qualität: WARNING — bitte prüfen",
+                "BLOCKED": "Qualität: BLOCKED — CV/Profil blockiert",
+            }.get(gate, gate)
+        color = {"READY": "#1b7f3a", "WARNING": "#9a6b00", "BLOCKED": "#a11"}.get(gate, "#333")
+        self.gate.setText(f"<span style='color:{color}; font-weight:600'>{gate_key}</span>")
 
     def _open_url(self) -> None:
         url = self.preview.application_url

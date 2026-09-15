@@ -58,12 +58,33 @@ class ApplicationManager:
         )
 
     def _resolve_cv_path(self) -> Path | None:
-        raw = (self.config.application.cv_path or "").strip()
-        if not raw:
+        """Resolve the active CV (role=cv). Cover letters never win."""
+        from core.documents import resolve_active_cv_path
+
+        meta: dict = {}
+        meta_path = self.config.root / "meta.json"
+        if meta_path.is_file():
+            try:
+                import json
+
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                meta = {}
+        path = resolve_active_cv_path(
+            meta,
+            fallback_cv_path=self.config.application.cv_path,
+            root=self.config.root,
+        )
+        if path is None:
             return None
-        path = Path(raw)
-        if not path.is_absolute():
-            path = self.config.root / path
+        # Refuse non-cv roles even if path was somehow set.
+        variants = meta.get("cv_variants") or []
+        for v in variants:
+            if str(v.get("path") or "") in {str(path), self.config.application.cv_path}:
+                from core.documents import normalize_role
+
+                if normalize_role(v.get("role")) != "cv":
+                    return None
         return path
 
     def _submit_allowed(self, settings, *, force_submit: bool | None) -> bool:
@@ -106,6 +127,12 @@ class ApplicationManager:
             return False, f"missing profile fields: {', '.join(missing)}"
         cv_path = self._resolve_cv_path()
         if cv_path is None or not cv_path.is_file():
+            return False, "CV file missing or unreadable"
+        # Role hard-block: active document must be a CV.
+        try:
+            with cv_path.open("rb") as fh:
+                fh.read(1)
+        except OSError:
             return False, "CV file missing or unreadable"
         # Treat stored "unknown" like empty so URL re-detection can still win.
         ats = (
@@ -162,7 +189,23 @@ class ApplicationManager:
                 ats,
                 support,
             )
-        preview = build_application_preview(job, self.config)
+        preview = build_application_preview(
+            job,
+            self.config,
+            meta=(
+                __import__("json").loads(
+                    (self.config.root / "meta.json").read_text(encoding="utf-8")
+                )
+                if (self.config.root / "meta.json").is_file()
+                else None
+            ),
+        )
+        if getattr(preview, "quality_gate", "") == "BLOCKED":
+            reason = "CV hard-block: " + "; ".join(preview.warnings[:2] or ["document role/CV invalid"])
+            job.status = JobStatus.NEEDS_REVIEW.value
+            job.rejection_reasons = list({*job.rejection_reasons, reason})
+            self.db.upsert_job(job)
+            return ApplyResult(success=False, needs_review=True, error_message=reason)
         if ats == "unknown" or ats not in APPLIERS:
             job.status = JobStatus.NEEDS_REVIEW.value
             job.rejection_reasons = list(

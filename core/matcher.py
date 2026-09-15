@@ -1,19 +1,142 @@
-"""Local job matching (0-100) without LLM APIs.
+"""Local job matching (0-100) with explainable evidence — no LLM APIs.
 
-Uses the full structured profile: titles, experience, education,
-certificates, software, skills, languages+levels, driving license.
+Evidence classes:
+- DIRECT: token/phrase appears as a hard skill / title / explicit requirement hit
+- RELATED: transferable occupation / soft adjacency (never invents patient care)
+- NOT_SUPPORTED: requirement present in JD with no profile support
+
+Glue words (sowie, und, …) never count as experience evidence.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import asdict, dataclass, field
+from typing import Any, Literal
 
 from core.config import AppConfig, LanguageEntry
 from core.hard_filter import hard_exclude
 from core.models import Job, MatchResult, RemoteType
 from core.salary import job_annual_salary, meets_minimum
+from core.text_normalize import clean_text
 
-_CEFR_ORDER = {"a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "muttersprache": 6, "native": 6}
+EvidenceClass = Literal["DIRECT", "RELATED", "NOT_SUPPORTED"]
+RequirementKind = Literal["hard", "desirable"]
+
+_CEFR_ORDER = {
+    "a1": 1,
+    "a2": 2,
+    "b1": 3,
+    "b2": 4,
+    "c1": 5,
+    "c2": 6,
+    "muttersprache": 6,
+    "native": 6,
+}
+
+# German / English glue & stop words that must never score as experience.
+_GLUE_WORDS = frozenset(
+    {
+        "sowie",
+        "sowie.",
+        "und",
+        "oder",
+        "bzw",
+        "bzw.",
+        "etc",
+        "etc.",
+        "auch",
+        "mit",
+        "von",
+        "zum",
+        "zur",
+        "bei",
+        "nach",
+        "über",
+        "uber",
+        "durch",
+        "einer",
+        "einem",
+        "eines",
+        "seine",
+        "seiner",
+        "ihre",
+        "ihrer",
+        "diese",
+        "dieser",
+        "dieses",
+        "andere",
+        "weiter",
+        "weitere",
+        "weiteren",
+        "including",
+        "and",
+        "or",
+        "with",
+        "from",
+        "the",
+        "for",
+        "that",
+        "this",
+        "their",
+        "your",
+        "our",
+        "into",
+        "onto",
+        "plus",
+        "sowie",
+    }
+)
+
+# Soft relatedness: dental/medical billing admin ↔ medical administration
+# WITHOUT claiming clinical / patient-record competence.
+_RELATED_OCCUPATIONS: list[tuple[re.Pattern[str], re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"zahnarztpraxis|dental\s*billing|zahnmedizinische[rn]?\s*fachangestellte|"
+            r"abrechnung.*praxis|praxisabrechnung|goz|bema",
+            re.I,
+        ),
+        re.compile(
+            r"medizinische[rn]?\s*fachangestellte|medizinische[rn]?\s*verwaltung|"
+            r"praxisverwaltung|arztpraxis.*verwaltung|medical\s*admin",
+            re.I,
+        ),
+        "Administrative Praxis-/Abrechnungserfahrung (ohne Patientenakte)",
+    ),
+    (
+        re.compile(r"buchhalt|rechnungswesen|accounts\s*payable|datev|lohnbuchhalt", re.I),
+        re.compile(r"sachbearbeit|backoffice|verwaltung|office\s*management", re.I),
+        "Kaufmännische Verwaltung / Buchhaltung → Sachbearbeitung",
+    ),
+    (
+        re.compile(r"kundenberat|customer\s*service|callcenter|hotline", re.I),
+        re.compile(r"empfang|front\s*office|office\s*assist|sekretariat", re.I),
+        "Kundenkontakt → Empfang / Assistenz",
+    ),
+]
+
+
+@dataclass
+class MatchEvidence:
+    token: str
+    evidence_class: EvidenceClass
+    requirement: RequirementKind = "desirable"
+    field: str = ""
+    points: int = 0
+    note: str = ""
+
+    def label(self) -> str:
+        prefix = {
+            "DIRECT": "Direkt",
+            "RELATED": "Verwandt",
+            "NOT_SUPPORTED": "Nicht belegt",
+        }[self.evidence_class]
+        base = self.note or self.token
+        return f"{prefix}: {base}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def _distance_points(
@@ -26,7 +149,6 @@ def _distance_points(
     if distance_km is None:
         return 8, None, "Distance unknown"
     limit = max(float(max_distance_km or 20.0), 1.0)
-    # Prefer absolute near-bands when they fit inside the configured commute.
     near_bands = (
         (5.0, 20, "Only {d} km away"),
         (10.0, 16, "Only {d} km away"),
@@ -45,18 +167,34 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 
-def _token_in_text(token: str, haystack: str) -> bool:
-    t = _norm(token)
-    if not t or len(t) < 2:
-        return False
-    if t in haystack:
+def _is_glue_token(token: str) -> bool:
+    t = _norm(token).strip(".,;:()[]\"'")
+    if not t or len(t) < 3:
         return True
-    # Word-boundary-ish for short tokens
+    if t in _GLUE_WORDS:
+        return True
+    # Pure conjunctions / particles
+    if re.fullmatch(r"(und|oder|sowie|bzw\.?|etc\.?|and|or|with)", t):
+        return True
+    return False
+
+
+def _token_in_text(token: str, haystack: str) -> bool:
+    """Word-boundary match only — never bare substring for short glue words."""
+    t = _norm(token)
+    if _is_glue_token(t):
+        return False
+    if not t or len(t) < 3:
+        return False
     return bool(re.search(rf"(?<!\w){re.escape(t)}(?!\w)", haystack))
 
 
+def _meaningful_words(text: str, *, min_len: int = 5) -> list[str]:
+    words = re.findall(r"[A-Za-zÄÖÜäöüß]{%d,}" % min_len, text or "")
+    return [w for w in words if not _is_glue_token(w)]
+
+
 def _normalize_lang_level_token(token: str) -> str:
-    """Map soft DE fluency phrases onto CEFR-ish tokens used by scoring."""
     raw = (token or "").strip().lower()
     raw = raw.replace("ß", "ss")
     if raw in {"fliessend", "verhandlungssicher"}:
@@ -67,7 +205,6 @@ def _normalize_lang_level_token(token: str) -> str:
 
 
 def _required_language_levels(text: str) -> list[tuple[str, str]]:
-    """Detect language requirements like 'Englisch C1' / 'Englisch fließend'."""
     found: list[tuple[str, str]] = []
     patterns = [
         r"(deutsch|german|englisch|english|französisch|franzoesisch|french|italienisch|italian|spanisch|spanish|ungarisch|hungarian)\s*(?:kenntnisse)?\s*[\(:]?\s*([abc][12]|muttersprache|native|flie[sß]end|verhandlungssicher)",
@@ -80,7 +217,11 @@ def _required_language_levels(text: str) -> list[tuple[str, str]]:
             groups = [g for g in m.groups() if g]
             if len(groups) == 1:
                 lang, level = groups[0], "C1"
-            elif re.fullmatch(r"[abc][12]|flie[sß]end|verhandlungssicher|muttersprache|native", groups[0], re.I):
+            elif re.fullmatch(
+                r"[abc][12]|flie[sß]end|verhandlungssicher|muttersprache|native",
+                groups[0],
+                re.I,
+            ):
                 level, lang = groups[0], groups[1]
             else:
                 lang, level = groups[0], groups[1]
@@ -115,6 +256,62 @@ def _has_driving_class_b(licenses: list[str], text: str) -> bool:
     return bool(re.search(r"klasse\s*b|\b[b]\b.*pkw|führerschein\s*b", joined))
 
 
+def _extract_hard_requirements(combined: str) -> list[str]:
+    """Pull phrases that look like hard must-haves from JD text."""
+    hard: list[str] = []
+    for m in re.finditer(
+        r"(?:zwingend|muss|müssen|required|mandatory|voraussetzung(?:en)?)\s*[:\-]?\s*"
+        r"([^\n.;]{4,80})",
+        combined,
+        re.I,
+    ):
+        phrase = clean_text(m.group(1))
+        if phrase and not _is_glue_token(phrase):
+            hard.append(phrase)
+    # Explicit clinical claims that must not be hallucinated as related.
+    for clinical in (
+        "patientenakte",
+        "patientenakten",
+        "krankenakte",
+        "patient record",
+        "patient records",
+        "behandlung",
+        "assistenz am stuhl",
+    ):
+        if _token_in_text(clinical, combined):
+            hard.append(clinical)
+    return list(dict.fromkeys(hard))
+
+
+def _related_occupation_hit(profile_blob: str, job_blob: str) -> MatchEvidence | None:
+    for prof_pat, job_pat, note in _RELATED_OCCUPATIONS:
+        if prof_pat.search(profile_blob) and job_pat.search(job_blob):
+            # Relatedness covers admin transfer only — never patient-record claims
+            # (those are scored separately as NOT_SUPPORTED when missing).
+            return MatchEvidence(
+                token=note,
+                evidence_class="RELATED",
+                requirement="desirable",
+                field="occupation",
+                points=8,
+                note=note,
+            )
+    return None
+
+
+def _profile_experience_blob(quals) -> str:
+    parts: list[str] = []
+    for exp in quals.work_experience:
+        parts.append(exp.title or "")
+        parts.append(exp.company or "")
+        parts.extend(exp.responsibilities or [])
+    for edu in quals.education:
+        parts.append(edu.qualification or "")
+    parts.extend(quals.skill_values())
+    parts.extend(quals.software_values())
+    return _norm(" ".join(parts))
+
+
 def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> MatchResult:
     exclude = hard_exclude(job, config, already_applied=already_applied)
     if exclude:
@@ -124,47 +321,78 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
             rejection_reasons=[exclude],
             excluded=True,
             exclude_reason=exclude,
+            evidence=[],
         )
 
     profile = config.profile
     quals = profile.qualifications
     reasons: list[str] = []
     issues: list[str] = []
+    evidence: list[MatchEvidence] = []
     score = 0
 
-    title_l = _norm(job.title)
-    desc_l = _norm(job.description or "")
+    title_l = _norm(clean_text(job.title))
+    desc_l = _norm(clean_text(job.description))
     combined = f"{title_l} {desc_l}"
+    profile_blob = _profile_experience_blob(quals)
+
+    # Soft-migrate: desired titles only (alternative_titles folded at load).
+    desired = list(profile.jobs.desired_titles or [])
+    legacy_alt = list(getattr(profile.jobs, "alternative_titles", None) or [])
+    all_titles = list(dict.fromkeys([*desired, *legacy_alt]))
 
     # Title match (0-30)
     title_score = 0
-    all_titles = profile.jobs.desired_titles + profile.jobs.alternative_titles
-    # Also consider past job titles from experience
     past_titles = [e.title for e in quals.work_experience if e.title]
     for target in all_titles:
         t = _norm(target)
-        if not t:
+        if not t or _is_glue_token(t):
             continue
         if t in title_l:
             title_score = 30
-            reasons.append(f"Desired field / title match: {target}")
+            ev = MatchEvidence(
+                token=target,
+                evidence_class="DIRECT",
+                requirement="desirable",
+                field="title",
+                points=30,
+                note=f"Titel entspricht Wunschberuf „{target}“",
+            )
+            evidence.append(ev)
+            reasons.append(ev.label())
             break
-        target_words = set(t.split())
+        target_words = {w for w in t.split() if not _is_glue_token(w)}
         title_words = set(title_l.split())
         if target_words and len(target_words & title_words) >= max(1, len(target_words) * 0.5):
             title_score = max(title_score, 18)
     if title_score < 30:
         for past in past_titles:
-            if _norm(past) and _norm(past) in title_l:
+            if _norm(past) and _norm(past) in title_l and not _is_glue_token(past):
                 title_score = max(title_score, 22)
-                reasons.append(f"Title matches prior role: {past}")
+                ev = MatchEvidence(
+                    token=past,
+                    evidence_class="DIRECT",
+                    requirement="desirable",
+                    field="prior_title",
+                    points=22,
+                    note=f"Titel entspricht früherer Rolle „{past}“",
+                )
+                evidence.append(ev)
+                reasons.append(ev.label())
                 break
-            past_words = set(_norm(past).split())
+            past_words = {w for w in _norm(past).split() if not _is_glue_token(w)}
             if past_words and len(past_words & set(title_l.split())) >= max(1, len(past_words) * 0.5):
                 title_score = max(title_score, 16)
     if title_score == 0 and (all_titles or past_titles):
         issues.append("Title only weakly related to desired roles")
     score += title_score
+
+    related = _related_occupation_hit(profile_blob, combined)
+    if related:
+        if title_score < 30:
+            score += related.points
+        evidence.append(related)
+        reasons.append(related.label())
 
     # Skills / software / certificates / keywords (0-25)
     skill_hits: list[str] = []
@@ -175,45 +403,112 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
         + [c.name for c in quals.certificates if c.name]
     )
     for skill in candidates:
+        if _is_glue_token(skill):
+            continue
         if _token_in_text(skill, combined) or any(
             _token_in_text(part, combined)
             for part in re.split(r"[,/|]", skill)
-            if len(part.strip()) >= 3
+            if len(part.strip()) >= 3 and not _is_glue_token(part)
         ):
             skill_hits.append(skill)
     skill_points = min(25, len(dict.fromkeys(skill_hits)) * 5)
     score += skill_points
     if skill_hits:
-        reasons.append(f"Skills/software match: {', '.join(list(dict.fromkeys(skill_hits))[:5])}")
+        uniq = list(dict.fromkeys(skill_hits))[:5]
+        for sk in uniq:
+            evidence.append(
+                MatchEvidence(
+                    token=sk,
+                    evidence_class="DIRECT",
+                    requirement="desirable",
+                    field="skill",
+                    points=5,
+                    note=f"Kenntnis „{sk}“ im Stellenprofil",
+                )
+            )
+        reasons.append(f"Direkt: Kenntnisse {', '.join(uniq)}")
     else:
         issues.append("Few listed skills found in the job text")
 
-    # Experience responsibilities / education (0-15)
+    # Experience responsibilities / education (0-15) — glue words blocked
     exp_hits: list[str] = []
     for exp in quals.work_experience:
         for token in exp.search_tokens():
-            # Prefer meaningful phrases (>= 4 chars)
-            if len(token.strip()) < 4:
+            if _is_glue_token(token) or len(token.strip()) < 4:
                 continue
             if _token_in_text(token, combined):
                 exp_hits.append(token)
                 break
-            # Partial: key nouns from responsibilities
-            for word in re.findall(r"[A-Za-zÄÖÜäöüß]{5,}", token):
+            for word in _meaningful_words(token, min_len=5):
                 if _token_in_text(word, combined):
                     exp_hits.append(word)
                     break
     edu_hits: list[str] = []
     for edu in quals.education:
         for token in edu.search_tokens():
+            if _is_glue_token(token):
+                continue
             if len(token.strip()) >= 4 and _token_in_text(token, combined):
                 edu_hits.append(token)
     if exp_hits:
-        score += min(10, 4 + len(exp_hits))
-        reasons.append(f"Relevant experience: {', '.join(list(dict.fromkeys(exp_hits))[:3])}")
+        uniq_exp = list(dict.fromkeys(exp_hits))[:3]
+        pts = min(10, 4 + len(uniq_exp))
+        score += pts
+        for tok in uniq_exp:
+            evidence.append(
+                MatchEvidence(
+                    token=tok,
+                    evidence_class="DIRECT",
+                    field="experience",
+                    points=2,
+                    note=f"Erfahrungshinweis „{tok}“",
+                )
+            )
+        reasons.append(f"Direkt: Erfahrung {', '.join(uniq_exp)}")
     if edu_hits:
         score += 4
-        reasons.append(f"Education match: {edu_hits[0]}")
+        evidence.append(
+            MatchEvidence(
+                token=edu_hits[0],
+                evidence_class="DIRECT",
+                field="education",
+                points=4,
+                note=f"Ausbildung „{edu_hits[0]}“",
+            )
+        )
+        reasons.append(f"Direkt: Ausbildung {edu_hits[0]}")
+
+    # Hard requirements → NOT_SUPPORTED when missing (no hallucination)
+    for req in _extract_hard_requirements(combined):
+        supported = _token_in_text(req, profile_blob) or any(
+            _token_in_text(w, profile_blob) for w in _meaningful_words(req, min_len=6)
+        )
+        # Clinical patient-record: never credit via related occupation alone.
+        clinical = bool(re.search(r"patientenakte|krankenakte|patient\s*record", req, re.I))
+        if clinical and not supported:
+            ev = MatchEvidence(
+                token=req,
+                evidence_class="NOT_SUPPORTED",
+                requirement="hard",
+                field="hard_requirement",
+                points=0,
+                note=f"Anforderung „{req}“ nicht im Profil belegt",
+            )
+            evidence.append(ev)
+            issues.append(ev.label())
+            score = max(0, score - 8)
+        elif not supported and len(req) >= 6:
+            # Soft penalty for other hard phrases
+            ev = MatchEvidence(
+                token=req,
+                evidence_class="NOT_SUPPORTED",
+                requirement="hard",
+                field="hard_requirement",
+                points=0,
+                note=f"Mögliche Pflicht „{req[:40]}“ nicht belegt",
+            )
+            evidence.append(ev)
+            issues.append(ev.label())
 
     # Languages + proficiency (0-10)
     lang_req = _required_language_levels(combined)
@@ -231,9 +526,30 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
                 missing.append(f"{name} {level}")
         if satisfied:
             score += min(10, 5 + 2 * len(satisfied))
-            reasons.append(f"Language requirement met: {', '.join(satisfied[:3])}")
+            reasons.append(f"Direkt: Sprache {', '.join(satisfied[:3])}")
+            for s in satisfied[:3]:
+                evidence.append(
+                    MatchEvidence(
+                        token=s,
+                        evidence_class="DIRECT",
+                        requirement="hard",
+                        field="language",
+                        points=2,
+                        note=f"Sprachanforderung erfüllt: {s}",
+                    )
+                )
         if missing:
             issues.append(f"Language may be missing: {', '.join(missing[:2])}")
+            for m in missing[:2]:
+                evidence.append(
+                    MatchEvidence(
+                        token=m,
+                        evidence_class="NOT_SUPPORTED",
+                        requirement="hard",
+                        field="language",
+                        note=f"Sprache fehlt: {m}",
+                    )
+                )
             if config.settings.exclude_on_missing_mandatory and any(
                 "deutsch" in m or "german" in m for m in missing
             ):
@@ -242,13 +558,13 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
                     rejection_reasons=["Mandatory German language missing"],
                     excluded=True,
                     exclude_reason="Mandatory German language missing",
+                    evidence=[e.to_dict() for e in evidence],
                 )
     else:
-        # Soft language presence
         if any("deutsch" in _norm(l.language) or "german" in _norm(l.language) for l in quals.languages):
             if "deutsch" in combined or "german" in combined:
                 score += 6
-                reasons.append("German language skills available")
+                reasons.append("Direkt: Deutschkenntnisse vorhanden")
 
     # Driving license (0-5)
     needs_license = any(
@@ -261,21 +577,31 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
             if "klasse b" in combined or re.search(r"führerschein\s*b|\bklasse\s*b\b", combined):
                 if _has_driving_class_b(license_vals, combined):
                     score += 5
-                    reasons.append("Driving license Klasse B available")
+                    reasons.append("Direkt: Führerschein Klasse B")
                 elif license_vals:
                     score += 3
-                    reasons.append("Driving license available")
+                    reasons.append("Direkt: Führerschein vorhanden")
             else:
                 score += 5
-                reasons.append("Driving license available")
+                reasons.append("Direkt: Führerschein vorhanden")
         else:
             issues.append("Driving license may be required")
+            evidence.append(
+                MatchEvidence(
+                    token="Führerschein",
+                    evidence_class="NOT_SUPPORTED",
+                    requirement="hard",
+                    field="license",
+                    note="Führerschein möglicherweise erforderlich",
+                )
+            )
             if config.settings.exclude_on_missing_mandatory:
                 return MatchResult(
                     score=0,
                     rejection_reasons=["Mandatory driving license missing"],
                     excluded=True,
                     exclude_reason="Mandatory driving license missing",
+                    evidence=[e.to_dict() for e in evidence],
                 )
 
     # Employment type (0-5)
@@ -284,21 +610,21 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
     if "teilzeit" in et or "part" in et:
         if emp.part_time:
             score += 5
-            reasons.append("Part-time allowed")
+            reasons.append("Teilzeit erlaubt")
         else:
             issues.append("Part-time role")
     else:
         if emp.full_time:
             score += 5
-            reasons.append("Full-time")
+            reasons.append("Vollzeit")
 
     # Remote / hybrid preference (0-5)
     if job.remote_type == RemoteType.REMOTE.value and emp.remote:
         score += 5
-        reasons.append("Remote work")
+        reasons.append("Remote-Arbeit")
     elif job.remote_type == RemoteType.HYBRID.value and emp.hybrid:
         score += 4
-        reasons.append("Hybrid work")
+        reasons.append("Hybrid-Arbeit")
     elif job.remote_type == RemoteType.ONSITE.value and emp.onsite:
         score += 3
 
@@ -322,17 +648,15 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
         note_l = (sal_note or "").lower()
         bound_estimate = any(k in note_l for k in ("floor", "from", "ceiling"))
         if verdict is None:
-            # Unknown / ambiguous — keep points, do not exclude.
             score += 4
             issues.append(sal_note or "Salary not listed")
         elif verdict:
             if bound_estimate:
-                # Floor/ceiling that still clears the minimum — soft credit only.
                 score += 4
                 issues.append(sal_note)
             else:
                 score += 10
-                reasons.append(f"Salary meets minimum ({annual})")
+                reasons.append(f"Gehalt erfüllt Minimum ({annual})")
         else:
             reason = f"Salary below minimum ({annual} < {int(min_sal)})"
             return MatchResult(
@@ -341,13 +665,44 @@ def score_job(job: Job, config: AppConfig, already_applied: bool = False) -> Mat
                 rejection_reasons=[reason],
                 excluded=True,
                 exclude_reason=reason,
+                evidence=[e.to_dict() for e in evidence],
             )
 
+    company = clean_text(job.company)
     for preferred in profile.filters.preferred_companies:
-        if preferred.lower() in job.company.lower():
+        if preferred.lower() and preferred.lower() in company.lower():
             score = min(100, score + 5)
-            reasons.append(f"Preferred company: {job.company}")
+            reasons.append(f"Bevorzugtes Unternehmen: {company}")
             break
 
     score = max(0, min(100, score))
-    return MatchResult(score=score, match_reasons=reasons, rejection_reasons=issues)
+    # Deduplicate reason strings while preserving order
+    reasons = list(dict.fromkeys(reasons))
+    return MatchResult(
+        score=score,
+        match_reasons=reasons,
+        rejection_reasons=issues,
+        evidence=[e.to_dict() for e in evidence],
+    )
+
+
+def explanation_summary(result: MatchResult, *, limit: int = 3) -> str:
+    """Short Jobs-UI explanation from structured evidence / reasons."""
+    ev = getattr(result, "evidence", None) or []
+    parts: list[str] = []
+    if isinstance(ev, list):
+        for item in ev:
+            if isinstance(item, dict):
+                cls = item.get("evidence_class") or ""
+                note = item.get("note") or item.get("token") or ""
+                if cls == "DIRECT" and note:
+                    parts.append(str(note))
+                elif cls == "RELATED" and note:
+                    parts.append(str(note))
+            if len(parts) >= limit:
+                break
+    if not parts:
+        parts = list(result.match_reasons or [])[:limit]
+    if not parts and result.rejection_reasons:
+        parts = [str(result.rejection_reasons[0])]
+    return " · ".join(parts)[:180]
