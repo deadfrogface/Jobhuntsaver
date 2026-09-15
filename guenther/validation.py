@@ -26,6 +26,7 @@ from guenther.contracts import (
 T = TypeVar("T", bound=BaseModel)
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 
 
 def extract_json_object(text: str) -> dict[str, Any] | None:
@@ -33,6 +34,8 @@ def extract_json_object(text: str) -> dict[str, Any] | None:
     raw = (text or "").strip()
     if not raw:
         return None
+    # Qwen3 and similar models may emit chain-of-thought before JSON.
+    raw = _THINK_BLOCK.sub("", raw).strip()
     m = _JSON_FENCE.search(raw)
     if m:
         raw = m.group(1).strip()
@@ -45,7 +48,13 @@ def extract_json_object(text: str) -> dict[str, Any] | None:
     try:
         data = json.loads(chunk)
     except json.JSONDecodeError:
-        return None
+        # Trailing commas / minor repair for live small models
+        repaired = re.sub(r",\s*}", "}", chunk)
+        repaired = re.sub(r",\s*]", "]", repaired)
+        try:
+            data = json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
     return data if isinstance(data, dict) else None
 
 
@@ -58,8 +67,41 @@ def parse_contract(schema_name: str, payload: dict[str, Any] | str | None) -> Ba
         if obj is None:
             return None
         payload = obj
+    if not isinstance(payload, dict):
+        return None
+    # Soft-normalize common model quirks before strict validation.
+    data = dict(payload)
+    conf = data.get("confidence")
+    if isinstance(conf, str):
+        data["confidence"] = conf.strip().lower()
+    if isinstance(data.get("support"), str):
+        data["support"] = data["support"].strip().upper()
+    # Coerce bare string anchors → ClaimAnchor dicts
+    if isinstance(data.get("anchors_used"), list):
+        data["anchors_used"] = [
+            {"text": a, "source": "profile"} if isinstance(a, str) else a
+            for a in data["anchors_used"]
+        ]
+    if "items" in data and isinstance(data["items"], list):
+        fixed_items = []
+        for item in data["items"]:
+            if isinstance(item, dict):
+                it = dict(item)
+                if isinstance(it.get("support"), str):
+                    it["support"] = it["support"].strip().upper()
+                if isinstance(it.get("confidence"), str):
+                    it["confidence"] = it["confidence"].strip().lower()
+                if isinstance(it.get("anchors"), list):
+                    it["anchors"] = [
+                        {"text": a, "source": "evidence"} if isinstance(a, str) else a
+                        for a in it["anchors"]
+                    ]
+                fixed_items.append(it)
+            else:
+                fixed_items.append(item)
+        data["items"] = fixed_items
     try:
-        return cls.model_validate(payload)
+        return cls.model_validate(data)
     except ValidationError:
         return None
 

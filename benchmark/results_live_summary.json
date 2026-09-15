@@ -1,0 +1,23 @@
+{
+  "winner": "qwen3-1.7b",
+  "models_run": [
+    "qwen3-1.7b",
+    "qwen3-4b"
+  ],
+  "safety": {
+    "qwen3-1.7b": true,
+    "qwen3-4b": false
+  },
+  "safety_penalty": {
+    "qwen3-1.7b": 0.0,
+    "qwen3-4b": 40.0
+  },
+  "utility": {
+    "qwen3-1.7b": 71.61538461538461,
+    "qwen3-4b": 31.615384615384613
+  },
+  "total_penalty": {
+    "qwen3-1.7b": 13.0,
+    "qwen3-4b": 53.0
+  }
+}

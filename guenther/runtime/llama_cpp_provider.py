@@ -133,18 +133,20 @@ class LlamaCppProvider(LocalAIProvider):
         )
         t0 = time.perf_counter()
         try:
-            # Prefer JSON mode when available
             kwargs: dict[str, Any] = {
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
             }
+            # Qwen3 chat models often emit <think>…</think>; disable via /no_think.
+            system = (request.system or "").rstrip() + "\n/no_think"
+            user = (
+                f"{request.trusted}\n\n{request.untrusted}\n\n"
+                "Antworte nur mit einem JSON-Objekt. /no_think"
+            )
             out = self._llm.create_chat_completion(
                 messages=[
-                    {"role": "system", "content": request.system},
-                    {
-                        "role": "user",
-                        "content": f"{request.trusted}\n\n{request.untrusted}\n\nAntworte nur mit JSON.",
-                    },
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
                 ],
                 **kwargs,
             )

@@ -229,6 +229,28 @@ def test_hardware_auto_fallback(monkeypatch):
     assert graceful_model_fallback(HardwareTier.STANDARD, "auto") == "qwen3-4b"
 
 
+def test_extract_json_strips_think_blocks():
+    text = "<think>ignore me</think>\n{\"category\":\"interview\",\"confidence\":\"low\",\"reasons\":[],\"false_rejection_risk\":false}"
+    obj = extract_json_object(text)
+    assert obj and obj["category"] == "interview"
+
+
+def test_parse_writing_coerces_string_anchors():
+    model = parse_contract(
+        "writing",
+        {
+            "subject": "x",
+            "body": "Hallo DATEV Excel",
+            "anchors_used": ["DATEV", "Excel"],
+            "invented_flag": False,
+            "confidence": "Low",
+        },
+    )
+    assert model is not None
+    assert model.confidence.value == "low"
+    assert model.anchors_used[0].text == "DATEV"
+
+
 def test_parse_contract_rejects_garbage():
     assert parse_contract("email_class", "not json") is None
     assert extract_json_object('```json\n{"category":"noise","confidence":"low","reasons":[],"false_rejection_risk":false}\n```')
