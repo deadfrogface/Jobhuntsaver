@@ -1,7 +1,7 @@
 # Post-application lifecycle megapass — final report
 
 **Branch:** `cursor/post-application-lifecycle-d85b`  
-**Final SHA:** `575a81109447e3257844a30345c3a5b7fae774f8`  
+**Final SHA:** `775f19a` (see tip of branch after settings UI commit)  
 **Compare:** https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/post-application-lifecycle-d85b  
 
 ## Reuse counts
