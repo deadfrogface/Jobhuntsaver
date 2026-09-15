@@ -10,6 +10,10 @@ from guenther.contracts import GuentherEnvelope
 from guenther.fallbacks import fallback_envelope
 from guenther.hardware import HardwareTier, detect_hardware, graceful_model_fallback
 from guenther.inference import InferenceController
+from guenther.intelligence.interview_validate import validate_interview_grounded
+from guenther.intelligence.repair import run_bounded_repair
+from guenther.intelligence.routing import ArchitectureMode, resolve_model_for_capability
+from guenther.intelligence.writing_validate import validate_writing_grounded
 from guenther.model_manager import ModelManager, default_models_dir
 from guenther.privacy import log_event
 from guenther.prompts import SCHEMA_HINTS, build_layers
@@ -39,22 +43,29 @@ class GuentherService:
         model: str = "auto",
         prefer_ollama: bool = False,
         allow_heuristic_when_no_llm: bool = True,
+        architecture: str | ArchitectureMode = ArchitectureMode.AUTO,
+        enable_repair: bool = True,
     ) -> None:
         self.enabled = enabled
         self.model_pref = model
+        self.architecture = (
+            architecture
+            if isinstance(architecture, ArchitectureMode)
+            else ArchitectureMode(str(architecture or "auto"))
+        )
+        self.enable_repair = bool(enable_repair)
         self.hardware = detect_hardware()
         self.models_dir = default_models_dir()
         self.manager = ModelManager(self.models_dir)
         self.provider: LocalAIProvider = self._select_provider(prefer_ollama=prefer_ollama)
         if allow_heuristic_when_no_llm and not self.provider.is_available():
-            # Still prefer null for "LLM missing" honesty when enabled+want LLM;
-            # heuristic is used as assist layer only when explicitly allowed.
             self._heuristic = HeuristicProvider()
         else:
             self._heuristic = HeuristicProvider() if allow_heuristic_when_no_llm else None
         ram_tight = self.hardware.tier == HardwareTier.LIGHT
         self.inference = InferenceController(self.provider, ram_tight=ram_tight)
         self._lock = threading.Lock()
+        self._loaded_model_id = ""
 
     def _select_provider(self, *, prefer_ollama: bool) -> LocalAIProvider:
         if prefer_ollama:
@@ -66,17 +77,32 @@ class GuentherService:
             return llama
         return NullProvider(ProviderStatus.NOT_INSTALLED)
 
-    def ensure_model_loaded(self) -> ProviderStatus:
+    def _route_model(self, capability: str) -> str:
+        decision = resolve_model_for_capability(
+            architecture=self.architecture,
+            capability=capability,
+            model_pref=self.model_pref,
+        )
+        mid = decision.model_id
+        if self.architecture in {ArchitectureMode.PHI_ALL, ArchitectureMode.TWO_TIER}:
+            return mid
+        return graceful_model_fallback(self.hardware.tier, mid)
+
+    def ensure_model_loaded(self, model_id: str | None = None) -> ProviderStatus:
         if not self.enabled:
             return ProviderStatus.UNAVAILABLE
-        mid = graceful_model_fallback(self.hardware.tier, self.model_pref)
+        mid = model_id or self._route_model("cv_extract")
         if self.provider.provider_id == "llama_cpp" and not self.manager.is_installed(mid):
-            # try any installed
             installed = [m["id"] for m in self.manager.list_catalog() if m["installed"]]
             if not installed:
                 return ProviderStatus.MODEL_MISSING
-            mid = installed[0]
-        return self.provider.load_model(mid)
+            mid = mid if mid in installed else installed[0]
+        if self._loaded_model_id == mid and self.provider.status() == ProviderStatus.READY:
+            return ProviderStatus.READY
+        status = self.provider.load_model(mid)
+        if status == ProviderStatus.READY:
+            self._loaded_model_id = mid
+        return status
 
     def status_summary(self) -> dict[str, Any]:
         return {
@@ -84,10 +110,13 @@ class GuentherService:
             "provider": self.provider.provider_id,
             "provider_status": self.provider.status().value,
             "model_pref": self.model_pref,
+            "architecture": self.architecture.value,
+            "enable_repair": self.enable_repair,
             "hardware_tier": self.hardware.tier.value,
             "ram_gb": self.hardware.ram_gb,
             "recommended_model": self.hardware.recommended_model_id,
             "models_dir": str(self.models_dir),
+            "loaded_model_id": self._loaded_model_id,
         }
 
     def _generate_validated(
@@ -100,10 +129,12 @@ class GuentherService:
         untrusted: str,
         use_heuristic_fallback: bool = True,
         timeout_s: float = 120.0,
+        model_id: str | None = None,
     ) -> tuple[Any | None, GuentherEnvelope]:
         if not self.enabled:
             return None, fallback_envelope(capability, reason="disabled")
 
+        routed = model_id or self._route_model(capability)
         system, trusted_b, untrusted_b = build_layers(
             task=task,
             schema_hint=SCHEMA_HINTS.get(schema_name, "{}"),
@@ -129,7 +160,7 @@ class GuentherService:
             temperature=0.1,
         )
 
-        status = self.ensure_model_loaded()
+        status = self.ensure_model_loaded(routed)
         result = None
         if status == ProviderStatus.READY or self.provider.status() == ProviderStatus.READY:
             result = self.provider.generate(req)
@@ -160,18 +191,17 @@ class GuentherService:
                 capability,
                 reason="invalid_output",
                 provider_status=result.status.value,
-                model_id=result.model_id,
+                model_id=result.model_id or routed,
             )
         return model, envelope_from_model(
             capability=capability,
             model=model,
             ok=True,
             provider_status=result.status.value,
-            model_id=result.model_id,
+            model_id=result.model_id or routed,
             validated=False,
+            architecture=self.architecture.value,
         )
-
-    # --- Public intelligence APIs ---
 
     def suggest_cv_extract(
         self, cv_text: str, *, manual_profile: dict[str, Any] | None = None
@@ -197,6 +227,7 @@ class GuentherService:
             model_id=env.model_id,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
         )
 
     def suggest_job_analysis(self, job_text: str) -> GuentherEnvelope:
@@ -221,6 +252,7 @@ class GuentherService:
             model_id=env.model_id,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
         )
 
     def suggest_evidence_assist(
@@ -257,6 +289,7 @@ class GuentherService:
             model_id=env.model_id,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
         )
 
     def suggest_email_class(
@@ -269,7 +302,6 @@ class GuentherService:
         deterministic_confidence: float = 0.0,
         deterministic_evidence: tuple[str, ...] | list[str] | None = None,
     ) -> GuentherEnvelope:
-        # Always compute deterministic baseline if not provided
         if deterministic_category is None:
             from integrations.email_classify import classify_email
 
@@ -303,7 +335,6 @@ class GuentherService:
         from guenther.contracts import EmailClassSuggestion, ConfidenceLevel
 
         if model is None:
-            # Fail closed to deterministic / review — never invent high-impact
             allowed = {
                 "confirmation",
                 "interview",
@@ -336,6 +367,7 @@ class GuentherService:
                 model_id=env.model_id,
                 safety_notes=["llm_invalid_used_deterministic"],
                 validated=True,
+                architecture=self.architecture.value,
             )
 
         assert isinstance(model, EmailClassSuggestion)
@@ -355,6 +387,7 @@ class GuentherService:
             model_id=env.model_id,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
         )
 
     def suggest_association(
@@ -399,7 +432,6 @@ class GuentherService:
         )
 
         if model is None:
-            # Fail closed from deterministic — never invent a link
             fb = AssociationSuggestion(
                 case_id=None if (det.ambiguous or not det.case_id) else det.case_id,
                 confidence=ConfidenceLevel.LOW,
@@ -421,6 +453,7 @@ class GuentherService:
                 model_id=env.model_id,
                 safety_notes=["llm_invalid_used_deterministic_assoc"],
                 validated=True,
+                architecture=self.architecture.value,
             )
 
         assert isinstance(model, AssociationSuggestion)
@@ -441,6 +474,7 @@ class GuentherService:
             model_id=env.model_id,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
         )
 
     def suggest_writing(
@@ -450,28 +484,110 @@ class GuentherService:
         job_text: str,
         draft_kind: str = "cover_letter",
         seed_body: str = "",
+        target_company: str | None = None,
+        forbid_role_reversal: bool = False,
+        forbid_wrong_role: list[str] | None = None,
+        existing_evidence: list[dict[str, Any]] | None = None,
+        enable_repair: bool | None = None,
     ) -> GuentherEnvelope:
-        model, env = self._generate_validated(
-            capability="writing",
-            schema_name="writing",
-            task=f"Verbessere {draft_kind}; erfinde keine Fakten.",
-            trusted=f"PROFILE:\n{profile_text[:8000]}\nSEED:\n{seed_body[:4000]}",
-            untrusted=f"JOB:\n{job_text[:8000]}",
-        )
-        if model is None:
-            return env
+        """Writing with deterministic grounding + bounded self-correction."""
         from guenther.contracts import WritingSuggestion
+        from guenther.intelligence.errors import SCHEMA_INVALID, make_error
 
+        use_repair = self.enable_repair if enable_repair is None else bool(enable_repair)
+        routed = self._route_model("writing")
+        base_trusted = f"PROFILE:\n{profile_text[:8000]}\nSEED:\n{seed_body[:4000]}"
+
+        def _once(trusted_extra: str) -> tuple[Any, list, dict[str, Any]]:
+            trusted = base_trusted
+            if trusted_extra:
+                trusted = f"{trusted}\n{trusted_extra}"
+            model, env = self._generate_validated(
+                capability="writing",
+                schema_name="writing",
+                task=(
+                    f"Erzeuge {draft_kind} als Bewerber/in. Erfinde keine Ausbildungen/Abschlüsse. "
+                    "Pflegeausbildung nur wenn wörtlich im Profil. Stellenanforderungen sind keine Belege."
+                ),
+                trusted=trusted,
+                untrusted=f"JOB:\n{job_text[:8000]}",
+                model_id=routed,
+            )
+            if model is None:
+                empty = WritingSuggestion()
+                return (
+                    empty,
+                    [make_error(SCHEMA_INVALID, severity="error")],
+                    {"subject": "", "body": "", "invented_flag": True},
+                )
+            assert isinstance(model, WritingSuggestion)
+            model, _legacy = validate_writing(model, profile_text=profile_text, job_text=job_text)
+            model, report = validate_writing_grounded(
+                model,
+                profile_text=profile_text,
+                job_text=job_text,
+                existing_evidence=existing_evidence,
+                target_company=target_company,
+                forbid_role_reversal=forbid_role_reversal,
+                forbid_wrong_role=forbid_wrong_role,
+            )
+            snap = model.model_dump(mode="json")
+            snap["_report"] = report.to_dict()
+            snap["_env_model_id"] = env.model_id
+            return model, list(report.errors), snap
+
+        model, errors, history = run_bounded_repair(
+            capability="writing",
+            generate_fn=_once,
+            enable_repair=use_repair,
+            model_id=routed,
+        )
         assert isinstance(model, WritingSuggestion)
-        model, notes = validate_writing(model, profile_text=profile_text, job_text=job_text)
+        report_dict = dict((history.last_snapshot or {}).get("_report") or {})
+        if not report_dict:
+            model, report = validate_writing_grounded(
+                model,
+                profile_text=profile_text,
+                job_text=job_text,
+                existing_evidence=existing_evidence,
+                target_company=target_company,
+                forbid_role_reversal=forbid_role_reversal,
+                forbid_wrong_role=forbid_wrong_role,
+            )
+            report_dict = report.to_dict()
+            errors = list(report.errors)
+        notes = [e.get("code") if isinstance(e, dict) else e.code for e in errors]
+        # Prefer structured errors from last report when available
+        if report_dict.get("errors"):
+            errors = report_dict["errors"]
+            notes = [e.get("code") for e in errors if isinstance(e, dict)]
+        if history.repair_count:
+            notes.append(f"repairs={history.repair_count}")
+        if history.exhausted:
+            notes.append("repair_exhausted")
+        log_event(
+            "writing_grounded",
+            repairs=history.repair_count,
+            exhausted=history.exhausted,
+            blocked=bool(report_dict.get("writing_blocked")),
+            model_id=routed,
+        )
+        err_dicts = [
+            e if isinstance(e, dict) else e.to_dict()  # type: ignore[union-attr]
+            for e in errors
+        ]
         return envelope_from_model(
             capability="writing",
             model=model,
             ok=True,
-            provider_status=env.provider_status,
-            model_id=env.model_id,
-            safety_notes=notes,
+            provider_status="ready",
+            model_id=routed,
+            safety_notes=[str(n) for n in notes if n],
             validated=True,
+            architecture=self.architecture.value,
+            validator_errors=err_dicts,
+            repair_history=history.to_dict(),
+            grounding_report=report_dict,
         )
 
     def suggest_interview_prep(
@@ -480,31 +596,84 @@ class GuentherService:
         profile_text: str,
         job_text: str,
         evidence: list[dict[str, Any]] | None = None,
+        enable_repair: bool | None = None,
     ) -> GuentherEnvelope:
-        ev_text = json.dumps(evidence or [], ensure_ascii=False)
-        model, env = self._generate_validated(
-            capability="interview_prep",
-            schema_name="interview_prep",
-            task="Interview-Prep nur aus Evidenz/Profil; keine erfundenen Erfolge.",
-            trusted=f"PROFILE:\n{profile_text[:8000]}\nEVIDENCE:\n{ev_text[:8000]}",
-            untrusted=f"JOB:\n{job_text[:8000]}",
-        )
-        if model is None:
-            return env
         from guenther.contracts import InterviewPrepSuggestion
+        from guenther.intelligence.errors import SCHEMA_INVALID, make_error
 
+        use_repair = self.enable_repair if enable_repair is None else bool(enable_repair)
+        routed = self._route_model("interview_prep")
+        ev_text = json.dumps(evidence or [], ensure_ascii=False)
+        base_trusted = f"PROFILE:\n{profile_text[:8000]}\nEVIDENCE:\n{ev_text[:8000]}"
+
+        def _once(trusted_extra: str) -> tuple[Any, list, dict[str, Any]]:
+            trusted = base_trusted
+            if trusted_extra:
+                trusted = f"{trusted}\n{trusted_extra}"
+            model, env = self._generate_validated(
+                capability="interview_prep",
+                schema_name="interview_prep",
+                task=(
+                    "Interview-Prep nur aus Evidenz/Profil; keine erfundenen Erfolge. "
+                    "Wenn DIRECT-Evidenz existiert: mindestens talking_points und questions füllen."
+                ),
+                trusted=trusted,
+                untrusted=f"JOB:\n{job_text[:8000]}",
+                model_id=routed,
+            )
+            if model is None:
+                empty = InterviewPrepSuggestion()
+                return (
+                    empty,
+                    [make_error(SCHEMA_INVALID, severity="error")],
+                    {"talking_points": [], "questions": [], "invented_flag": True},
+                )
+            assert isinstance(model, InterviewPrepSuggestion)
+            model, _legacy = validate_interview_prep(
+                model, profile_text=profile_text, job_text=job_text, evidence_text=ev_text
+            )
+            model, report = validate_interview_grounded(
+                model,
+                profile_text=profile_text,
+                job_text=job_text,
+                evidence=evidence,
+            )
+            snap = model.model_dump(mode="json")
+            snap["_report"] = report.to_dict()
+            return model, list(report.errors), snap
+
+        model, errors, history = run_bounded_repair(
+            capability="interview_prep",
+            generate_fn=_once,
+            enable_repair=use_repair,
+            model_id=routed,
+        )
         assert isinstance(model, InterviewPrepSuggestion)
-        model, notes = validate_interview_prep(
-            model, profile_text=profile_text, job_text=job_text, evidence_text=ev_text
+        model, report = validate_interview_grounded(
+            model, profile_text=profile_text, job_text=job_text, evidence=evidence
+        )
+        errors = list(report.errors)
+        notes = [e.code for e in errors]
+        if history.repair_count:
+            notes.append(f"repairs={history.repair_count}")
+        log_event(
+            "interview_grounded",
+            repairs=history.repair_count,
+            exhausted=history.exhausted,
+            model_id=routed,
         )
         return envelope_from_model(
             capability="interview_prep",
             model=model,
             ok=True,
-            provider_status=env.provider_status,
-            model_id=env.model_id,
+            provider_status="ready",
+            model_id=routed,
             safety_notes=notes,
             validated=True,
+            architecture=self.architecture.value,
+            validator_errors=[e.to_dict() for e in errors],
+            repair_history=history.to_dict(),
+            grounding_report=report.to_dict(),
         )
 
 
@@ -517,6 +686,8 @@ def get_guenther_service(
     enabled: bool | None = None,
     model: str | None = None,
     refresh: bool = False,
+    architecture: str | None = None,
+    enable_repair: bool | None = None,
 ) -> GuentherService:
     global _SERVICE
     with _SERVICE_LOCK:
@@ -524,10 +695,16 @@ def get_guenther_service(
             _SERVICE = GuentherService(
                 enabled=bool(enabled) if enabled is not None else False,
                 model=model or "auto",
+                architecture=architecture or ArchitectureMode.AUTO,
+                enable_repair=True if enable_repair is None else bool(enable_repair),
             )
         else:
             if enabled is not None:
                 _SERVICE.enabled = bool(enabled)
             if model is not None:
                 _SERVICE.model_pref = model
+            if architecture is not None:
+                _SERVICE.architecture = ArchitectureMode(str(architecture))
+            if enable_repair is not None:
+                _SERVICE.enable_repair = bool(enable_repair)
         return _SERVICE

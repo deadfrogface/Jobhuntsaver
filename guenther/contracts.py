@@ -136,6 +136,11 @@ class GuentherEnvelope(StrictModel):
     model_id: str = ""
     validated: bool = False
     safety_notes: list[str] = Field(default_factory=list)
+    # Grounding / bounded self-correction metadata (optional; empty for legacy paths)
+    architecture: str = ""
+    validator_errors: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
+    repair_history: dict[str, Any] = Field(default_factory=dict)
+    grounding_report: dict[str, Any] = Field(default_factory=dict)
 
 
 SCHEMA_BY_NAME: dict[str, type[BaseModel]] = {

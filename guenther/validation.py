@@ -265,7 +265,10 @@ def validate_evidence_assist(
     job_text: str,
     existing_evidence: list[dict[str, Any]] | None = None,
 ) -> tuple[EvidenceAssistSuggestion, list[str]]:
-    """Never upgrade NOT_SUPPORTED → DIRECT without profile tokens."""
+    """Never upgrade NOT_SUPPORTED → DIRECT without profile tokens.
+
+    JOB REQUIREMENT ≠ CANDIDATE EVIDENCE. Aliases supported via token fold.
+    """
     notes: list[str] = []
     existing = {
         _norm(str(e.get("claim") or e.get("requirement") or "")): str(
@@ -273,6 +276,8 @@ def validate_evidence_assist(
         ).upper()
         for e in (existing_evidence or [])
     }
+    job_tokens = _token_set(job_text)
+    profile_tokens = _token_set(profile_text)
     cleaned: list = []
     for item in model.items:
         key = _norm(item.claim)
@@ -280,11 +285,37 @@ def validate_evidence_assist(
         if prior == "NOT_SUPPORTED" and item.support == EvidenceSupport.DIRECT:
             item.support = EvidenceSupport.NOT_SUPPORTED
             notes.append("blocked_unsupported_to_direct")
+        claim_tokens = _token_set(item.claim)
+        # Demote DIRECT when claim is only present in JOB, not PROFILE
+        if (
+            item.support == EvidenceSupport.DIRECT
+            and claim_tokens
+            and claim_tokens <= job_tokens
+            and not (claim_tokens & profile_tokens)
+        ):
+            item.support = EvidenceSupport.NOT_SUPPORTED
+            notes.append("job_requirement_not_candidate_evidence")
         if item.support == EvidenceSupport.DIRECT and not claim_supported_by_corpus(
             item.claim, profile_text
         ):
-            item.support = EvidenceSupport.NOT_SUPPORTED
-            notes.append("direct_without_profile_demoted")
+            overlap = claim_tokens & profile_tokens
+            if overlap:
+                item.support = EvidenceSupport.RELATED
+                notes.append("direct_partial_demoted_related")
+            else:
+                item.support = EvidenceSupport.NOT_SUPPORTED
+                notes.append("direct_without_profile_demoted")
+        # Credential-like claims need profile tokens; related admin ≠ Pflegeausbildung
+        low = key
+        if any(x in low for x in ("pflegeausbildung", "bachelor", "master", "examen")):
+            if not claim_supported_by_corpus(item.claim, profile_text, min_overlap=1):
+                item.support = EvidenceSupport.NOT_SUPPORTED
+                notes.append("credential_direct_without_profile")
+            elif "pflege" in low and "pflegeausbildung" not in _norm(
+                profile_text
+            ) and "pflegefach" not in _norm(profile_text):
+                item.support = EvidenceSupport.NOT_SUPPORTED
+                notes.append("pflege_credential_not_supported")
         item.anchors = filter_anchors(
             item.anchors, profile_text=profile_text, job_text=job_text, evidence_text=profile_text
         )
@@ -552,6 +583,10 @@ def envelope_from_model(
     model_id: str = "",
     safety_notes: list[str] | None = None,
     validated: bool = False,
+    architecture: str = "",
+    validator_errors: list[dict[str, Any]] | None = None,
+    repair_history: dict[str, Any] | None = None,
+    grounding_report: dict[str, Any] | None = None,
 ) -> GuentherEnvelope:
     return GuentherEnvelope(
         ok=ok and model is not None,
@@ -562,4 +597,8 @@ def envelope_from_model(
         model_id=model_id,
         validated=validated,
         safety_notes=list(safety_notes or []),
+        architecture=architecture or "",
+        validator_errors=list(validator_errors or [])[:40],
+        repair_history=dict(repair_history or {}),
+        grounding_report=dict(grounding_report or {}),
     )

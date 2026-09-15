@@ -204,6 +204,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Keine Cloud-KI nötig. Modelle werden nur nach Ihrer Freigabe geladen. "
             "Absenden, E-Mail-Versand und Termine bleiben bei Ihnen."
         ),
+        "guenther.validator.unsupported_credential": (
+            "Eine behauptete Qualifikation ist im Profil nicht belegt."
+        ),
+        "guenther.validator.writing_blocked_hard_requirement": (
+            "Schreiben blockiert: formale Pflichtqualifikation fehlt im Profil."
+        ),
+        "guenther.validator.repair_exhausted": (
+            "Nach begrenzten Korrekturversuchen bleibt der Vorschlag unsicher."
+        ),
+        "guenther.validator.empty_talking_points": (
+            "Interview-Prep ohne nutzbare Talking Points trotz vorhandener Belege."
+        ),
         "settings.automation": "Automation",
         "settings.browser": "Browser",
         "settings.language": "Sprache",
@@ -624,6 +636,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Günther may suggest — Karrierekrake decides. "
             "No cloud AI required. Models load only with your approval. "
             "Submit, email send, and calendar finalize stay with you."
+        ),
+        "guenther.validator.unsupported_credential": (
+            "A claimed qualification is not supported by the profile."
+        ),
+        "guenther.validator.writing_blocked_hard_requirement": (
+            "Writing blocked: a required formal credential is missing from the profile."
+        ),
+        "guenther.validator.repair_exhausted": (
+            "After bounded repair attempts the suggestion remains uncertain."
+        ),
+        "guenther.validator.empty_talking_points": (
+            "Interview prep has no usable talking points despite available evidence."
         ),
         "settings.automation": "Automation",
         "settings.browser": "Browser",

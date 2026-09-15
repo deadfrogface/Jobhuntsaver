@@ -208,10 +208,15 @@ def test_light_and_standard_model_pins():
     standard = MODEL_CATALOG["qwen3-4b"]
     assert standard["url"].startswith("https://huggingface.co/Qwen/")
     assert len(standard["sha256"]) == 64
-    # Phi deferred until REVIEW REQUIRED pin
+    # Phi-4-mini pinned to tournament provenance (MIT); not sole production default
     phi = MODEL_CATALOG["phi4-mini"]
-    assert not phi.get("url")
-    assert phi.get("deferred") is True
+    assert phi.get("url", "").startswith("https://huggingface.co/bartowski/")
+    assert phi["filename"] == "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
+    assert len(phi["sha256"]) == 64
+    assert phi["sha256"].startswith("01999f17")
+    assert phi.get("deferred") is False
+    assert phi["license"] == "MIT"
+    assert light["sha256"] != phi["sha256"]
 
 
 def test_model_manager_requires_confirm_even_when_url_pinned(tmp_path):
