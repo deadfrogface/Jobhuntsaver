@@ -200,6 +200,27 @@ def test_model_catalog_licenses_safe():
         assert "gemma" not in mid
 
 
+def test_light_and_standard_model_pins():
+    light = MODEL_CATALOG["qwen3-1.7b"]
+    assert light["url"].startswith("https://huggingface.co/")
+    assert len(light["sha256"]) == 64
+    assert light["approx_bytes"] > 1_000_000_000
+    standard = MODEL_CATALOG["qwen3-4b"]
+    assert standard["url"].startswith("https://huggingface.co/Qwen/")
+    assert len(standard["sha256"]) == 64
+    # Phi deferred until REVIEW REQUIRED pin
+    phi = MODEL_CATALOG["phi4-mini"]
+    assert not phi.get("url")
+    assert phi.get("deferred") is True
+
+
+def test_model_manager_requires_confirm_even_when_url_pinned(tmp_path):
+    mm = ModelManager(tmp_path / "models")
+    prog = mm.install("qwen3-1.7b", allow_download=False)
+    assert prog.status == "error"
+    assert prog.message == "download_not_confirmed"
+
+
 def test_hardware_auto_fallback(monkeypatch):
     monkeypatch.setenv("KARRIEREKRAKE_RAM_GB", "4")
     # detect reads /proc first on Linux — override by patching _ram_gb via env only works as fallback

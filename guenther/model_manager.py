@@ -16,29 +16,41 @@ from typing import Callable
 from guenther.privacy import log_event
 
 # No weights in git — catalog metadata only.
+# SHA256 values are Hugging Face LFS content OIDs (x-linked-etag), verified 2026-09-15.
 MODEL_CATALOG: dict[str, dict] = {
     "qwen3-1.7b": {
         "display_name": "Günther leicht (Qwen3 1.7B)",
         "license": "Apache-2.0",
-        "approx_bytes": 1_200_000_000,
+        "approx_bytes": 1_282_439_584,
         "ram_gb_min": 3.0,
         "tier": "light",
-        "filename": "Qwen3-1.7B-Q4_K_M.gguf",
-        # Official HF GGUF repo; exact file may vary — manager verifies sha when set.
-        "url": "",
-        "sha256": "",
-        "notes": "Apache-2.0; LIGHT default",
+        # Official Qwen GGUF ships Q8_0 only; Q4_K_M from bartowski (base Apache-2.0).
+        "filename": "Qwen_Qwen3-1.7B-Q4_K_M.gguf",
+        "url": (
+            "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/"
+            "Qwen_Qwen3-1.7B-Q4_K_M.gguf"
+        ),
+        "sha256": "72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb",
+        "source_repo": "bartowski/Qwen_Qwen3-1.7B-GGUF",
+        "base_model": "Qwen/Qwen3-1.7B",
+        "hf_commit": "dcb19155b962dbb6389f4691a982043a8e651022",
+        "notes": "Apache-2.0 base; community Q4_K_M GGUF; LIGHT default",
     },
     "qwen3-4b": {
         "display_name": "Günther Standard (Qwen3 4B)",
         "license": "Apache-2.0",
-        "approx_bytes": 2_600_000_000,
+        "approx_bytes": 2_497_280_256,
         "ram_gb_min": 5.0,
         "tier": "standard",
         "filename": "Qwen3-4B-Q4_K_M.gguf",
-        "url": "",
-        "sha256": "",
-        "notes": "Apache-2.0; STANDARD Autopick",
+        "url": (
+            "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/"
+            "Qwen3-4B-Q4_K_M.gguf"
+        ),
+        "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+        "source_repo": "Qwen/Qwen3-4B-GGUF",
+        "base_model": "Qwen/Qwen3-4B",
+        "notes": "Apache-2.0 official GGUF; STANDARD Autopick",
     },
     "phi4-mini": {
         "display_name": "Günther Alternative (Phi-4-mini)",
@@ -47,9 +59,11 @@ MODEL_CATALOG: dict[str, dict] = {
         "ram_gb_min": 5.0,
         "tier": "standard",
         "filename": "Phi-4-mini-instruct-Q4_K_M.gguf",
+        # REVIEW REQUIRED: pin official/reputable GGUF URL+SHA before enabling download.
         "url": "",
         "sha256": "",
-        "notes": "MIT; STANDARD alternate",
+        "notes": "MIT weights; download URL deferred (REVIEW REQUIRED)",
+        "deferred": True,
     },
 }
 

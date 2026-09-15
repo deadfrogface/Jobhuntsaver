@@ -53,15 +53,17 @@ Only three tiers — no marketing sprawl. Auto = detect tier → pick installed 
 
 ---
 
-## Download sources (manager allowlist)
+## Download sources (manager allowlist) — pinned 2026-09-15
 
-Prefer official repos (checksummed):
+| Catalog ID | Resolve URL | SHA256 (HF LFS) | Size |
+|------------|-------------|-----------------|-----:|
+| `qwen3-1.7b` | `https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf` | `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb` | ~1.28 GB |
+| `qwen3-4b` | `https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf` | `7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5` | ~2.50 GB |
+| `phi4-mini` | *(empty)* | — | **REVIEW REQUIRED** deferral |
 
-- `https://huggingface.co/Qwen/Qwen3-1.7B-GGUF`
-- `https://huggingface.co/Qwen/Qwen3-4B-GGUF`
-- Phi-4-mini: official HF + reputable GGUF (MIT) — pin exact file + SHA256 in manager manifest
+Prefer official repos when they publish the needed quant. Official Qwen 1.7B GGUF currently offers Q8_0 only; LIGHT uses bartowski Q4_K_M (base model still Apache-2.0).
 
-**No silent multi-GB download.** UI must show size, license, destination path, progress, cancel.
+**No silent multi-GB download.** UI must show size, license, destination path, progress, cancel. Manager requires `allow_download=True`.
 
 ---
 
