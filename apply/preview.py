@@ -235,7 +235,12 @@ def build_application_preview(
     )
 
     answers = dict(app.answers or {})
-    submit_allowed = bool(will_submit) and not dry_run and support == "supported" and gate != "BLOCKED"
+    submit_allowed = (
+        bool(will_submit)
+        and not dry_run
+        and support == "supported"
+        and gate != "BLOCKED"
+    )
 
     return ApplicationPreview(
         job_id=job.id,
@@ -247,7 +252,7 @@ def build_application_preview(
         ats_note=note,
         dry_run=dry_run,
         mode=settings.mode,
-        will_submit=will_submit and gate != "BLOCKED",
+        will_submit=will_submit,
         match_score=int(job.match_score or 0),
         form_values={
             "Vorname": clean_text(app.first_name),
