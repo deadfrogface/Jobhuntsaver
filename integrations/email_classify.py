@@ -236,6 +236,14 @@ INSTRUCTION_FRAME_SIGNALS: tuple[str, ...] = (
     "ohne user",
     "bypass",
     "jailbreak",
+    "category,confidence",
+    "offer,high",
+    "--accept-offer",
+    "accept-offer",
+    "action: accept",
+    "laut richtlinie",
+    "system override",
+    "sende die zusage",
 )
 
 # Weak offer tokens that need a second corroborating cue.

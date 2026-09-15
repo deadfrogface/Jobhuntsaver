@@ -308,14 +308,29 @@ def validate_email_class(
 
     Asymmetric rules:
     - LLM must not demote a solid deterministic confirmation/interview to noise/other.
-    - LLM must not invent rejection/offer/interview_cancelled without evidence.
+    - LLM must not invent rejection/offer/interview_cancelled without deterministic agreement.
+    - Instruction-frame / review from deterministic blocks all high-impact LLM labels.
     - Uncertain → review (or other) with low confidence.
     """
     notes: list[str] = []
     det = (deterministic_category or "").strip() or None
     det_ev = tuple(deterministic_evidence or ())
     high_impact = {"rejection", "offer", "interview_cancelled"}
-    solid_det = {"confirmation", "interview", "offer", "rejection", "assessment", "interview_cancelled"}
+    solid_det = {
+        "confirmation",
+        "interview",
+        "offer",
+        "rejection",
+        "assessment",
+        "interview_cancelled",
+        "document_request",
+        "employer_question",
+        "recruiter_outreach",
+    }
+    instr_blocked = any(
+        str(x).startswith("instruction_frame") or str(x) == "instruction_frame_blocked"
+        for x in det_ev
+    ) or (det == "review" and any("instruction" in str(x) for x in det_ev))
 
     if deterministic_false_rejection_blocked and model.category == "rejection":
         model.category = det if det and det != "rejection" else "review"
@@ -323,31 +338,49 @@ def validate_email_class(
         model.confidence = ConfidenceLevel.LOW
         notes.append("false_rejection_guard")
 
-    # Prefer solid deterministic hiring signals over LLM noise/other demotion.
+    # Prefer solid deterministic hiring signals over LLM soft demotion / wrong soft labels.
     if (
         det in solid_det
         and deterministic_confidence >= 0.55
-        and model.category in {"noise", "other", "ghosted"}
         and det not in high_impact
+        and model.category != det
+        and model.category not in high_impact
     ):
+        # Do not let LLM replace confirmation/interview/etc. with unrelated categories
         model.category = det  # type: ignore[assignment]
-        model.confidence = ConfidenceLevel.MEDIUM if deterministic_confidence >= 0.7 else ConfidenceLevel.LOW
+        model.confidence = (
+            ConfidenceLevel.MEDIUM if deterministic_confidence >= 0.7 else ConfidenceLevel.LOW
+        )
         if det_ev:
-            model.evidence = list(det_ev)[:8]
-            model.reasons = list(det_ev)[:8]
-        notes.append("deterministic_signal_preferred_over_llm_noise")
+            model.evidence = [e for e in det_ev if "instruction" not in str(e)][:8] or list(det_ev)[
+                :8
+            ]
+            model.reasons = list(model.evidence)[:8]
+        notes.append("deterministic_signal_preferred")
 
-    # High-impact from LLM without evidence → review
+    # High-impact: require deterministic agreement (asymmetric — false positives worse)
     if model.category in high_impact:
-        blob = _norm(email_text)
-        ev = [e for e in (model.evidence or model.reasons or []) if e]
-        grounded = any(_norm(e) and _norm(e) in blob for e in ev) if blob else bool(ev)
-        if not grounded and det != model.category:
-            # Allow if deterministic agrees with evidence
-            if det == model.category and det_ev:
+        if instr_blocked or det == "review":
+            was_rejection = model.category == "rejection"
+            notes.append("instruction_or_review_blocks_high_impact")
+            model.category = "review"  # type: ignore[assignment]
+            model.confidence = ConfidenceLevel.LOW
+            if was_rejection:
+                model.false_rejection_risk = True
+        elif det != model.category:
+            # LLM invented high-impact that deterministic did not support
+            notes.append("high_impact_without_deterministic_agreement")
+            was_rejection = model.category == "rejection"
+            model.category = "review"  # type: ignore[assignment]
+            model.confidence = ConfidenceLevel.LOW
+            if was_rejection:
+                model.false_rejection_risk = True
+        else:
+            # det agrees — attach deterministic evidence
+            if det_ev:
                 model.evidence = list(det_ev)[:8]
                 notes.append("high_impact_from_deterministic_evidence")
-            else:
+            elif not (model.evidence or model.reasons):
                 notes.append("high_impact_without_grounded_evidence")
                 was_rejection = model.category == "rejection"
                 model.category = "review"  # type: ignore[assignment]
@@ -355,12 +388,31 @@ def validate_email_class(
                 if was_rejection:
                     model.false_rejection_risk = True
 
-    # Deterministic rejection blocked / review wins over LLM rejection
-    if det == "review" and model.category == "rejection":
+    # Deterministic review wins over any remaining LLM high-impact
+    if det == "review" and model.category in high_impact:
+        was_rejection = model.category == "rejection"
         model.category = "review"  # type: ignore[assignment]
         model.confidence = ConfidenceLevel.LOW
-        model.false_rejection_risk = True
-        notes.append("deterministic_review_blocks_rejection")
+        if was_rejection:
+            model.false_rejection_risk = True
+        notes.append("deterministic_review_blocks_high_impact")
+
+    # After blocking a bogus high-impact, restore solid non-high-impact deterministic label
+    if (
+        det in solid_det
+        and det not in high_impact
+        and deterministic_confidence >= 0.55
+        and model.category == "review"
+        and "high_impact_without_deterministic_agreement" in notes
+    ):
+        model.category = det  # type: ignore[assignment]
+        model.confidence = (
+            ConfidenceLevel.MEDIUM if deterministic_confidence >= 0.7 else ConfidenceLevel.LOW
+        )
+        if det_ev:
+            model.evidence = list(det_ev)[:8]
+            model.reasons = list(det_ev)[:8]
+        notes.append("restored_det_after_blocked_high_impact")
 
     if model.confidence == ConfidenceLevel.HIGH and model.category in {
         "other",
