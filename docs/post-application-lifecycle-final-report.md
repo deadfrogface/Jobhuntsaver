@@ -1,8 +1,31 @@
 # Post-application lifecycle megapass — final report
 
-**Branch:** `cursor/post-application-lifecycle-d85b`  
-**Final SHA:** `a976f0f7b1593ed1b84c000fcc7d2fb0b1055ed1`  
-**Compare:** https://github.com/deadfrogface/Karrierekrake/compare/main...cursor/post-application-lifecycle-d85b  
+**Feature branch:** `cursor/post-application-lifecycle-d85b`  
+**PR:** https://github.com/deadfrogface/Karrierekrake/pull/17 (**MERGED** 2026-09-15T09:39:06Z)  
+**Merged feature tip SHA:** `885de934d1ac4c455b807825255bd970a20f26ae`  
+**Merge commit on main:** `e5096cb55fa9ff9d4c4f0ec6d1dd59d3e04503ee`  
+
+## CI / Windows Smoke (PR #17 @ `885de93`)
+
+| Check | Workflow | Result |
+|-------|----------|--------|
+| unit-tests | CI | **PASS** |
+| privacy | CI | **PASS** |
+| cv-regression | CI | **PASS** |
+| database-migration-tests | CI | **PASS** |
+| static-smoke | CI | **PASS** |
+| qt-smoke | Windows Smoke | **PASS** |
+| build-and-exe-smoke | Windows Smoke | **PASS** |
+
+Runs: CI `34951457305`, Windows Smoke `34951457388`.
+
+## Suite rollup
+
+| Gate | Result |
+|------|--------|
+| Full local pytest `-m "not network"` | **PASS** (356 passed, 2 deselected) |
+| CI (all jobs) | **PASS** |
+| Windows Smoke (qt + EXE) | **PASS** |
 
 ## Reuse counts
 
@@ -60,10 +83,8 @@ Snapshots: `third_party/post-application-audit/`
 
 ## Remaining limitations
 
-- Live Gmail/Calendar OAuth requires user-provided `private/gmail_credentials.json` and optional google/keyring packages; not exercised against real Google in CI.
+- Live Gmail/Calendar OAuth requires user-provided `private/gmail_credentials.json` and optional google/keyring packages; not exercised against real Google accounts in CI (API libs optional).
 - Google Calendar FreeBusy is implemented as local collision helpers; live FreeBusy API client is gated behind `calendar_freebusy_enabled` and needs OAuth calendar scope when wired for production use.
-- Windows EXE smoke / `Karrierekrake.exe` must be validated by GitHub Actions `windows-smoke.yml` / `build-windows.yml` on this SHA (Linux agent cannot run the EXE).
-- ManagePullRequest tool unavailable in this environment — open PR via compare URL.
 
 ## Safety preserved
 
