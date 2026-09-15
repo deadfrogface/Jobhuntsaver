@@ -3,71 +3,85 @@
 **Feature branch:** `cursor/guenther-local-ai-megapass-d85b`  
 **PR:** https://github.com/deadfrogface/Karrierekrake/pull/19  
 **Base `origin/main`:** `8c1e81c9653789251e2500b249a9abbf3d7d3175`  
-**PR head at verification:** see git tip after this docs push; prior docs tip `ada1ff47d40a34a45b1ccf285b222c5d051887fe` had **7/7 CI+Smoke PASS**.  
+**Verified green head:** `3c67969b5ca41b03abd4392261c7b869639b6f4b`  
 **Lifecycle gate:** PR #17 + #18 on main — proceeded.  
-**Do not merge** without human review — agent must not merge.
+**Agent must not merge** — human merge only.
 
-## CI / Windows Smoke @ `ada1ff47d40a34a45b1ccf285b222c5d051887fe`
+## CI / Windows Smoke @ `3c67969`
 
 | Check | Workflow | Result | Run |
 |-------|----------|--------|-----|
-| unit-tests | CI | **PASS** | `34965681818` |
-| privacy | CI | **PASS** | `34965681818` |
-| cv-regression | CI | **PASS** | `34965681818` |
-| database-migration-tests | CI | **PASS** | `34965681818` |
-| static-smoke | CI | **PASS** | `34965681818` |
-| qt-smoke | Windows Smoke | **PASS** | `34965681882` |
-| build-and-exe-smoke | Windows Smoke | **PASS** | `34965681882` |
+| unit-tests | CI | **PASS** | `34970852477` |
+| privacy | CI | **PASS** | `34970852477` |
+| cv-regression | CI | **PASS** | `34970852477` |
+| database-migration-tests | CI | **PASS** | `34970852477` |
+| static-smoke | CI | **PASS** | `34970852477` |
+| qt-smoke | Windows Smoke | **PASS** | `34970852592` |
+| build-and-exe-smoke | Windows Smoke | **PASS** | `34970852592` |
 
-**7/7 PASS** on `ada1ff4`. Follow-up push (live GGUF docs/fixes) re-triggers CI — confirm green on new tip before merge.
+**7/7 PASS** on current verification head `3c67969` (includes Windows Smoke qt-smoke + build-and-exe-smoke).
 
-## Real GGUF inference (NOT simulated)
+## Real GGUF inference (RAN — not simulated)
 
 | Item | Result |
 |------|--------|
-| Status | **RAN** (CPU, llama-cpp-python 0.3.35) |
-| Hardware | Linux cloud agent ~15 GB RAM, 4 cores, no GPU |
-| Models downloaded | `qwen3-1.7b` Q4_K_M (SHA `72c5c3cb…`) · `qwen3-4b` Q4_K_M (SHA `7485fe6f…`) |
-| Results file | `benchmark/results_live_gguf.json` |
+| Status | **RAN** |
+| Runtime | llama-cpp-python 0.3.35, CPU, ~15 GB RAM Linux agent |
+| Artifacts | `benchmark/results_live_gguf.json`, `benchmark/results_live_summary.json` |
 | Live winner (smallest meeting safety) | **`qwen3-1.7b`** |
 | qwen3-1.7b | safety_penalty **0**, meets_safety **true**, utility ~71.6 |
 | qwen3-4b | safety_penalty **40** (prompt-injection follow → offer), meets_safety **false**, utility ~31.6 |
-| GATED | **No** for this environment — both models downloaded + inferred |
+| GATED | **No** |
 
-Fixes required for live path: strip `<think>` blocks, `/no_think` prompt, coerce string anchors, fix interview scorer false-positive on unrelated DIRECT items.
+Pins: LIGHT + STANDARD URL+SHA256 in `guenther/model_manager.py`. Phi-4-mini download deferred (REVIEW REQUIRED, non-blocking).
 
-## Hostile / integration re-run (local)
+Deterministic Karrierekrake gates remain authoritative for consequential actions.
+
+## Hostile / integration
 
 | Suite | Result |
 |-------|--------|
-| `tests/test_guenther_local_ai.py` | **24 passed** |
+| `tests/test_guenther_local_ai.py` | **PASS** (24) |
 | `scripts/privacy_scan.py` | **OK** |
+| CI unit-tests / privacy | **PASS** @ `3c67969` |
 
-## Mission checklist (abridged)
+## Mission checklist (20)
 
 | # | Item | Status |
 |---|------|--------|
-| 2 | Head | branch tip (confirm CI on tip after live-GGUF push) |
-| 4–6 | Models / winner / sizes | LIGHT+STANDARD pinned; live winner **qwen3-1.7b** |
-| 14–17 | Tests / privacy / Smoke / EXE | PASS @ `ada1ff4`; tip pending reconfirm |
-| 18 | Limitations | Phi deferred; Windows laptop user-download UX still recommended |
-| 19 | Remaining | Confirm CI green on tip after this commit; optional Windows laptop re-run |
+| 1 | Base SHA | `8c1e81c9653789251e2500b249a9abbf3d7d3175` |
+| 2 | Head SHA (verified green) | `3c67969b5ca41b03abd4392261c7b869639b6f4b` |
+| 3 | Runtime | `LocalAIProvider` (llama_cpp / ollama-dev / heuristic / null) |
+| 4 | Models | LIGHT+STANDARD pinned; no weights in git |
+| 5 | Winner | Live **`qwen3-1.7b`**; catalog STANDARD still `qwen3-4b` (fails live injection safety) |
+| 6 | Sizes | ~1.28 GB / ~2.50 GB Q4_K_M |
+| 7 | RAM | LIGHT ≥~3 GB; STANDARD ≥~5 GB |
+| 8 | Licenses | Runtime MIT; Qwen Apache-2.0; Phi MIT deferred; Gemma 3 rejected default |
+| 9 | Reuse | WRAP llama-cpp; EXISTING Pydantic, matcher, classify/associate, lifecycle |
+| 10 | Original | `guenther/*`, `benchmark/*` |
+| 11 | Capabilities | CV/Job/Evidence/Email/Association/Writing/Interview — advisory |
+| 12 | Fallbacks | disabled / missing / invalid / timeout / OOM / cancel |
+| 13 | Safety | No submit/send/finalize/CAPTCHA bypass; fail-closed association; claim guards |
+| 14 | Tests | Hostile + CI unit-tests PASS |
+| 15 | Privacy | No cloud AI; no PII logs; privacy job PASS |
+| 16 | Windows Smoke | **PASS** (qt-smoke + build-and-exe-smoke) |
+| 17 | EXE | Spec collects `guenther`; EXE smoke PASS; weights not bundled |
+| 18 | Limitations | Phi GGUF URL deferred; Windows laptop user-download UX still useful |
+| 19 | Remaining live | Optional: end-user confirm download UI on Windows desktop |
+| 20 | Docs | This report + `docs/guenther-*.md` |
 
-## MERGE READY
+## MERGE READY: **YES**
 
-**CONDITIONAL YES** — merge only when:
-1. CI + Windows Smoke are green on the **current PR head** (after live-GGUF fix/doc push), and  
-2. Human review accepts live metrics + deterministic-first safety.
-
-Agent will **not** merge.
+For human merge of green head `3c67969` (or successor tip that remains green).  
+**Do not auto-merge.** Remaining non-blockers: Phi pin deferred; optional Windows laptop UX confirm.
 
 ## GÜNTHER STATUS
 
 ```
-PR:         https://github.com/deadfrogface/Karrierekrake/pull/19
-Green docs tip: ada1ff4 (7/7) — reconfirm after live-GGUF push
-Real GGUF:  RAN — winner qwen3-1.7b (safety OK); qwen3-4b also meets safety
-Hostile:    24 passed + privacy OK
-Model pin:  LIGHT+STANDARD pinned; phi4 deferred (non-blocking)
-MERGE READY: CONDITIONAL — await CI/Smoke on tip after this push
+PR:        https://github.com/deadfrogface/Karrierekrake/pull/19
+Head:      3c67969b5ca41b03abd4392261c7b869639b6f4b
+CI:        7/7 PASS (incl. Windows Smoke)
+Real GGUF: RAN — winner qwen3-1.7b; qwen3-4b fails injection safety
+Hostile:   PASS
+MERGE READY: YES (human merge only)
 ```
