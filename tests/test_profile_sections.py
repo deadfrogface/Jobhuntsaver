@@ -25,8 +25,10 @@ def test_career_section_round_trip():
     section.load(jobs)
     out = JobsConfig()
     section.save_into(out)
-    assert out.desired_titles == ["Sachbearbeiter"]
-    assert out.alternative_titles == ["Assistent"]
+    # Soft-migrate: alternatives fold into desired; UI no longer persists them.
+    assert "Sachbearbeiter" in out.desired_titles
+    assert "Assistent" in out.desired_titles
+    assert out.alternative_titles == []
     assert out.unwanted_titles == ["Praktikant"]
     assert out.desired_industries == ["Verwaltung"]
     assert out.excluded_industries == ["Gastronomie"]

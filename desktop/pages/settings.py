@@ -127,9 +127,22 @@ class SettingsPage(QWidget):
         self.min_match_dash.setRange(0, 100)
         self.max_distance = QSpinBox()
         self.max_distance.setRange(1, 300)
+        self.search_mode = QComboBox()
+        self.search_mode.addItem("", "profile_discovery")
+        self.search_mode.addItem("", "explicit_titles")
+        self.jobs_per_search = QComboBox()
+        from core.config import JOBS_PER_SEARCH_CHOICES
+
+        for n in JOBS_PER_SEARCH_CHOICES:
+            label = "Max" if n == 0 else str(n)
+            self.jobs_per_search.addItem(label, n)
         self.lbl_published = QLabel()
         self.lbl_min_match_dash = QLabel()
         self.lbl_max_distance = QLabel()
+        self.lbl_search_mode = QLabel()
+        self.lbl_jobs_per_search = QLabel()
+        sform.addRow(self.lbl_search_mode, self.search_mode)
+        sform.addRow(self.lbl_jobs_per_search, self.jobs_per_search)
         sform.addRow(self.lbl_published, self.published_days)
         sform.addRow(self.lbl_min_match_dash, self.min_match_dash)
         sform.addRow(self.lbl_max_distance, self.max_distance)
@@ -266,6 +279,19 @@ class SettingsPage(QWidget):
         self.lbl_published.setText(tr("settings.published_days"))
         self.lbl_min_match_dash.setText(tr("settings.min_match_dash"))
         self.lbl_max_distance.setText(tr("settings.max_distance"))
+        self.lbl_search_mode.setText(tr("settings.search_mode"))
+        self.lbl_jobs_per_search.setText(tr("settings.jobs_per_search"))
+        cur_mode = self.search_mode.currentData()
+        self.search_mode.setItemText(0, tr("settings.search_mode.discovery"))
+        self.search_mode.setItemText(1, tr("settings.search_mode.explicit"))
+        idx = self.search_mode.findData(cur_mode)
+        if idx >= 0:
+            self.search_mode.setCurrentIndex(idx)
+        # Refresh Max label translation-agnostic (numeric data preserved)
+        for i in range(self.jobs_per_search.count()):
+            data = self.jobs_per_search.itemData(i)
+            if data == 0:
+                self.jobs_per_search.setItemText(i, tr("settings.jobs_per_search.max"))
         self.lbl_min_match_apply.setText(tr("settings.min_match_apply"))
         self.lbl_max_per_run.setText(tr("settings.max_per_run"))
         self.lbl_max_per_day.setText(tr("settings.max_per_day"))
@@ -327,6 +353,17 @@ class SettingsPage(QWidget):
             cb.setChecked(key in enabled)
         self.published_days.setValue(int(s.published_within_days))
         self.min_match_dash.setValue(int(s.minimum_match_for_dashboard))
+        mode_idx = self.search_mode.findData(
+            str(getattr(s, "search_mode", "profile_discovery") or "profile_discovery")
+        )
+        self.search_mode.setCurrentIndex(mode_idx if mode_idx >= 0 else 0)
+        jps = int(getattr(s, "jobs_per_search", 40) or 0)
+        jps_idx = self.jobs_per_search.findData(jps)
+        if jps_idx < 0:
+            from core.config import normalize_jobs_per_search
+
+            jps_idx = self.jobs_per_search.findData(normalize_jobs_per_search(jps))
+        self.jobs_per_search.setCurrentIndex(jps_idx if jps_idx >= 0 else 3)
         self.max_distance.setValue(int(cfg.profile.location.max_distance_km))
         self.min_match_apply.setValue(int(s.minimum_match_for_auto_apply))
         self.max_per_run.setValue(int(s.max_applications_per_run))
@@ -399,6 +436,10 @@ class SettingsPage(QWidget):
         ]
         cfg.settings.published_within_days = self.published_days.value()
         cfg.settings.minimum_match_for_dashboard = self.min_match_dash.value()
+        cfg.settings.search_mode = str(
+            self.search_mode.currentData() or "profile_discovery"
+        )
+        cfg.settings.jobs_per_search = int(self.jobs_per_search.currentData() or 40)
         cfg.profile.location.max_distance_km = float(self.max_distance.value())
         cfg.settings.minimum_match_for_auto_apply = self.min_match_apply.value()
         cfg.settings.max_applications_per_run = self.max_per_run.value()

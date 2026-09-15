@@ -1,4 +1,4 @@
-"""Jobs listing page — scannable list + detail + prepare application."""
+"""Jobs listing page — focused columns + match explanation; never shows nan."""
 
 from __future__ import annotations
 
@@ -27,12 +27,25 @@ from PySide6.QtWidgets import (
 
 from core.database import Database
 from core.models import JobStatus
+from core.text_normalize import clean_text, display_or_dash
 from desktop.i18n import tr
 from desktop.services import ConfigService
 from desktop.status_labels import status_label
 
 
 class JobsPage(QWidget):
+    COLS = (
+        "title",
+        "company",
+        "location",
+        "distance",
+        "remote",
+        "score",
+        "explanation",
+        "source",
+        "status",
+    )
+
     def __init__(self, config_service: ConfigService, parent=None) -> None:
         super().__init__(parent)
         self.config_service = config_service
@@ -44,6 +57,8 @@ class JobsPage(QWidget):
         self.page_subtitle = QLabel()
         self.page_subtitle.setObjectName("PageSubtitle")
         self.page_subtitle.setWordWrap(True)
+        self.count_label = QLabel()
+        self.count_label.setObjectName("PageSubtitle")
 
         self.min_match = QSpinBox()
         self.min_match.setRange(0, 100)
@@ -104,7 +119,7 @@ class JobsPage(QWidget):
         btn_row.addStretch()
         filter_form.addRow(btn_row)
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, len(self.COLS))
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
@@ -113,10 +128,11 @@ class JobsPage(QWidget):
         self.table.doubleClicked.connect(self.open_selected)
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
-        for col in (0, 3, 4, 5):
+        for col in (3, 4, 5, 7, 8):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
 
         self.empty = QLabel()
         self.empty.setObjectName("EmptyState")
@@ -170,6 +186,7 @@ class JobsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.page_title)
         layout.addWidget(self.page_subtitle)
+        layout.addWidget(self.count_label)
         layout.addLayout(filter_form)
         layout.addWidget(splitter, 1)
 
@@ -196,16 +213,18 @@ class JobsPage(QWidget):
         self.detail_open.setText(tr("btn.open_job"))
         self.empty.setText(tr("jobs.empty"))
         self.status.setItemText(0, tr("jobs.all"))
-        # Keep raw enum as data; show human labels in the dropdown text
         for i in range(1, self.status.count()):
             raw = self.status.itemData(i)
             self.status.setItemText(i, status_label(str(raw)))
         self.table.setHorizontalHeaderLabels(
             [
-                tr("col.match"),
                 tr("col.title"),
                 tr("col.company"),
                 tr("col.city"),
+                tr("col.distance"),
+                tr("col.remote"),
+                tr("col.match"),
+                tr("col.explanation"),
                 tr("col.source"),
                 tr("col.status"),
             ]
@@ -224,13 +243,19 @@ class JobsPage(QWidget):
     def _job_for_row(self, row: int):
         if row < 0:
             return None
-        title_item = self.table.item(row, 1)
-        company_item = self.table.item(row, 2)
-        if not title_item or not company_item:
+        item = self.table.item(row, 0)
+        if not item:
             return None
-        title = title_item.text()
-        company = company_item.text()
-        return next((j for j in self._jobs if j.title == title and j.company == company), None)
+        job_id = item.data(Qt.ItemDataRole.UserRole)
+        if job_id:
+            return next((j for j in self._jobs if j.id == job_id), None)
+        title = clean_text(item.text())
+        company_item = self.table.item(row, 1)
+        company = clean_text(company_item.text() if company_item else "")
+        return next(
+            (j for j in self._jobs if clean_text(j.title) == title and clean_text(j.company) == company),
+            None,
+        )
 
     def _on_selection(self) -> None:
         row = self.table.currentRow()
@@ -239,11 +264,12 @@ class JobsPage(QWidget):
         if job is None:
             self._clear_detail()
             return
-        self.detail_title.setText(job.title or "—")
+        self.detail_title.setText(display_or_dash(job.title))
         dist = "" if job.distance_km is None else f"{job.distance_km:.1f} km"
         self.detail_meta.setText(
-            f"{job.company or '—'} · {job.city or '—'} · {job.remote_type or '—'} · "
-            f"{dist} · {job.salary_text or '—'} · {job.source or '—'}"
+            f"{display_or_dash(job.company)} · {display_or_dash(job.city)} · "
+            f"{display_or_dash(job.remote_type)} · {dist or '—'} · "
+            f"{display_or_dash(job.salary_text)} · {display_or_dash(job.source)}"
         )
         self.detail_status.setText(
             f"{tr('jobs.status')}: {status_label(job.status)} · "
@@ -252,10 +278,18 @@ class JobsPage(QWidget):
         reasons = ""
         if getattr(job, "match_reasons", None):
             reasons = "\n".join(f"• {r}" for r in (job.match_reasons or [])[:8])
-        body = (job.description or "").strip()
+        reject = ""
+        if getattr(job, "rejection_reasons", None):
+            reject = "\n".join(f"• {r}" for r in (job.rejection_reasons or [])[:6])
+        body = clean_text(job.description)
+        chunks = []
         if reasons:
-            body = f"{tr('jobs.match_reasons')}:\n{reasons}\n\n{body}"
-        self.detail_body.setPlainText(body[:4000] if body else tr("jobs.no_description"))
+            chunks.append(f"{tr('jobs.match_reasons')}:\n{reasons}")
+        if reject:
+            chunks.append(f"{tr('jobs.reject_reasons')}:\n{reject}")
+        if body:
+            chunks.append(body[:4000])
+        self.detail_body.setPlainText("\n\n".join(chunks) if chunks else tr("jobs.no_description"))
         self.detail_prepare.setEnabled(True)
         self.detail_open.setEnabled(True)
 
@@ -293,23 +327,33 @@ class JobsPage(QWidget):
         for job in jobs:
             row = self.table.rowCount()
             self.table.insertRow(row)
+            dist = "" if job.distance_km is None else f"{job.distance_km:.1f}"
             values = [
-                str(job.match_score),
-                job.title,
-                job.company,
-                job.city,
-                job.source,
+                display_or_dash(job.title),
+                display_or_dash(job.company),
+                display_or_dash(job.city),
+                dist or "—",
+                display_or_dash(job.remote_type),
+                str(int(job.match_score or 0)),
+                display_or_dash(job.match_explanation()),
+                display_or_dash(job.source),
                 status_label(job.status),
             ]
             for col, value in enumerate(values):
+                # Never paint raw nan into the table.
+                if str(value).strip().lower() in {"nan", "none", "null"}:
+                    value = "—"
                 item = QTableWidgetItem(value)
                 if col == 0:
-                    item.setData(Qt.ItemDataRole.DisplayRole, int(job.match_score))
+                    item.setData(Qt.ItemDataRole.UserRole, job.id)
+                if col == 5:
+                    item.setData(Qt.ItemDataRole.DisplayRole, int(job.match_score or 0))
                 self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
         empty = len(jobs) == 0
         self.table.setVisible(not empty)
         self.empty.setVisible(empty)
+        self.count_label.setText(tr("jobs.count", n=len(jobs)))
         if empty:
             self._clear_detail()
 
@@ -333,5 +377,6 @@ class JobsPage(QWidget):
         from apply.preview import build_application_preview
         from desktop.widgets.apply_preview_dialog import ApplyPreviewDialog
 
-        preview = build_application_preview(job, cfg)
+        meta = self.config_service.load_meta()
+        preview = build_application_preview(job, cfg, meta=meta)
         ApplyPreviewDialog(preview, self).exec()

@@ -36,13 +36,86 @@ def _search_location(home_address: str) -> str:
     return _city_from_address(home_address)
 
 
+def discovery_search_titles(config: AppConfig) -> list[str]:
+    """Mode A: derive search keywords from profile experience / skills.
+
+    Desired titles are optional — empty desired list still yields discovery
+    queries from CV-backed experience titles and strong software tokens.
+    """
+    from core.job_title_suggestions import suggest_job_titles
+
+    quals = config.profile.qualifications
+    parsed = {
+        "work_experience": [
+            {
+                "title": e.title,
+                "company": e.company,
+                "responsibilities": list(e.responsibilities or []),
+            }
+            for e in (quals.work_experience or [])
+        ],
+        "education": [
+            {"qualification": e.qualification, "institution": e.institution}
+            for e in (quals.education or [])
+        ],
+        "skills": quals.skill_values(),
+        "software": quals.software_values(),
+        "certificates": [c.name for c in (quals.certificates or [])],
+        "experience_lines": quals.experience_labels(),
+    }
+    suggestions = suggest_job_titles(parsed, existing_desired=[], existing_alternative=[])
+    titles: list[str] = []
+    for t in suggestions.get("desired") or []:
+        if t and t not in titles:
+            titles.append(t)
+    # Fall back to raw past job titles (never cover-letter prose).
+    for exp in quals.work_experience or []:
+        t = (exp.title or "").strip()
+        if t and t not in titles and len(t) >= 4:
+            titles.append(t)
+    for soft in (quals.software_values() or [])[:2]:
+        s = (soft or "").strip()
+        if s and len(s) >= 3 and s not in titles:
+            titles.append(s)
+    return titles[:8]
+
+
+def resolve_search_titles(config: AppConfig) -> list[str]:
+    """Return keyword titles for this run (Mode A discovery or Mode B explicit)."""
+    desired = [t for t in (config.profile.jobs.desired_titles or []) if str(t).strip()]
+    # Soft-migrate leftover alternatives if present in-memory.
+    alts = [t for t in (config.profile.jobs.alternative_titles or []) if str(t).strip()]
+    mode = str(getattr(config.settings, "search_mode", "") or "profile_discovery")
+    if mode == "explicit_titles":
+        return list(dict.fromkeys([*desired, *alts]))
+    # Mode A — profile discovery: desired titles preferred but not required.
+    if desired or alts:
+        return list(dict.fromkeys([*desired, *alts]))
+    return discovery_search_titles(config)
+
+
+def _per_query_max(config: AppConfig, *, remote: bool = False) -> int:
+    from core.config import normalize_jobs_per_search
+
+    n = normalize_jobs_per_search(getattr(config.settings, "jobs_per_search", 40))
+    if n == 0:
+        # Max: large finite cap so sources terminate; unique totals across queries
+        # still come from dedupe in the pipeline.
+        return 250 if not remote else 120
+    if remote:
+        return max(5, min(n, n // 2 or n))
+    return n
+
+
 def build_queries(config: AppConfig) -> list[SearchQuery]:
     loc = config.profile.location
-    titles = config.profile.jobs.desired_titles + config.profile.jobs.alternative_titles
+    titles = resolve_search_titles(config)
     if not titles:
         return []
     place = _search_location(loc.home_address)
     queries: list[SearchQuery] = []
+    local_max = _per_query_max(config, remote=False)
+    remote_max = _per_query_max(config, remote=True)
     if place:
         for title in titles:
             queries.append(
@@ -50,7 +123,7 @@ def build_queries(config: AppConfig) -> list[SearchQuery]:
                     keyword=title,
                     location=place,
                     radius_km=loc.max_distance_km,
-                    max_results=40,
+                    max_results=local_max,
                     published_within_days=config.settings.published_within_days,
                 )
             )
@@ -61,7 +134,7 @@ def build_queries(config: AppConfig) -> list[SearchQuery]:
                     keyword=title,
                     location="Remote",
                     radius_km=loc.max_distance_km,
-                    max_results=20,
+                    max_results=remote_max,
                     published_within_days=config.settings.published_within_days,
                 )
             )
@@ -183,8 +256,9 @@ def run_pipeline(
     source_results: dict[str, dict] = {}
     if not queries:
         msg = (
-            "Keine Suchanfragen: Bitte Wunschberufe und Wohnort/Remote in den "
-            "Einstellungen setzen. Quellen wurden nicht mit leeren Queries aufgerufen."
+            "Keine Suchanfragen: Im Profil-Entdeckungsmodus fehlen verwertbare "
+            "Erfahrungs-/Skill-Hinweise — oder im Titelmodus fehlen Wunschberufe. "
+            "Wohnort oder Remote setzen. Quellen wurden nicht mit leeren Queries aufgerufen."
         )
         progress(msg)
         run.warning(msg) if hasattr(run, "warning") else run.info(msg)
@@ -217,7 +291,7 @@ def run_pipeline(
             run.info("Pipeline cancelled during search")
             progress("Abgebrochen.")
             break
-        progress(f"Suche {source.source_id}…")
+        progress(f"Phase Suche · Quelle {source.source_id}…")
         placeholder = source.source_id == "company_sites"
         jobs, err, detail = _search_source_with_timeout(
             source, queries, should_stop=stopped
@@ -297,6 +371,7 @@ def run_pipeline(
     run.info(f"{total} total results")
 
     if not cancelled and not stopped():
+        progress("Phase Standorte anreichern…")
         progress("Standorte anreichern: 0/? …")
         all_jobs = enrich_job_locations(
             all_jobs,
@@ -309,12 +384,14 @@ def run_pipeline(
     else:
         cancelled = cancelled or stopped()
 
+    progress("Phase Deduplizierung…")
     progress("Duplikate entfernen…")
     all_jobs = deduplicate(all_jobs)
     primary = [j for j in all_jobs if not j.duplicate_of]
     duplicates_removed = len(all_jobs) - len(primary)
     run.info(f"{duplicates_removed} duplicates marked")
 
+    progress("Phase Matching…")
     progress("Jobs matchen…")
     scored = []
     outside = 0

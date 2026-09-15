@@ -136,8 +136,8 @@ class CvImportDialog(QDialog):
                 ("software", tr("profile.software")),
                 ("skills", tr("profile.skills")),
             ]:
-                status = conf.get(key, "Nicht erkannt")
-                if status == "Nicht erkannt":
+                status = conf.get(key, "Im Dokument nicht gefunden")
+                if status in {"Nicht erkannt", "Im Dokument nicht gefunden"}:
                     status = tr("cv_import.not_detected")
                 lines.append(f"• {label}: {status}")
         lines.append("")

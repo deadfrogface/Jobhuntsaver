@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from core.text_normalize import clean_company, clean_text, is_blankish
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -70,6 +72,17 @@ class Job:
     alt_sources: list[str] = field(default_factory=list)
     run_id: str = ""
 
+    def __post_init__(self) -> None:
+        self.title = clean_text(self.title)
+        self.company = clean_company(self.company)
+        self.city = clean_text(self.city)
+        self.postal_code = clean_text(self.postal_code)
+        self.address = clean_text(self.address)
+        self.salary_text = clean_text(self.salary_text)
+        self.source = clean_text(self.source)
+        if is_blankish(self.remote_type):
+            self.remote_type = RemoteType.UNKNOWN.value
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -86,6 +99,10 @@ class Job:
                 except json.JSONDecodeError:
                     filtered[list_field] = []
         return cls(**filtered)
+
+    def match_explanation(self, *, limit: int = 2) -> str:
+        reasons = [clean_text(r) for r in (self.match_reasons or []) if clean_text(r)]
+        return " · ".join(reasons[:limit])[:160]
 
 
 @dataclass
@@ -110,3 +127,6 @@ class MatchResult:
     rejection_reasons: list[str] = field(default_factory=list)
     excluded: bool = False
     exclude_reason: str | None = None
+    # Structured evidence dicts (DIRECT / RELATED / NOT_SUPPORTED). Optional for
+    # backward compatibility with older DB rows / callers.
+    evidence: list[dict[str, Any]] = field(default_factory=list)

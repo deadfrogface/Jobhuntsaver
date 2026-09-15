@@ -352,6 +352,46 @@ class SettingsConfig:
     language: str = "de"  # de | en
     start_with_windows: bool = False
     minimize_to_tray: bool = False
+    # Search UX — profile_discovery | explicit_titles
+    search_mode: str = "profile_discovery"
+    # Per-source cap: 10..100 or 0 meaning Max (source natural end)
+    jobs_per_search: int = 40
+
+
+# Allowed jobs-per-search choices for the settings UI (0 = Max).
+JOBS_PER_SEARCH_CHOICES = (10, 20, 30, 40, 50, 60, 70, 80, 100, 0)
+
+
+def soft_migrate_jobs_config(jobs: JobsConfig) -> JobsConfig:
+    """Fold legacy ``alternative_titles`` into ``desired_titles`` once.
+
+    Keeps ``alternative_titles`` empty after migration so UI/search no longer
+    depend on a separate 'Alternative Berufe' list.
+    """
+    alts = [t for t in (jobs.alternative_titles or []) if str(t).strip()]
+    if not alts:
+        return jobs
+    desired = list(jobs.desired_titles or [])
+    for title in alts:
+        if title not in desired:
+            desired.append(title)
+    jobs.desired_titles = desired
+    jobs.alternative_titles = []
+    return jobs
+
+
+def normalize_jobs_per_search(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 40
+    if n <= 0:
+        return 0  # Max
+    if n in JOBS_PER_SEARCH_CHOICES:
+        return n
+    # Snap to nearest allowed positive choice.
+    positives = [c for c in JOBS_PER_SEARCH_CHOICES if c > 0]
+    return min(positives, key=lambda c: abs(c - n))
 
 
 @dataclass
@@ -714,7 +754,9 @@ def load_config(
     settings_raw = _load_yaml(settings_path)
 
     location = _merge_dataclass(LocationConfig, profile_raw.get("location", {}))
-    jobs = _merge_dataclass(JobsConfig, profile_raw.get("jobs", {}))
+    jobs = soft_migrate_jobs_config(
+        _merge_dataclass(JobsConfig, profile_raw.get("jobs", {}))
+    )
     employment = _merge_dataclass(EmploymentConfig, profile_raw.get("employment", {}))
     qualifications = parse_qualifications(profile_raw.get("qualifications", {}))
     filters = _merge_dataclass(FiltersConfig, profile_raw.get("filters", {}))
@@ -731,6 +773,16 @@ def load_config(
     if strip_placeholders:
         application = strip_example_application(application)
     settings = _merge_dataclass(SettingsConfig, settings_raw)
+    settings.jobs_per_search = normalize_jobs_per_search(
+        getattr(settings, "jobs_per_search", 40)
+    )
+    mode = str(getattr(settings, "search_mode", "") or "").strip().lower()
+    if mode not in {"profile_discovery", "explicit_titles"}:
+        settings.search_mode = (
+            "explicit_titles" if jobs.desired_titles else "profile_discovery"
+        )
+    else:
+        settings.search_mode = mode
 
     if os.getenv("CV_PATH"):
         application.cv_path = os.environ["CV_PATH"]
