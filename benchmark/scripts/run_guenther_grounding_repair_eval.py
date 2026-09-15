@@ -55,17 +55,36 @@ def run_adversarial_deterministic(fixtures: dict) -> dict:
     for row in fixtures["adversarial_claims"]:
         claim = GeneratedClaim(
             text=row["claim"],
-            kind=ClaimKind.CREDENTIAL
-            if any(
-                x in row["claim"].lower()
-                for x in ("ausbildung", "bachelor", "master", "examen", "zertifikat", "ihk", "pflicht", "meister", "istqb", "ccna", "staatsexamen")
-            )
-            else ClaimKind.OTHER,
-            requires_direct=any(
-                x in row["claim"].lower()
-                for x in ("ausbildung", "bachelor", "pflege", "examen", "meister", "staatsexamen", "istqb", "ccna", "studium", "abitur")
-            ),
+            kind=ClaimKind.OTHER,
+            requires_direct=False,
         )
+        low = row["claim"].lower()
+        cred_markers = (
+            "ausbildung",
+            "bachelor",
+            "master",
+            "examen",
+            "zertifikat",
+            "ihk",
+            "meister",
+            "istqb",
+            "ccna",
+            "staatsexamen",
+            "studium",
+            "abitur",
+            "pflege",
+            "assessor",
+        )
+        if any(x in low for x in cred_markers):
+            claim.kind = ClaimKind.CREDENTIAL
+            claim.requires_direct = True
+        # Skills / tools are not credentials
+        if low in {"personio", "staplerschein", "englisch b2", "teamleitung"} or "active directory" in low:
+            claim.kind = ClaimKind.SKILL
+            claim.requires_direct = False
+        if "ticket" in low or "jahresabschluss" in low or "patientenaufnahme" in low:
+            claim.kind = ClaimKind.SKILL
+            claim.requires_direct = False
         store = build_evidence_store(profile_text=row["profile"])
         gr = ground_claim(
             claim, store=store, profile_text=row["profile"], job_text=row.get("job") or ""

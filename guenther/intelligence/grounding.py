@@ -190,9 +190,59 @@ def ground_claim(
     # Non-credential: DIRECT if strong overlap with profile/evidence; RELATED if partial
     ct = _tokens(claim.text)
     corpus_t = _tokens(profile_text + "\n" + store.corpus())
+    profile_fold = _fold(profile_text)
+    claim_fold = _fold(claim.text)
     if not ct:
         return GroundingResult(claim=claim, status=GroundingStatus.UNKNOWN, note="empty_tokens")
+
+    # Explicit negation in profile ("kein Personio", "keine Führungserfahrung")
+    for tok in list(ct)[:4]:
+        if len(tok) >= 4 and (
+            f"kein {tok}" in profile_fold
+            or f"keine {tok}" in profile_fold
+            or f"ohne {tok}" in profile_fold
+            or f"nicht {tok}" in profile_fold
+        ):
+            err = make_error(CONTRADICTED_CLAIM, claim_text=claim.text, severity="error")
+            return GroundingResult(
+                claim=claim,
+                status=GroundingStatus.CONTRADICTED,
+                errors=[err],
+                note="explicit_negation_in_profile",
+            )
+
+    # Alias expansions for common DE career terms
+    alias_hits = 0
+    aliases = {
+        "teamleitung": ("leiter", "teamleitung", "fuhrung", "team 4", "teamleiter"),
+        "fuhrungserfahrung": ("leiter", "fuhrung", "teamleitung", "team 4"),
+        "personio": ("personio",),
+        "staplerschein": ("staplerschein", "stapler"),
+        "active directory": ("active directory", "ad grundlagen", " ad ", "ad-grundlagen"),
+        "patientenaufnahme": ("patientenaufnahme", "empfang"),
+    }
+    for key, vals in aliases.items():
+        if key in claim_fold or any(k in claim_fold for k in vals if len(k) > 4):
+            if any(v in profile_fold for v in vals):
+                alias_hits += 1
+
     overlap = ct & corpus_t
+    # Short claims (1–2 tokens): all tokens in corpus ⇒ DIRECT
+    if len(ct) <= 2 and ct and ct <= corpus_t:
+        return GroundingResult(
+            claim=claim,
+            status=GroundingStatus.SUPPORTED_DIRECT,
+            matched_evidence=" ".join(sorted(ct)),
+            note="short_claim_direct",
+        )
+    if alias_hits:
+        # Known skill aliases with profile hit count as DIRECT when phrase-level match
+        return GroundingResult(
+            claim=claim,
+            status=GroundingStatus.SUPPORTED_DIRECT if overlap or alias_hits else GroundingStatus.RELATED,
+            matched_evidence="alias",
+            note="alias_direct",
+        )
     if len(overlap) >= max(2, (len(ct) + 1) // 2) and overlap:
         return GroundingResult(
             claim=claim,
